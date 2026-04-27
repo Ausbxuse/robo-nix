@@ -1,0 +1,30 @@
+name: GPU Smoke
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 8 * * 1"
+
+jobs:
+  gpu-smoke:
+    runs-on:
+      - self-hosted
+      - linux
+      - x64
+      - gpu
+      - nvidia
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Configure Nix Cache
+        uses: DeterminateSystems/magic-nix-cache-action@main
+
+      - name: Run CUDA Doctor
+        run: nix run .#cuda-doctor
+
+      - name: Run GPU Validation
+        run: bash tests/gpu-validation.sh

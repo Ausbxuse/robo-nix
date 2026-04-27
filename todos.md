@@ -1,0 +1,76 @@
+# TODOs
+
+- [ ] Make `robo doctor` lightweight by default.
+  - [x] Add a cheap first pass that does not realize the full Nix runtime closure.
+  - [x] Show what would be downloaded/built before deep checks.
+  - [x] Add an explicit deep mode for runtime/library checks that may pull large closures.
+  - Done: `robo doctor --deep` summarizes Nix dry-run build/download counts and keeps raw store paths behind `--debug`.
+- [ ] Add `robo doctor --why`.
+  - [x] Explain why each component, required file, required directory, and bootstrap script was added.
+  - [x] Show whether each entry came from a profile, pyproject inference, workspace inference, vendor module, or manual config.
+  - [x] Show the simple edit or command to remove/override a bad inference.
+  - [x] Add machine-readable provenance output (`--why --json`) for CI diffing and audit.
+  - [x] Emit concise remediation hints tied to each inferred reason and failure mode.
+  - Done: `robo doctor --why` and `robo doctor --why --json` now explain profile/manual/pyproject/workspace runtime entries and low-confidence suggestions.
+- [ ] Make the runtime contract machine-checkable and verifiable.
+  - [ ] Add a command that prints the exact resolved runtime closure (components, package versions, derivation names, and reasons).
+  - [ ] Add contract snapshots for fixture profiles so CI can detect environment regressions.
+  - [x] Record Nix-closure and lock assumptions without exposing raw implementation details.
+  - Done: `robo contract --json` now emits components, reasons, selected system, default derivation name, source, and lock presence for snapshotting.
+- [ ] Improve generated project repair and migration.
+  - [x] Detect old generated flake shapes before Nix evaluates them.
+  - [x] Repair old GitHub inputs to packaged local source when safe.
+  - [x] Never overwrite user-owned Python files or hand-written flakes without explicit `--force`.
+  - [ ] Print concise migration summaries.
+  - [ ] Add schema/version migration checks for generated `robo.nix` before bootstrap.
+- [ ] Keep inference conservative and explainable.
+  - [x] Mark low-confidence vendor file inferences as suggestions instead of hard requirements.
+  - [ ] Add `--no-script-probe` for repos with unusual vendor layouts.
+  - [x] Keep package/workspace/script rules data-driven in `lib/runtime-inference.nix`.
+  - [ ] Add tests that false-positive-prone packages do not pull ROS/CUDA/Qt accidentally.
+  - [ ] Add executable runtime checks for common robotics failures (`libGL.so.1`, `libstdc++.so.6`, FFmpeg media libs, Qt plugin path).
+  - Done: `robo doctor --deep` now runs PyQt and Matplotlib QtAgg probes for the GUI failure path.
+  - Done: generated `robo.nix` can carry `provenance.suggestions` for optional inferred paths.
+- [ ] Build a normie-friendly vendor workflow.
+  - [ ] `robo vendor add PATH` should inspect the vendor directory or script automatically.
+  - [x] `robo vendor list`
+  - [x] `robo vendor doctor`
+  - [ ] `robo vendor bootstrap`
+  - [ ] `robo vendor export NAME` for contributors who want to upstream a reusable module.
+  - [x] Keep known vendor modules explicit and local-source-first; do not fetch proprietary sources by default.
+  - [x] Add a curated vendor module index so fixes can be reused across projects and promoted upstream.
+  - Done: initial curated index covers Dexmate GMR, XRobo Toolkit service/pybind, mobile assets, Vega navigation, and Cartographer ROS Vega.
+- [ ] Design reusable vendor modules without turning the repo into a preset zoo.
+  - [ ] Start with metadata: components, checks, env exports, bootstrap steps.
+  - [ ] Add structured build steps only after real vendor modules prove the pattern.
+  - [ ] Keep downstream project policy in downstream repos unless broadly reusable.
+- [ ] Explain Nix lock and download behavior in plain language.
+  - [ ] Clarify that `nix-ros-overlay` in `flake.lock` does not necessarily mean ROS packages are installed.
+  - [ ] Show closure size and top-level reasons before large downloads when practical.
+  - [ ] Avoid leaking flakes/overlays/derivations terminology in beginner output.
+  - [ ] Document cache assumptions (which libraries are expected from binary cache vs local build).
+  - Done: use `nix build .#default --dry-run --no-link` for preview; show raw details only with `--debug`.
+- [ ] Keep tests fast.
+  - [x] Preserve `tests/dev-check.sh` as the edit-loop check.
+  - [x] Keep heavy ROS/CUDA/vendor checks out of default local validation.
+  - [ ] Track local runtime of key checks.
+  - [ ] Add reproducibility fixtures and benchmark jobs for `cuda`/`GUI`/`headless`/`ROS` profiles.
+- [ ] opencv test
+- [ ] Test tricky packages:
+  - [ ] cuda test
+  - [ ] pyav test
+  - [ ] lerobot test
+  - [ ] torch vision
+  - [ ] torch3d
+  - [ ] flashattn
+  - [ ] evdev
+- [ ] Document support tiers.
+  - [ ] Linux x86_64 workstation
+  - [ ] Linux ARM64 robot
+  - [ ] NixOS vs non-NixOS
+  - [ ] CUDA hosts
+  - [ ] GUI/headless
+  - [ ] ROS/simulator-heavy projects
+- [ ] Keep beginner docs beginner-first.
+  - [x] The first path should be `robo init`, `robo doctor`, `robo sync`, `robo run`.
+  - [x] Advanced Nix/flakes explanations should be separate.

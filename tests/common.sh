@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+mktemp_dir() {
+	mktemp -d
+}
+
+cleanup_dir() {
+	local dir="$1"
+	rm -rf "$dir"
+}
+
+rewrite_robo_nix_input() {
+	local flake_file="$1"
+	sed -i "s|github:ausbxuse/robo-nix|path:${repo_root}|" "$flake_file"
+}
+
+copy_fixture_to_tmp() {
+	local fixture_name="$1"
+	local tmpdir="$2"
+
+	cp -R "$repo_root/tests/fixtures/${fixture_name}/." "$tmpdir/"
+	chmod -R u+w "$tmpdir"
+}
+
+assert_file_contains() {
+	local file="$1"
+	local expected="$2"
+	grep -F "$expected" "$file" >/dev/null
+}
+
+assert_command_fails() {
+	if "$@"; then
+		echo "expected command to fail: $*" >&2
+		exit 1
+	fi
+}
+
+assert_command_fails_capture() {
+	local output_file="$1"
+	shift
+	if "$@" >"$output_file" 2>&1; then
+		echo "expected command to fail: $*" >&2
+		exit 1
+	fi
+}

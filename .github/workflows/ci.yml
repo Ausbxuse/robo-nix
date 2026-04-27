@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Configure Nix Cache
+        uses: DeterminateSystems/magic-nix-cache-action@main
+
+      - name: Check Formatting
+        run: nix fmt -- --check .
+
+      - name: Run Full Validation
+        run: bash tests/full-check.sh
+
+  eval-darwin:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Configure Nix Cache
+        uses: DeterminateSystems/magic-nix-cache-action@main
+
+      - name: Run Library Regression Tests
+        run: bash tests/regression-api.sh
+
+      - name: Show Flake Outputs
+        run: nix flake show --all-systems

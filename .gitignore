@@ -1,0 +1,8 @@
+.codex
+.direnv/
+target/
+.DS_Store
+*.swp
+result
+result-*
+blog.md
