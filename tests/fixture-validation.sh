@@ -21,5 +21,6 @@ run_fixture_test() {
 	cleanup_dir "$tmpdir"
 }
 
-run_fixture_test "minimal-project"
-run_fixture_test "isaac-ros2-project"
+run_fixture_test "minimal"
+run_fixture_test "ros2-jazzy"
+run_fixture_test "cuda-profiles"

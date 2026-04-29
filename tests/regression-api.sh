@@ -82,8 +82,48 @@ assert_runtime_inference_contract() {
       assert builtins.all knownComponent inferredComponents;
       assert builtins.any (rule: builtins.elem "opencv-python" rule.dependencies && builtins.elem "media" rule.components) inference.dependencyRules;
       assert builtins.any (rule: builtins.elem "pyqt6" rule.dependencies && builtins.elem "qt6" rule.components && builtins.elem "x11-gl" rule.components) inference.dependencyRules;
+      assert builtins.any (rule: builtins.elem "cuda-python" rule.dependencies && builtins.elem "cuda-toolkit" rule.components) inference.dependencyRules;
+      assert builtins.any (rule: builtins.elem "cupy-cuda12x" rule.dependencies && builtins.elem "cuda-toolkit" rule.components) inference.dependencyRules;
+      assert builtins.any (rule: builtins.elem "flash-attn" rule.dependencies && builtins.elem "cuda-toolkit" rule.components) inference.dependencyRules;
+      assert builtins.any (rule: builtins.elem "flash-attn" rule.dependencies && builtins.elem "native-build" rule.components) inference.dependencyRules;
+      assert builtins.any (rule: builtins.elem "pytorch3d" rule.dependencies && builtins.elem "cuda-toolkit" rule.components) inference.dependencyRules;
+      assert builtins.any (rule: builtins.elem "torch3d" rule.dependencies && builtins.elem "cuda-toolkit" rule.components) inference.dependencyRules;
+      assert builtins.any (rule: builtins.elem "evdev" rule.dependencies && builtins.elem "linux-headers" rule.components) inference.dependencyRules;
       assert builtins.any (rule: builtins.elem "xrobot" rule.nameContains && builtins.elem "qt6" rule.components) inference.workspaceDirectoryRules;
       assert builtins.elem "bootstrap_" inference.scriptDiscovery.prefixes;
+      true
+  '
+	assert_expr "$expr"
+}
+
+assert_cuda_toolkit_uses_requested_wheel_version() {
+	local expr
+	expr='
+    let
+      flake = builtins.getFlake "'"path:${repo_root}"'";
+      pkgs = import flake.inputs.nixpkgs {
+        system = "x86_64-linux";
+        config.allowUnfreePredicate = pkg: true;
+      };
+      ctx = {
+        componentCatalog = flake.lib.components;
+        envName = "cuda";
+        envSpec = {
+          cudaWheelVersion = "12.6";
+        };
+        lib = flake.inputs.nixpkgs.lib;
+        inherit pkgs;
+        pkgsRos = pkgs;
+        runtimeLibPath = "";
+        runtimeLibs = [];
+        system = "x86_64-linux";
+      };
+      component = flake.lib.components."cuda-toolkit" ctx;
+      expectedCompiler = pkgs.cudaPackages_12_6.backendStdenv.cc.name;
+      packageNames = builtins.map (package: package.name) component.packages;
+    in
+      assert builtins.elem expectedCompiler packageNames;
+      assert builtins.elem "robo-cuda-toolkit-12.6" packageNames;
       true
   '
 	assert_expr "$expr"
@@ -176,12 +216,12 @@ assert_repo_tooling_outputs() {
       assert builtins.hasAttr "repo-fmt" flake.apps.x86_64-linux;
       assert builtins.hasAttr "repo-lint" flake.apps.x86_64-linux;
       assert builtins.hasAttr "repo-profile" flake.apps.x86_64-linux;
-      assert builtins.hasAttr "cuda-doctor" flake.apps.x86_64-linux;
+      assert builtins.hasAttr "cuda-check" flake.apps.x86_64-linux;
       assert builtins.hasAttr "robo" flake.apps.x86_64-linux;
       assert builtins.hasAttr "repo-fmt" flake.packages.x86_64-linux;
       assert builtins.hasAttr "repo-lint" flake.packages.x86_64-linux;
       assert builtins.hasAttr "repo-profile" flake.packages.x86_64-linux;
-      assert builtins.hasAttr "cuda-doctor" flake.packages.x86_64-linux;
+      assert builtins.hasAttr "cuda-check" flake.packages.x86_64-linux;
       assert builtins.hasAttr "robo" flake.packages.x86_64-linux;
       true
   '
@@ -195,7 +235,7 @@ assert_validation_tier_checks() {
       flake = builtins.getFlake "'"path:${repo_root}"'";
     in
       assert builtins.hasAttr "cpu-safe-repo-profile-contract" flake.checks.x86_64-linux;
-      assert builtins.hasAttr "gpu-required-cuda-doctor-contract" flake.checks.x86_64-linux;
+      assert builtins.hasAttr "gpu-required-cuda-check-contract" flake.checks.x86_64-linux;
       true
   '
 	assert_expr "$expr"
@@ -288,18 +328,18 @@ EOF
 	assert_expr "$expr"
 
 	local config_file
-	local doctor_file
+	local check_file
 	config_file="$tmpdir/contract.config"
-	doctor_file="$tmpdir/contract.doctor"
+	check_file="$tmpdir/contract.check"
 	nix run "$tmpdir#default" -- --print-config >"$config_file"
-	nix run "$tmpdir#default" -- --doctor >"$doctor_file"
+	nix run "$tmpdir#default" -- --check >"$check_file"
 	grep -F "env=contract" "$config_file" >/dev/null
 	grep -F "python=3.11" "$config_file" >/dev/null
 	grep -F "component=base" "$config_file" >/dev/null
 	grep -F "component=python-uv" "$config_file" >/dev/null
-	grep -F "doctor: env=contract" "$doctor_file" >/dev/null
-	grep -F "doctor: next: run 'robo develop' to enter the environment" "$doctor_file" >/dev/null
-	grep -F "doctor: status=ok" "$doctor_file" >/dev/null
+	grep -F "check: env=contract" "$check_file" >/dev/null
+	grep -F "check: next: run 'robo shell' to enter the environment" "$check_file" >/dev/null
+	grep -F "check: status=ok" "$check_file" >/dev/null
 
 	trap - RETURN
 	cleanup_dir "$tmpdir"
@@ -331,8 +371,8 @@ assert_project_extension_contract() {
         bootstrap = ''
           printf "extension bootstrap=%s\n" "\$PROJECT_EXTENSION_READY"
         '';
-      doctor = ''
-        doctor_ok "project extension doctor ran"
+      diagnostics = ''
+        check_ok "project extension check ran"
       '';
       requiredDirectories = [
         "third_party/example"
@@ -344,18 +384,18 @@ assert_project_extension_contract() {
 }
 EOF
 
-	local doctor_file
+	local check_file
 	local dryrun_file
-	doctor_file="$tmpdir/extended.doctor"
+	check_file="$tmpdir/extended.check"
 	dryrun_file="$tmpdir/extended.dryrun"
 
 	mkdir -p "$tmpdir/third_party/example"
 	(
 		cd "$tmpdir"
-		nix run .#default -- --doctor >"$doctor_file"
+		nix run .#default -- --check >"$check_file"
 		nix run .#default -- --dry-run >"$dryrun_file"
 	)
-	grep -F "doctor: ok: project extension doctor ran" "$doctor_file" >/dev/null
+	grep -F "check: ok: project extension check ran" "$check_file" >/dev/null
 	grep -F "validated extended with Python 3.11" "$dryrun_file" >/dev/null
 
 	trap - RETURN
@@ -391,20 +431,20 @@ assert_human_facing_failure_contract() {
 }
 EOF
 
-	local doctor_file
+	local check_file
 	local dryrun_file
-	doctor_file="$tmpdir/failure.doctor"
+	check_file="$tmpdir/failure.check"
 	dryrun_file="$tmpdir/failure.dryrun"
 
-	assert_command_fails_capture "$doctor_file" nix run "$tmpdir#default" -- --doctor
-	grep -F "doctor: error: missing workspace directory: ros_ws/src" "$doctor_file" >/dev/null
-	grep -F "doctor: hint: create " "$doctor_file" >/dev/null
-	grep -F "doctor: next: fix the issues above and rerun 'robo doctor'" "$doctor_file" >/dev/null
-	grep -F "doctor: status=error" "$doctor_file" >/dev/null
+	assert_command_fails_capture "$check_file" nix run "$tmpdir#default" -- --check
+	grep -F "check: error: missing workspace directory: ros_ws/src" "$check_file" >/dev/null
+	grep -F "check: hint: create " "$check_file" >/dev/null
+	grep -F "check: next: fix the issues above and rerun 'robo check'" "$check_file" >/dev/null
+	grep -F "check: status=error" "$check_file" >/dev/null
 
 	assert_command_fails_capture "$dryrun_file" nix run "$tmpdir#default" -- --dry-run
 	grep -F "bootstrap error: missing required directory:" "$dryrun_file" >/dev/null
-	grep -F "doctor: hint: run 'robo doctor' for a full setup report" "$dryrun_file" >/dev/null
+	grep -F "check: hint: run 'robo check' for a full setup report" "$dryrun_file" >/dev/null
 
 	trap - RETURN
 	cleanup_dir "$tmpdir"
@@ -432,6 +472,7 @@ assert_component_catalog_contract
 assert_component_metadata_contract
 assert_profile_metadata_contract
 assert_runtime_inference_contract
+assert_cuda_toolkit_uses_requested_wheel_version
 assert_manifest_helpers_contract
 assert_normalize_defaults
 assert_normalize_dedupes

@@ -12,6 +12,6 @@ nix eval .#apps.x86_64-linux.robo.program --raw >/dev/null
 nix eval .#apps.x86_64-linux.isaac-ros2-learning.type --raw >/dev/null
 bash tests/regression-api.sh --fast
 bash tests/robo-init-validation.sh
-bash tests/vendor-validation.sh
 bash tests/contract-validation.sh
 bash tests/output-consistency.sh
+bash tests/tricky-runtime-smoke.sh

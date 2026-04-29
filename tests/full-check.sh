@@ -33,9 +33,9 @@ start_check regression bash tests/regression-api.sh
 start_check profile bash tests/profile-validation.sh
 start_check fixtures bash tests/fixture-validation.sh
 start_check robo-init-full bash tests/robo-init-validation.sh --full
-start_check vendors bash tests/vendor-validation.sh
 start_check contract bash tests/contract-validation.sh
 start_check output-consistency bash tests/output-consistency.sh
+start_check tricky-runtime-smoke bash tests/tricky-runtime-smoke.sh
 
 failed=0
 

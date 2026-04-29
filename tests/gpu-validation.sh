@@ -22,7 +22,7 @@ trap 'cleanup_dir "$tmpdir"' EXIT
 gpu_config_file="$tmpdir/gpu-config.txt"
 
 nvidia-smi >/dev/null
-nix run "path:${repo_root}#cuda-doctor" >/dev/null
+nix run "path:${repo_root}#cuda-check" >/dev/null
 nix run "path:${repo_root}#gpu-learning" -- --print-config >"$gpu_config_file"
 grep -F "component=cuda-toolkit" "$gpu_config_file" >/dev/null
 grep -F "python=3.11" "$gpu_config_file" >/dev/null

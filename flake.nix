@@ -17,26 +17,25 @@
     ...
   }: let
     inherit (nixpkgs) lib;
-    componentCatalog = import ./components {inherit lib;};
-    componentMetadata = import ./lib/component-metadata.nix;
-    profileMetadata = import ./lib/profile-metadata.nix;
-    runtimeInference = import ./lib/runtime-inference.nix;
-    vendorMetadata = import ./lib/vendor-metadata.nix;
-    presetEnvCatalog = import ./envs;
+    componentCatalog = import ./nix/modules {inherit lib;};
+    componentMetadata = import ./nix/modules/component-metadata.nix;
+    profileMetadata = import ./nix/modules/profile-metadata.nix;
+    runtimeInference = import ./nix/modules/runtime-inference.nix;
+    presetEnvCatalog = import ./nix/presets.nix;
     allSystems = lib.unique (
       lib.concatMap
       (envSpec: envSpec.supportedSystems)
       (builtins.attrValues presetEnvCatalog)
     );
-    roboLib = import ./lib {
-      inherit componentCatalog componentMetadata lib nix-ros-overlay nixpkgs profileMetadata runtimeInference vendorMetadata;
+    roboLib = import ./nix {
+      inherit componentCatalog componentMetadata lib nix-ros-overlay nixpkgs profileMetadata runtimeInference;
     };
     generatedPresets = roboLib.mkFlakeFromEnvCatalog {
       defaultEnvName = "robot-learning";
       envs = presetEnvCatalog;
     };
-    repoSupport = import ./lib/repo-support.nix {
-      inherit allSystems componentMetadata lib nixpkgs profileMetadata runtimeInference vendorMetadata;
+    repoSupport = import ./nix/repo-support.nix {
+      inherit allSystems componentMetadata lib nixpkgs profileMetadata runtimeInference;
       repoRoot = ./.;
     };
     inherit (repoSupport) repoChecks repoPackages;
@@ -61,9 +60,9 @@
             program = "${repoPackages.${system}.repo-profile}/bin/repo-profile";
             meta.description = "Profile robo-nix evaluation paths";
           };
-          cuda-doctor = {
+          cuda-check = {
             type = "app";
-            program = "${repoPackages.${system}.cuda-doctor}/bin/cuda-doctor";
+            program = "${repoPackages.${system}.cuda-check}/bin/cuda-check";
             meta.description = "Validate host CUDA and NVIDIA prerequisites";
           };
           robo = {
@@ -86,7 +85,6 @@
           inherit componentMetadata;
           inherit profileMetadata;
           inherit runtimeInference;
-          inherit vendorMetadata;
           envs = presetEnvCatalog;
         };
       packages = lib.mapAttrs (system: packages:

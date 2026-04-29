@@ -17,6 +17,16 @@ The hard boundary is:
 
 Do not make Nix-managed Python a first-class product mode unless real users prove that need. Do not build a central Python package registry or preset matrix.
 
+`robo-nix` is not here to adapt to every downstream project's environment policy. It should establish a consistent standard that downstream projects can converge on. Until they do, `robo` should print clear expectations, observed facts, and debugging context, not auto-solve project-specific dependency group choices, optional extras, source pins, or workflow conventions with narrow heuristics.
+
+When a failure comes from a project-owned layer such as `pyproject.toml`, `uv.lock`, dependency groups, optional extras, editable sources, Git/LFS pins, or package indexes, keep `robo`'s response generic and reusable:
+
+- explain which layer owns the failing contract
+- say what `robo` expected and what is not expected
+- pass through enough underlying tool output to debug
+- avoid inferring or enabling project-specific uv groups, extras, pins, or install modes
+- add reusable diagnostics only when they describe a product boundary or common failure class
+
 ## CLI And Extensibility Boundary
 
 Prefer Rust for product UX and generic mechanics:
@@ -30,19 +40,27 @@ Prefer Rust for product UX and generic mechanics:
 Prefer Nix/data files for expandable product coverage:
 
 - component and profile metadata
-- runtime inference rules in [lib/runtime-inference.nix](./lib/runtime-inference.nix:1)
+- runtime inference rules in [nix/modules/runtime-inference.nix](./nix/modules/runtime-inference.nix:1)
 - package-to-component mappings
 - workspace directory and bootstrap script discovery rules
 - default profile selection
 - text markers, path roots, and component suggestions used by `robo init`
 
-Adding support for more Python packages, workspace shapes, vendor path names, script prefixes, or common runtime hints should usually be a data change, not a Rust rebuild. Rust should stay boring and generic: parse the manifest, scan the project, apply rules, explain what happened, and fail clearly when metadata is invalid.
+Adding support for more Python packages, workspace shapes, script prefixes, or common runtime hints should usually be a data change, not a Rust rebuild. Rust should stay boring and generic: parse the manifest, scan the project, apply rules, explain what happened, and fail clearly when metadata is invalid.
 
 Avoid user-facing shell scripts as product surfaces. Shell is acceptable for generated runtime snippets and downstream project-owned bootstrap scripts, but CLI behavior should not depend on maintaining parallel shell UX, color, parsing, or error handling.
 
+Keep `robo init` deliberately boring:
+
+- [crates/robo-cli/src/init/pipeline.rs](./crates/robo-cli/src/init/pipeline.rs:1) is a flat sequence, not a framework.
+- [crates/robo-cli/src/init/probe.rs](./crates/robo-cli/src/init/probe.rs:1) should only collect observed facts into `ProbeResult`.
+- [crates/robo-cli/src/init/spec.rs](./crates/robo-cli/src/init/spec.rs:1) is where observed facts are applied to generated config.
+- Do not add traits, registries, plugin layers, event buses, or generic builders for init flow.
+- If adding a new inference, prefer one manifest rule plus one `ProbeResult` field/vector and one focused test.
+
 CLI output consistency is part of the product contract:
 
-- Do not print user-facing status lines with raw `println!("doctor: ...")`, `println!("robo: ...")`, or similar ad hoc prefixes.
+- Do not print user-facing status lines with raw `println!("g; s: ...")`, `println!("robo: ...")`, or similar ad hoc prefixes.
 - Route human CLI output through the existing themed label helpers, or add a small local wrapper that calls those helpers.
 - Keep captured output stable and grep-friendly while coloring only labels/prefixes in terminals.
 - When adding a new command surface, verify both theming and captured-output tests. JSON output must stay raw machine-readable JSON with no labels or colors.
@@ -103,16 +121,16 @@ The intended beginner experience is:
 ```bash
 robo init robot-learning
 cd robot-learning
-robo doctor
+robo check
 robo sync
-robo develop
+robo shell
 ```
 
 The current alpha exposes `robo` through Nix while distribution is still being designed:
 
 ```bash
 nix run github:ausbxuse/robo-nix#robo -- init .
-nix run .#default -- --doctor
+nix run .#default -- --check
 nix develop
 uv sync
 ```
@@ -122,8 +140,8 @@ uv sync
 1. Grow the Rust `robo` CLI into the primary UX.
    It should wrap Nix commands, hide `--extra-experimental-features`, detect missing Nix/flakes support, and print plain-language fixes.
 
-2. Make `doctor` the main product surface.
-   It should validate host prerequisites, Nix/flakes availability, workspace layout, supported platform, uv state, native runtime libraries, GPU/CUDA expectations, and likely missing vendor/runtime dependencies.
+2. Make `check` the main product surface.
+   It should validate host prerequisites, Nix/flakes availability, workspace layout, supported platform, uv state, native runtime libraries, GPU/CUDA expectations, and likely missing runtime dependencies.
 
 3. Keep Python ownership in uv.
    Generated projects should use `.python-version`, `pyproject.toml`, and `uv.lock`. Nix should provide `uv` and the native/runtime layer that uv-installed packages need.
@@ -131,8 +149,8 @@ uv sync
 4. Improve native/runtime diagnostics.
    Catch and explain common robotics failures such as missing `libstdc++.so.6`, `libGL.so.1`, FFmpeg libraries, CUDA driver/runtime mismatch, and native extension build failures.
 
-5. Keep templates withheld until explicit maintainer approval.
-   Use `robo init` as the alpha onboarding path. Add a template only after manual verdict that it represents a real common starting point.
+5. Keep templates non-product until explicit maintainer approval.
+   Use `robo init` as the alpha onboarding path. Placeholder template files may exist to define layout, but do not expose them as a public workflow until real usage proves them.
 
 6. Split docs into beginner and advanced paths.
    Beginner docs should assume zero Nix background. Advanced docs can explain flakes, components, and maintainer workflows.
@@ -164,9 +182,9 @@ nix flake check
 - Do not preserve backward compatibility before a behavior is specified in docs. Pre-spec compatibility creates hidden surface area.
 - Templates are currently withheld pending manual approval. Do not publish one casually.
 - Generated projects should point at the packaged `robo-nix` source by default. Do not rely on `/usr/share`, GitHub queries, or an ambient local checkout for installed CLI behavior.
-- Project-specific robot/vendor policy should stay in downstream projects unless it becomes broadly reusable.
+- Project-specific robot/source policy should stay in downstream projects unless it becomes broadly reusable.
 - The product north star is filling the native runtime gap implied by `pyproject.toml` and `uv.lock`.
-- Runtime inference rules live in [lib/runtime-inference.nix](./lib/runtime-inference.nix:1); known failure modes are documented in [docs/runtime-inference.md](./docs/runtime-inference.md:1).
+- Runtime inference rules live in [nix/modules/runtime-inference.nix](./nix/modules/runtime-inference.nix:1); known failure modes are documented in [docs/diagnostics.md](./docs/diagnostics.md:1).
 - Keep names user-facing and natural. `robo` is the CLI name; avoid reintroducing `rob` or `project-init` as public surfaces.
 - Keep tests fast for development. Prefer the focused edit-loop checks in `tests/dev-check.sh`, and reserve full validation for broader changes or CI.
 - Recent local profiling baseline on this host was roughly:
