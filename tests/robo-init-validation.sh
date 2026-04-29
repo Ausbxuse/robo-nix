@@ -49,6 +49,8 @@ assert_basic_project_init() {
 	assert_file_contains "$tmpdir/project/robo.nix" 'pythonVersion = "3.11";'
 	assert_file_contains "$tmpdir/project/.python-version" "3.11"
 	assert_file_contains "$tmpdir/project/pyproject.toml" 'requires-python = ">=3.11"'
+	assert_file_contains "$tmpdir/project/.gitignore" ".robo-nix/"
+	assert_file_contains "$init_output" "wrote   $tmpdir/project/.gitignore"
 	assert_file_contains "$init_output" "updated $tmpdir/project/flake.lock"
 	assert_file_contains "$init_output" "(cd '$tmpdir/project' && robo check)"
 
@@ -137,6 +139,7 @@ assert_default_source_is_packaged_source() {
 
 assert_runtime_repairs_legacy_github_source() {
 	local check_output="$tmpdir/legacy-source-check.txt"
+	local local_check_output="$tmpdir/local-source-check.txt"
 
 	nix run "path:${repo_root}#robo" -- init "$tmpdir/legacy-source-project" \
 		--profile minimal \
@@ -150,6 +153,18 @@ assert_runtime_repairs_legacy_github_source() {
 	assert_file_contains "$tmpdir/legacy-source-project/flake.nix" 'robo-nix.url = "path:/nix/store/'
 	assert_file_contains "$check_output" "robo: checked legacy-source-project"
 	assert_file_contains "$check_output" "ok,"
+
+	nix run "path:${repo_root}#robo" -- init "$tmpdir/local-source-project" \
+		--profile minimal \
+		--robo-nix-url "path:${repo_root}" >/dev/null
+
+	(
+		cd "$tmpdir/local-source-project"
+		nix run "path:${repo_root}#robo" -- check >"$local_check_output"
+	)
+	assert_file_contains "$tmpdir/local-source-project/flake.nix" 'robo-nix.url = "path:/nix/store/'
+	assert_file_contains "$local_check_output" "repaired flake.nix to use path:/nix/store/"
+	assert_file_contains "$local_check_output" "avoids copying large local checkout paths"
 }
 
 assert_interactive_project_init() {

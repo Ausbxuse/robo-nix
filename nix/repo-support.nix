@@ -13,7 +13,19 @@
 in rec {
   repoPackages = forEachSystem (_: pkgs: let
     repoPath = toString repoRoot;
-    repoSource = pkgs.lib.sources.cleanSource repoRoot;
+    repoSource = pkgs.lib.sources.cleanSourceWith {
+      src = repoRoot;
+      filter = path: _type: let
+        rel = lib.removePrefix (repoPath + "/") (toString path);
+        top = builtins.head (lib.splitString "/" rel);
+      in
+        !(builtins.elem top [
+          ".git"
+          ".github"
+          "playgrounds"
+          "target"
+        ]);
+    };
     defaultSourceUrl = "path:${repoSource}";
     repoTargetPrelude = ''
       target_dir="''${ROBO_NIX_REPO_ROOT:-$PWD}"

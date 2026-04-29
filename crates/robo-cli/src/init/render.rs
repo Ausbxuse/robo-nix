@@ -49,6 +49,7 @@ pub(super) fn write_project(
         write_file(&pyproject, &render_pyproject(spec), config)?;
         "wrote"
     };
+    let gitignore_status = ensure_gitignore_entry(target, ".robo-nix/", config)?;
 
     for component in &spec.components {
         let Some(component) = manifest.components.get(component) else {
@@ -63,11 +64,22 @@ pub(super) fn write_project(
     }
 
     register_git(target, &["flake.nix", "robo.nix", ".python-version", "pyproject.toml"]);
+    if gitignore_status != "kept" {
+        register_git(target, &[".gitignore"]);
+    }
     let lock_status = update_flake_lock(target);
     if matches!(lock_status, LockStatus::Updated) {
         register_git(target, &["flake.lock"]);
     }
-    print_summary(target, spec, pyproject_status, source_url, lock_status, config);
+    print_summary(
+        target,
+        spec,
+        pyproject_status,
+        gitignore_status,
+        source_url,
+        lock_status,
+        config,
+    );
     Ok(())
 }
 
@@ -76,6 +88,34 @@ fn write_file(path: &Path, text: &str, config: Config) -> Result<(), ExitCode> {
         error(config, &format!("failed to write {}: {err}", path.display()));
         ExitCode::from(1)
     })
+}
+
+fn ensure_gitignore_entry(target: &Path, entry: &str, config: Config) -> Result<&'static str, ExitCode> {
+    let path = target.join(".gitignore");
+    if !path.exists() {
+        write_file(&path, entry, config)?;
+        return Ok("wrote");
+    }
+
+    let text = fs::read_to_string(&path).map_err(|err| {
+        error(config, &format!("failed to read {}: {err}", path.display()));
+        ExitCode::from(1)
+    })?;
+    if text.lines().any(|line| line.trim() == entry) {
+        return Ok("kept");
+    }
+
+    let mut updated = text;
+    if !updated.ends_with('\n') {
+        updated.push('\n');
+    }
+    updated.push_str(entry);
+    updated.push('\n');
+    fs::write(&path, updated).map_err(|err| {
+        error(config, &format!("failed to write {}: {err}", path.display()));
+        ExitCode::from(1)
+    })?;
+    Ok("updated")
 }
 
 fn register_git(target: &Path, paths: &[&str]) {
@@ -135,6 +175,7 @@ fn print_summary(
     target: &Path,
     spec: &ProjectSpec,
     pyproject_status: &str,
+    gitignore_status: &str,
     source_url: &str,
     lock_status: LockStatus,
     config: Config,
@@ -175,6 +216,7 @@ fn print_summary(
     print_file_change(config, "wrote", &target.join("robo.nix"));
     print_file_change(config, "wrote", &target.join(".python-version"));
     print_file_change(config, pyproject_status, &target.join("pyproject.toml"));
+    print_file_change(config, gitignore_status, &target.join(".gitignore"));
     match lock_status {
         LockStatus::Updated => print_file_change(config, "updated", &target.join("flake.lock")),
         LockStatus::Failed(message) => {

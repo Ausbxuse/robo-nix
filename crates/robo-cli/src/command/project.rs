@@ -228,31 +228,52 @@ fn repair_managed_flake_source(config: Config) -> Result<(), ExitCode> {
         );
         return Err(ExitCode::from(1));
     }
-    if !flake.contains("github:ausbxuse/robo-nix") {
-        return Ok(());
-    }
-
     let source_url = match env::var("ROBO_NIX_DEFAULT_SOURCE_URL") {
         Ok(source_url) => source_url,
         Err(_) => {
-            error(
-                config,
-                "flake.nix points at github:ausbxuse/robo-nix, but this robo install has no packaged source URL.",
-            );
-            hint(
-                config,
-                "run `robo init . --robo-nix-url path:/path/to/robo-nix` to repair this project.",
-            );
-            return Err(ExitCode::from(1));
+            if flake.contains("github:ausbxuse/robo-nix") {
+                error(
+                    config,
+                    "flake.nix points at github:ausbxuse/robo-nix, but this robo install has no packaged source URL.",
+                );
+                hint(
+                    config,
+                    "run `robo init . --robo-nix-url path:/path/to/robo-nix` to repair this project.",
+                );
+                return Err(ExitCode::from(1));
+            }
+            return Ok(());
         }
     };
-    let repaired = flake.replace("github:ausbxuse/robo-nix", &source_url);
+    let Some(current_source_url) = managed_robo_nix_url(&flake) else {
+        return Ok(());
+    };
+    if current_source_url == source_url {
+        return Ok(());
+    }
+    let repaired = flake.replace(
+        &format!("inputs.robo-nix.url = \"{current_source_url}\";"),
+        &format!("inputs.robo-nix.url = \"{source_url}\";"),
+    );
     if let Err(err) = fs::write(flake_path, repaired) {
         error(config, &format!("failed to repair flake.nix: {err}"));
         return Err(ExitCode::from(1));
     }
     status(config, &format!("repaired flake.nix to use {source_url}"));
+    hint(
+        config,
+        "packaged robo-nix source avoids copying large local checkout paths during activation.",
+    );
     Ok(())
+}
+
+fn managed_robo_nix_url(flake: &str) -> Option<String> {
+    flake.lines().find_map(|line| {
+        line.trim()
+            .strip_prefix("inputs.robo-nix.url = \"")
+            .and_then(|rest| rest.strip_suffix("\";"))
+            .map(ToOwned::to_owned)
+    })
 }
 
 #[derive(Debug, PartialEq, Eq)]
