@@ -2,8 +2,8 @@
 
 Short-term:
 
-- keep `robo init`, `robo check`, `robo sync`, `robo run`, and `robo shell` small and reliable
-- keep runtime inference as data under `nix/modules`
+- keep `robo init`, `robo check`, `robo activate`, and `robo run` small and reliable
+- keep runtime inference as data under `nix/metadata`
 - keep Python ownership in `uv`
 
 Later:

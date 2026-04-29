@@ -12,6 +12,10 @@
         UV_PYTHON = envSpec.pythonVersion;
         UV_CACHE_DIR = "$WORKSPACE_ROOT/.robo-nix/uv-cache";
       }
+      + "\n"
+      + common.exportDefaults {
+        UV_HTTP_TIMEOUT = "300";
+      }
       + ''
 
         if [ -d "$WORKSPACE_ROOT/.venv/bin" ]; then

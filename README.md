@@ -4,7 +4,7 @@
 
 - `uv` owns Python: `.python-version`, `.venv`, `pyproject.toml`, `uv.lock`.
 - Nix owns native runtime: CUDA, graphics, ROS, simulators, compilers, shared libraries.
-- `robo` owns workflow: `init`, `check`, `sync`, `run`, `shell`.
+- `robo` owns workflow: `init`, `check`, `activate`, `status`, `run`.
 
 The goal is that a robot-learning project can keep normal Python packaging while still getting the native libraries that Python metadata cannot express.
 
@@ -15,7 +15,7 @@ Current alpha usage:
 ```bash
 nix run github:ausbxuse/robo-nix#robo -- init .
 nix run github:ausbxuse/robo-nix#robo -- check
-nix run github:ausbxuse/robo-nix#robo -- sync
+nix run github:ausbxuse/robo-nix#robo -- activate -c "uv sync"
 nix run github:ausbxuse/robo-nix#robo -- run pytest tests
 ```
 
@@ -25,17 +25,21 @@ The intended installed flow is:
 robo init robot-learning
 cd robot-learning
 robo check
-robo sync
-robo shell
+robo activate
+uv sync
+robo status
 ```
 
 `robo init` writes generated Nix plumbing plus a small `robo.nix`. Existing `pyproject.toml` and `uv.lock` stay project-owned.
+
+`robo status` shows whether the current shell is inside an activated runtime. To leave an activated runtime shell, run `exit`; `robo deactivate` prints that clean exit path when users need a reminder.
 
 ## Repository Shape
 
 ```text
 crates/robo-cli/       Rust CLI
-nix/modules/           runtime components and inference metadata
+nix/modules/           runtime component implementations
+nix/metadata/          component docs, starter profiles, and inference rules
 nix/mk-flake.nix       flake generator
 nix/repo-support.nix   repo checks and package wrappers
 tests/fixtures/        downstream flake fixtures
@@ -51,6 +55,7 @@ docs/                  short concept docs
 ## Docs
 
 - [Architecture](./docs/architecture.md)
+- [CLI UX](./docs/cli-ux.md)
 - [Python](./docs/python.md)
 - [CUDA](./docs/cuda.md)
 - [Graphics](./docs/graphics.md)

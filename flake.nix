@@ -18,9 +18,9 @@
   }: let
     inherit (nixpkgs) lib;
     componentCatalog = import ./nix/modules {inherit lib;};
-    componentMetadata = import ./nix/modules/component-metadata.nix;
-    profileMetadata = import ./nix/modules/profile-metadata.nix;
-    runtimeInference = import ./nix/modules/runtime-inference.nix;
+    componentMetadata = import ./nix/metadata/components.nix;
+    profileMetadata = import ./nix/metadata/profiles.nix;
+    runtimeInference = import ./nix/metadata/runtime-inference.nix;
     presetEnvCatalog = import ./nix/presets.nix;
     allSystems = lib.unique (
       lib.concatMap

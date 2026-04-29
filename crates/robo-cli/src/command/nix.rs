@@ -27,6 +27,7 @@ pub(crate) fn nix_command(config: Config) -> Command {
         "--extra-experimental-features",
         "flakes",
     ]);
+    command.arg("--no-warn-dirty");
     if !config.debug {
         command.arg("--quiet");
     }

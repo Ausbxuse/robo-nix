@@ -7,7 +7,8 @@ use std::process::{Command, ExitCode, Stdio};
 use crate::runtime::{build_runtime_why, read_project_runtime, ProjectRuntime, RuntimeWhy, WhyEntry};
 use crate::{
     combined_output, command_for_runtime, error, exact_python_requirement, ensure_project_runtime,
-    label, nix_command, quoted_value, run_bootstrap, status, Config, LabelKind,
+    field, inline, label, nix_command, quoted_value, run_bootstrap_with_progress, section, Config,
+    LabelKind, UiProgress,
 };
 
 #[derive(Args)]
@@ -17,6 +18,9 @@ pub(crate) struct CheckArgs {
 
     #[arg(long, help = "Explain why runtime entries are present")]
     why: bool,
+
+    #[arg(long, help = "Print detailed check evidence")]
+    verbose: bool,
 
     #[arg(long, requires = "why", help = "Emit machine-readable provenance")]
     json: bool,
@@ -42,6 +46,19 @@ pub(crate) fn run(args: CheckArgs, config: Config) -> ExitCode {
         }
     }
 
+    if !args.verbose && !args.why {
+        return run_summary(args, config, runtime, why);
+    }
+
+    run_detailed(args, config, runtime, why)
+}
+
+fn run_detailed(
+    args: CheckArgs,
+    config: Config,
+    runtime: ProjectRuntime,
+    why: RuntimeWhy,
+) -> ExitCode {
     let pyproject = fs::read_to_string("pyproject.toml").ok();
     let pyproject_lower = pyproject.as_deref().map(str::to_ascii_lowercase);
     let mut issues = 0;
@@ -64,25 +81,28 @@ pub(crate) fn run(args: CheckArgs, config: Config) -> ExitCode {
     check_uv_files(config, &mut warnings);
     check_expected_components(config, &runtime, pyproject.as_deref(), &mut warnings);
     check_required_paths(config, &why, &mut issues);
-    check_cuda_host(config, &runtime, &mut issues, &mut warnings);
+    check_cuda_host(config, &runtime, args.deep, &mut issues, &mut warnings);
     check_suggestions(config, &runtime);
     if args.why {
         print_runtime_why(config, &why);
     }
 
     if args.deep {
-        check_runtime_preview(config, &mut warnings);
-        if let Err(code) = run_bootstrap(config) {
+        let mut progress = UiProgress::new(config, 4, "running deep checks");
+        check_runtime_preview(config, &mut warnings, Some(&mut progress));
+        if let Err(code) = run_bootstrap_with_progress(config, &mut progress) {
+            progress.finish();
             return code;
         }
-        check_runtime_tools(config, &mut issues);
-        check_runtime_probes(config, pyproject_lower.as_deref(), &mut warnings);
+        progress.step("checking runtime tools");
+        progress.suspend(|| check_runtime_tools(config, &mut issues));
+        progress.step("checking Python runtime probes");
+        progress.suspend(|| {
+            check_runtime_probes(config, pyproject_lower.as_deref(), &mut warnings)
+        });
+        progress.finish();
     } else {
-        check_warn(config, &mut warnings, "deep runtime checks skipped");
-        check_hint(
-            config,
-            "run 'robo check --deep' to probe uv, PyQt, matplotlib, and native runtime libraries",
-        );
+        check_hint(config, "deep runtime probes skipped");
     }
 
     if issues == 0 {
@@ -94,7 +114,7 @@ pub(crate) fn run(args: CheckArgs, config: Config) -> ExitCode {
                 "run 'robo check --deep' before debugging native runtime failures",
             );
         }
-        check_next(config, "run 'robo shell' to enter the environment");
+        check_next(config, "run 'robo activate' to enter the environment");
         check_status(config, &format!("ok warnings={warnings}"), LabelKind::Ok);
         ExitCode::SUCCESS
     } else {
@@ -111,35 +131,359 @@ pub(crate) fn run(args: CheckArgs, config: Config) -> ExitCode {
 fn print_runtime_why(config: Config, why: &RuntimeWhy) {
     check_why(
         config,
-        &format!("profile={}", why.profile.as_deref().unwrap_or("manual/unknown")),
+        &format!("profile {}", why.profile.as_deref().unwrap_or("manual/unknown")),
     );
-    for entry in &why.components {
-        print_why_entry(config, "component", entry);
+    print_why_group(config, "components", &why.components);
+    print_why_group(config, "required directories", &why.required_directories);
+    print_why_group(config, "required files", &why.required_files);
+    print_why_group(config, "bootstrap scripts", &why.bootstrap_scripts);
+    print_why_group(config, "suggestions", &why.suggestions);
+}
+
+struct Attention {
+    title: String,
+    details: Vec<String>,
+}
+
+impl Attention {
+    fn new(title: impl Into<String>) -> Self {
+        Self {
+            title: title.into(),
+            details: Vec::new(),
+        }
     }
-    for entry in &why.required_directories {
-        print_why_entry(config, "required-directory", entry);
-    }
-    for entry in &why.required_files {
-        print_why_entry(config, "required-file", entry);
-    }
-    for entry in &why.bootstrap_scripts {
-        print_why_entry(config, "bootstrap-script", entry);
-    }
-    for entry in &why.suggestions {
-        print_why_entry(config, "suggestion", entry);
+
+    fn detail(mut self, detail: impl Into<String>) -> Self {
+        self.details.push(detail.into());
+        self
     }
 }
 
-fn print_why_entry(config: Config, kind: &str, entry: &WhyEntry) {
-    check_why(
-        config,
-        &format!(
-            "{kind}={} source={} reason={}",
-            entry.name, entry.source, entry.reason
-        ),
+fn run_summary(
+    args: CheckArgs,
+    config: Config,
+    runtime: ProjectRuntime,
+    why: RuntimeWhy,
+) -> ExitCode {
+    let pyproject = fs::read_to_string("pyproject.toml").ok();
+    let pyproject_lower = pyproject.as_deref().map(str::to_ascii_lowercase);
+    let workspace =
+        env::current_dir().map_or_else(|_| ".".into(), |path| path.display().to_string());
+
+    let mut issues = 0usize;
+    let mut warnings = 0usize;
+    let mut ready = Vec::new();
+    let mut attention = Vec::new();
+
+    if Path::new("robo.nix").exists()
+        && Path::new("flake.nix").exists()
+        && runtime.schema_version.as_deref() == Some("1")
+    {
+        ready.push("runtime files".to_string());
+    } else {
+        warnings += 1;
+        attention.push(
+            Attention::new("runtime files need review")
+                .detail("run: robo init . --force")
+                .detail("note: review local edits before regenerating"),
+        );
+    }
+
+    let python_file = fs::read_to_string(".python-version").ok();
+    let python_file_matches = python_file
+        .as_deref()
+        .map(str::trim)
+        .is_some_and(|version| version == runtime.python_version);
+    let pyproject_matches = pyproject.as_deref().is_some_and(|pyproject| {
+        exact_python_requirement(pyproject)
+            .as_deref()
+            .is_none_or(|required| required == runtime.python_version)
+    });
+    if python_file_matches && pyproject_matches {
+        ready.push("Python contract".to_string());
+    } else if pyproject.is_none() {
+        warnings += 1;
+        attention.push(
+            Attention::new("pyproject.toml missing")
+                .detail("run: robo init .")
+                .detail("note: uv owns Python dependencies"),
+        );
+    } else {
+        issues += 1;
+        attention.push(
+            Attention::new("Python version mismatch")
+                .detail(format!("expected: {}", runtime.python_version))
+                .detail("fix: align .python-version, pyproject.toml, and robo.nix"),
+        );
+    }
+
+    if Path::new("uv.lock").exists() {
+        ready.push("uv lockfile".to_string());
+    } else {
+        warnings += 1;
+        attention.push(
+            Attention::new("uv.lock missing")
+                .detail("run: robo activate")
+                .detail("     uv sync"),
+        );
+    }
+
+    if Path::new(".venv").is_dir() {
+        ready.push("Python environment".to_string());
+    } else {
+        warnings += 1;
+        attention.push(
+            Attention::new("Python environment missing")
+                .detail("run: robo activate")
+                .detail("     uv sync"),
+        );
+    }
+
+    if let Some(pyproject) = pyproject.as_deref() {
+        let mut missing = Vec::new();
+        for expected in crate::runtime::expected_components_from_pyproject(pyproject) {
+            if !runtime.components.iter().any(|component| component == &expected.name) {
+                missing.push(expected.name);
+            }
+        }
+        if missing.is_empty() {
+            ready.push("inferred components".to_string());
+        } else {
+            warnings += missing.len();
+            attention.push(
+                Attention::new("runtime components may be incomplete")
+                    .detail(format!("missing: {}", missing.join(", ")))
+                    .detail("run: robo init . --force"),
+            );
+        }
+    }
+
+    let missing_directories: Vec<_> = why
+        .required_directories
+        .iter()
+        .filter(|path| !Path::new(&path.name).is_dir())
+        .map(|path| path.name.clone())
+        .collect();
+    if missing_directories.is_empty() {
+        if !why.required_directories.is_empty() {
+            ready.push(format!("required directories ({})", why.required_directories.len()));
+        }
+    } else {
+        issues += missing_directories.len();
+        attention.push(
+            Attention::new("required directories missing")
+                .detail(format!("missing: {}", missing_directories.join(", "))),
+        );
+    }
+
+    summarize_cuda_host(
+        &runtime,
+        args.deep,
+        &mut issues,
+        &mut warnings,
+        &mut ready,
+        &mut attention,
     );
-    check_hint(config, &entry.remove_hint);
-    check_hint(config, &entry.remediation_hint);
+
+    if args.deep {
+        let mut progress = UiProgress::new(config, 4, "running deep checks");
+        check_runtime_preview(config, &mut warnings, Some(&mut progress));
+        if let Err(code) = run_bootstrap_with_progress(config, &mut progress) {
+            progress.finish();
+            return code;
+        }
+        progress.step("checking runtime tools");
+        progress.suspend(|| check_runtime_tools(config, &mut issues));
+        progress.step("checking Python runtime probes");
+        progress.suspend(|| {
+            check_runtime_probes(config, pyproject_lower.as_deref(), &mut warnings)
+        });
+        progress.finish();
+    }
+
+    print_summary(
+        config,
+        &runtime,
+        &workspace,
+        &ready,
+        &attention,
+        args.deep,
+        issues,
+        warnings,
+    );
+
+    if issues == 0 {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::from(1)
+    }
+}
+
+fn summarize_cuda_host(
+    runtime: &ProjectRuntime,
+    deep: bool,
+    issues: &mut usize,
+    warnings: &mut usize,
+    ready: &mut Vec<String>,
+    attention: &mut Vec<Attention>,
+) {
+    if !runtime
+        .components
+        .iter()
+        .any(|component| component == "cuda-toolkit")
+    {
+        return;
+    }
+
+    if env::consts::OS != "linux" {
+        *issues += 1;
+        attention.push(
+            Attention::new("CUDA requires a Linux host")
+                .detail("fix: use a Linux NVIDIA machine for this runtime"),
+        );
+        return;
+    }
+
+    match Command::new("nvidia-smi")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+    {
+        Ok(status) if status.success() => ready.push("CUDA host".to_string()),
+        Ok(_) => {
+            *issues += 1;
+            attention.push(
+                Attention::new("NVIDIA driver stack is unhealthy")
+                    .detail("fix: repair host NVIDIA drivers before using CUDA"),
+            );
+            return;
+        }
+        Err(_) => {
+            *issues += 1;
+            attention.push(
+                Attention::new("NVIDIA driver stack not found")
+                    .detail("fix: run on a machine with NVIDIA drivers installed"),
+            );
+            return;
+        }
+    }
+
+    if crate::runtime::cuda_root_from_env().is_none() {
+        *warnings += 1;
+        let mut item = Attention::new("CUDA toolkit not visible in this shell")
+            .detail("run: robo activate")
+            .detail("note: CUDA_HOME/CUDA_PATH are set inside the activated runtime");
+        if !deep {
+            item = item.detail("deep: robo check --deep validates the Nix CUDA toolkit");
+        }
+        attention.push(item);
+    } else {
+        ready.push("CUDA toolkit".to_string());
+    }
+}
+
+fn print_summary(
+    config: Config,
+    runtime: &ProjectRuntime,
+    workspace: &str,
+    ready: &[String],
+    attention: &[Attention],
+    deep: bool,
+    issues: usize,
+    warnings: usize,
+) {
+    println!(
+        "{} checked {}\n",
+        label(config, "robo:", LabelKind::Status),
+        runtime.env_name
+    );
+
+    section(config, "project");
+    field(config, "python", &runtime.python_version);
+    field(config, "workspace", workspace);
+
+    if !ready.is_empty() {
+        println!();
+        section(config, "ready");
+        for item in ready {
+            println!("  {} {}", label(config, "✓", LabelKind::Ok), item);
+        }
+    }
+
+    if !attention.is_empty() {
+        println!();
+        section(config, "attention");
+        for item in attention {
+            println!("  {} {}", label(config, "!", LabelKind::Warn), item.title);
+            for detail in &item.details {
+                println!("    {}", summary_detail(config, detail));
+            }
+            println!();
+        }
+    }
+
+    if !deep {
+        section(config, "skipped");
+        println!("  deep runtime probes");
+        println!("    {}", summary_detail(config, "run: robo check --deep"));
+        println!();
+    }
+
+    section(config, "status");
+    let status_kind = if issues == 0 {
+        LabelKind::Ok
+    } else {
+        LabelKind::Error
+    };
+    let status = if issues == 0 { "ok" } else { "error" };
+    println!(
+        "  {}, {} warnings{}",
+        label(config, status, status_kind),
+        label(config, &warnings.to_string(), LabelKind::Warn),
+        if issues == 0 {
+            String::new()
+        } else {
+            format!(", {} issues", label(config, &issues.to_string(), LabelKind::Error))
+        }
+    );
+}
+
+fn summary_detail(config: Config, detail: &str) -> String {
+    if let Some(command) = detail.strip_prefix("run: ") {
+        format!(
+            "{} {}",
+            label(config, "run:", LabelKind::Hint),
+            label(config, command, LabelKind::Command)
+        )
+    } else if let Some(command) = detail.strip_prefix("     ") {
+        format!(
+            "     {}",
+            label(config, command, LabelKind::Command)
+        )
+    } else if let Some(note) = detail.strip_prefix("note: ") {
+        format!("{} {}", label(config, "note:", LabelKind::Hint), note)
+    } else if let Some(command) = detail.strip_prefix("deep: ") {
+        format!(
+            "{} {}",
+            label(config, "deep:", LabelKind::Hint),
+            label(config, command, LabelKind::Command)
+        )
+    } else {
+        inline(config, detail)
+    }
+}
+
+fn print_why_group(config: Config, title: &str, entries: &[WhyEntry]) {
+    if entries.is_empty() {
+        return;
+    }
+    check_why(config, title);
+    for entry in entries {
+        check_why(
+            config,
+            &format!("  {} <- {}: {}", entry.name, entry.source, entry.reason),
+        );
+    }
 }
 
 fn check_python_files(
@@ -222,14 +566,14 @@ fn check_uv_files(config: Config, warnings: &mut usize) {
         check_ok(config, "uv.lock is present");
     } else {
         check_warn(config, warnings, "uv.lock is missing");
-        check_hint(config, "run 'uv sync' after defining pyproject.toml dependencies");
+        check_hint(config, "run 'robo activate', then run 'uv sync' after defining pyproject.toml dependencies");
     }
 
     if Path::new(".venv").is_dir() {
         check_ok(config, "uv virtual environment exists");
     } else {
         check_warn(config, warnings, "uv virtual environment is missing");
-        check_hint(config, "run 'uv sync' to create .venv");
+        check_hint(config, "run 'robo activate', then run 'uv sync' to create .venv");
     }
 }
 
@@ -242,12 +586,10 @@ fn check_expected_components(
     let Some(pyproject) = pyproject else {
         return;
     };
+    let mut matched = Vec::new();
     for expected in crate::runtime::expected_components_from_pyproject(pyproject) {
         if runtime.components.iter().any(|component| component == &expected.name) {
-            check_ok(
-                config,
-                &format!("pyproject expectation has component {}: {}", expected.name, expected.reason),
-            );
+            matched.push(expected.name);
         } else {
             check_warn(
                 config,
@@ -266,32 +608,58 @@ fn check_expected_components(
             );
         }
     }
+    if !matched.is_empty() {
+        check_ok(
+            config,
+            &format!(
+                "pyproject runtime expectations satisfied ({})",
+                matched.join(", ")
+            ),
+        );
+    }
 }
 
 fn check_required_paths(config: Config, why: &RuntimeWhy, issues: &mut usize) {
+    let mut directory_count = 0usize;
     for path in &why.required_directories {
         if Path::new(&path.name).is_dir() {
-            check_ok(config, &format!("required directory exists: {}", path.name));
+            directory_count += 1;
         } else {
             check_error(config, issues, &format!("required directory is missing: {}", path.name));
             check_hint(config, &path.remediation_hint);
         }
     }
+    if directory_count > 0 {
+        check_ok(
+            config,
+            &format!("required directories exist ({directory_count})"),
+        );
+    }
+
+    let mut file_count = 0usize;
     for path in &why.required_files {
         if Path::new(&path.name).is_file() {
-            check_ok(config, &format!("required file exists: {}", path.name));
+            file_count += 1;
         } else {
             check_error(config, issues, &format!("required file is missing: {}", path.name));
             check_hint(config, &path.remediation_hint);
         }
     }
+    if file_count > 0 {
+        check_ok(config, &format!("required files exist ({file_count})"));
+    }
+
+    let mut script_count = 0usize;
     for script in &why.bootstrap_scripts {
         if Path::new(&script.name).is_file() {
-            check_ok(config, &format!("bootstrap script exists: {}", script.name));
+            script_count += 1;
         } else {
             check_error(config, issues, &format!("bootstrap script is missing: {}", script.name));
             check_hint(config, &script.remediation_hint);
         }
+    }
+    if script_count > 0 {
+        check_ok(config, &format!("bootstrap scripts exist ({script_count})"));
     }
 }
 
@@ -310,6 +678,7 @@ fn check_suggestions(config: Config, runtime: &ProjectRuntime) {
 fn check_cuda_host(
     config: Config,
     runtime: &ProjectRuntime,
+    deep: bool,
     issues: &mut usize,
     warnings: &mut usize,
 ) {
@@ -326,15 +695,13 @@ fn check_cuda_host(
         check_hint(config, "use a Linux NVIDIA machine for gpu-learning or isaac-learning environments");
         return;
     }
-    check_ok(config, "Linux host detected for CUDA environment");
-
     match Command::new("nvidia-smi")
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .status()
     {
         Ok(status) if status.success() => {
-            check_ok(config, "NVIDIA driver stack is reachable through nvidia-smi");
+            check_ok(config, "CUDA host prerequisites ok (Linux, NVIDIA driver)");
         }
         Ok(_) => {
             check_error(
@@ -355,11 +722,16 @@ fn check_cuda_host(
         .clone()
         .or_else(crate::runtime::infer_cuda_wheel_version_from_uv_lock);
     let Some(cuda_root) = crate::runtime::cuda_root_from_env() else {
-        check_error(config, issues, "CUDA root is not available");
+        check_warn(config, warnings, "CUDA root is not visible in the current shell");
         check_hint(
             config,
-            "set CUDA_HOME, CUDA_PATH, or ROBO_NIX_CUDA_ROOT to a valid CUDA toolkit path",
+            "robo activate sets CUDA_HOME/CUDA_PATH from the cuda-toolkit component",
         );
+        if deep {
+            check_hint(config, "deep checks will validate the runtime created by nix develop");
+        } else {
+            check_hint(config, "activate the runtime or run deep checks to validate the Nix CUDA toolkit");
+        }
         return;
     };
     check_ok(config, &format!("CUDA root exists at {cuda_root}"));
@@ -385,7 +757,7 @@ fn check_cuda_host(
         );
         check_hint(
             config,
-            &format!("run `robo shell -c \"$CUDA_HOME/bin/nvcc --version\"` to inspect this CUDA root"),
+            &format!("run `robo activate -c \"$CUDA_HOME/bin/nvcc --version\"` to inspect this CUDA root"),
         );
         return;
     };
@@ -412,12 +784,21 @@ fn check_cuda_host(
     }
 }
 
-fn check_runtime_preview(config: Config, warnings: &mut usize) {
-    status(config, "checking runtime download plan");
+fn check_runtime_preview(
+    config: Config,
+    warnings: &mut usize,
+    progress: Option<&mut UiProgress>,
+) {
     let mut command = nix_command(config);
     command.args(["build", ".#default", "--dry-run", "--no-link"]);
 
-    match command.output() {
+    let mut progress = progress;
+    let output = match progress.as_deref_mut() {
+        Some(progress) => progress.output(&mut command, "checking runtime download plan"),
+        None => crate::output_with_spinner(config, &mut command, "checking runtime download plan"),
+    };
+
+    let print_output = |warnings: &mut usize, output: Result<std::process::Output, std::io::Error>| match output {
         Ok(output) if output.status.success() => {
             let text = combined_output(&output);
             let summary = summarize_nix_dry_run(&text);
@@ -444,6 +825,11 @@ fn check_runtime_preview(config: Config, warnings: &mut usize) {
         Err(err) => {
             check_warn(config, warnings, &format!("failed to start Nix preview: {err}"));
         }
+    };
+
+    match progress {
+        Some(progress) => progress.suspend(|| print_output(warnings, output)),
+        None => print_output(warnings, output),
     }
 }
 
@@ -493,7 +879,7 @@ fn check_runtime_probes(config: Config, pyproject_lower: Option<&str>, warnings:
                 warnings,
                 "Python virtualenv is missing; skipped Qt binding import probe",
             );
-            check_hint(config, "run 'robo sync' to create .venv before GUI runtime probing");
+            check_hint(config, "run 'robo activate', then run 'uv sync' before GUI runtime probing");
         } else {
             let code = "from PyQt6 import QtCore, QtGui, QtWidgets; print(QtCore.QT_VERSION_STR)";
             match runtime_output(config, ".venv/bin/python", ["-c", code], []) {
@@ -503,7 +889,7 @@ fn check_runtime_probes(config: Config, pyproject_lower: Option<&str>, warnings:
                 Ok(output) => {
                     check_warn(config, warnings, "PyQt6 GUI import failed");
                     check_hint(config, &combined_output(&output));
-                    check_hint(config, "run 'robo sync' after changing Python dependencies or add missing native runtime components");
+                    check_hint(config, "run 'uv sync' after changing Python dependencies or add missing native runtime components");
                 }
                 Err(err) => {
                     check_warn(config, warnings, &format!("failed to run PyQt6 GUI probe: {err}"))
@@ -519,7 +905,7 @@ fn check_runtime_probes(config: Config, pyproject_lower: Option<&str>, warnings:
                 warnings,
                 "Python virtualenv is missing; skipped matplotlib backend probe",
             );
-            check_hint(config, "run 'robo sync' to create .venv before matplotlib runtime probing");
+            check_hint(config, "run 'robo activate', then run 'uv sync' before matplotlib runtime probing");
         } else {
             let code =
                 "import matplotlib.pyplot as plt; fig = plt.figure(); print(type(fig.canvas).__name__)";
@@ -601,15 +987,19 @@ fn has_dependency(text: &str, names: &[&str]) -> bool {
 }
 
 fn check_field(config: Config, message: &str) {
-    println!("{} {message}", label(config, "check:", LabelKind::Status));
+    if let Some((name, value)) = message.split_once('=') {
+        println!(
+            "{}={}",
+            label(config, name, LabelKind::Hint),
+            value
+        );
+    } else {
+        println!("{}", label(config, message, LabelKind::Status));
+    }
 }
 
 fn check_line(config: Config, tag: &str, kind: LabelKind, message: &str) {
-    println!(
-        "{} {} {message}",
-        label(config, "check:", LabelKind::Status),
-        label(config, tag, kind)
-    );
+    println!("{} {}", label(config, tag, kind), inline(config, message));
 }
 
 fn check_ok(config: Config, message: &str) {
@@ -641,9 +1031,26 @@ fn check_next(config: Config, message: &str) {
 }
 
 fn check_status(config: Config, message: &str, kind: LabelKind) {
-    println!(
-        "{} {}{message}",
-        label(config, "check:", LabelKind::Status),
-        label(config, "status=", kind)
+    let mut parts = message.split_whitespace();
+    let status = parts.next().unwrap_or(message);
+    let mut output = format!(
+        "{}{}",
+        label(config, "status=", LabelKind::Hint),
+        label(config, status, kind)
     );
+    for part in parts {
+        output.push(' ');
+        if let Some((name, value)) = part.split_once('=') {
+            let value_kind = match name {
+                "issues" => LabelKind::Error,
+                "warnings" => LabelKind::Warn,
+                _ => LabelKind::Status,
+            };
+            output.push_str(&label(config, &format!("{name}="), LabelKind::Hint));
+            output.push_str(&label(config, value, value_kind));
+        } else {
+            output.push_str(part);
+        }
+    }
+    println!("{output}");
 }

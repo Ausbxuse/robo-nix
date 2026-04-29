@@ -40,7 +40,7 @@ Prefer Rust for product UX and generic mechanics:
 Prefer Nix/data files for expandable product coverage:
 
 - component and profile metadata
-- runtime inference rules in [nix/modules/runtime-inference.nix](./nix/modules/runtime-inference.nix:1)
+- runtime inference rules in [nix/metadata/runtime-inference.nix](./nix/metadata/runtime-inference.nix:1)
 - package-to-component mappings
 - workspace directory and bootstrap script discovery rules
 - default profile selection
@@ -60,6 +60,7 @@ Keep `robo init` deliberately boring:
 
 CLI output consistency is part of the product contract:
 
+- Follow the CLI output design in [docs/cli-ux.md](./docs/cli-ux.md:1).
 - Do not print user-facing status lines with raw `println!("g; s: ...")`, `println!("robo: ...")`, or similar ad hoc prefixes.
 - Route human CLI output through the existing themed label helpers, or add a small local wrapper that calls those helpers.
 - Keep captured output stable and grep-friendly while coloring only labels/prefixes in terminals.
@@ -122,8 +123,8 @@ The intended beginner experience is:
 robo init robot-learning
 cd robot-learning
 robo check
-robo sync
-robo shell
+robo activate
+uv sync
 ```
 
 The current alpha exposes `robo` through Nix while distribution is still being designed:
@@ -184,7 +185,7 @@ nix flake check
 - Generated projects should point at the packaged `robo-nix` source by default. Do not rely on `/usr/share`, GitHub queries, or an ambient local checkout for installed CLI behavior.
 - Project-specific robot/source policy should stay in downstream projects unless it becomes broadly reusable.
 - The product north star is filling the native runtime gap implied by `pyproject.toml` and `uv.lock`.
-- Runtime inference rules live in [nix/modules/runtime-inference.nix](./nix/modules/runtime-inference.nix:1); known failure modes are documented in [docs/diagnostics.md](./docs/diagnostics.md:1).
+- Runtime inference rules live in [nix/metadata/runtime-inference.nix](./nix/metadata/runtime-inference.nix:1); known failure modes are documented in [docs/diagnostics.md](./docs/diagnostics.md:1).
 - Keep names user-facing and natural. `robo` is the CLI name; avoid reintroducing `rob` or `project-init` as public surfaces.
 - Keep tests fast for development. Prefer the focused edit-loop checks in `tests/dev-check.sh`, and reserve full validation for broader changes or CI.
 - Recent local profiling baseline on this host was roughly:

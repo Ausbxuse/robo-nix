@@ -13,6 +13,10 @@ cleanup_dir() {
 	rm -rf "$dir"
 }
 
+current_nix_system() {
+	nix eval --impure --raw --expr builtins.currentSystem
+}
+
 rewrite_robo_nix_input() {
 	local flake_file="$1"
 	sed -i "s|github:ausbxuse/robo-nix|path:${repo_root}|" "$flake_file"

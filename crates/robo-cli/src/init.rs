@@ -1,4 +1,4 @@
-use crate::{error, status, Config};
+use crate::{error, Config};
 use clap::Args;
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -124,7 +124,6 @@ pub fn run(args: InitArgs, config: Config) -> ExitCode {
         println!("{}", plan.flake);
         return ExitCode::SUCCESS;
     }
-    status(config, "initializing runtime");
     match write_project(
         &manifest,
         &plan.target_dir,

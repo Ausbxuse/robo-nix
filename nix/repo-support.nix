@@ -32,20 +32,27 @@ in rec {
       version = "0.1.0";
       src = repoSource;
       cargoLock.lockFile = ../Cargo.lock;
+      preferLocalBuild = true;
+      allowSubstitutes = false;
     };
-    roboCli = pkgs.writeShellApplication {
-      name = "robo";
-      runtimeInputs = [
-        pkgs.git
-        pkgs.nix
-        pkgs.uv
-      ];
-      text = ''
-        export ROBO_NIX_COMPONENT_MANIFEST="${componentManifest}"
-        export ROBO_NIX_DEFAULT_SOURCE_URL="${defaultSourceUrl}"
-        exec ${roboBinary}/bin/robo "$@"
-      '';
-    };
+    roboCli =
+      (pkgs.writeShellApplication {
+        name = "robo";
+        runtimeInputs = [
+          pkgs.git
+          pkgs.nix
+          pkgs.uv
+        ];
+        text = ''
+          export ROBO_NIX_COMPONENT_MANIFEST="${componentManifest}"
+          export ROBO_NIX_DEFAULT_SOURCE_URL="${defaultSourceUrl}"
+          exec ${roboBinary}/bin/robo "$@"
+        '';
+      })
+      .overrideAttrs (_: {
+        preferLocalBuild = true;
+        allowSubstitutes = false;
+      });
   in {
     repo-fmt = pkgs.writeShellApplication {
       name = "repo-fmt";
@@ -127,6 +134,8 @@ in rec {
     robo = pkgs.symlinkJoin {
       name = "robo";
       paths = [roboCli];
+      preferLocalBuild = true;
+      allowSubstitutes = false;
       postBuild = ''
         mkdir -p \
           "$out/share/bash-completion/completions" \

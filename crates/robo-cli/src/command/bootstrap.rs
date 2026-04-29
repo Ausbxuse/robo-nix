@@ -1,9 +1,6 @@
-use indicatif::{ProgressBar, ProgressDrawTarget, ProgressStyle};
-use std::io::IsTerminal;
-use std::process::{Command, ExitCode, Stdio};
-use std::time::{Duration, Instant};
+use std::process::{Command, ExitCode};
 
-use crate::{error, label, ok, status, Config, LabelKind};
+use crate::{error, ok, output_with_spinner, status, Config, UiProgress};
 
 use super::nix::{exit_code, nix_command, run_status};
 
@@ -39,44 +36,46 @@ pub(crate) fn run_bootstrap(config: Config) -> Result<(), ExitCode> {
     }
 }
 
+pub(crate) fn run_bootstrap_with_progress(
+    config: Config,
+    progress: &mut UiProgress,
+) -> Result<(), ExitCode> {
+    let mut command = nix_command(config);
+    command.arg("run").arg(".#default");
+    command.env("ROBO_NIX_QUIET", "1");
+
+    if config.debug {
+        let status = run_status(&mut command, config);
+        if status == ExitCode::SUCCESS {
+            return Ok(());
+        }
+        return Err(status);
+    }
+
+    let output = progress.output(&mut command, "preparing runtime");
+    progress.suspend(|| match output {
+        Ok(output) if output.status.success() => {
+            ok(config, "runtime ready");
+            Ok(())
+        }
+        Ok(output) => {
+            error(config, "runtime bootstrap failed");
+            print_captured("stdout", &output.stdout);
+            print_captured("stderr", &output.stderr);
+            Err(exit_code(output.status.code()))
+        }
+        Err(err) => {
+            error(config, &format!("failed to start bootstrap: {err}"));
+            Err(ExitCode::from(1))
+        }
+    })
+}
+
 fn run_bootstrap_output(
     command: &mut Command,
     config: Config,
 ) -> Result<std::process::Output, std::io::Error> {
-    if !std::io::stderr().is_terminal() {
-        status(config, "preparing runtime");
-        return command.output();
-    }
-
-    command.stdout(Stdio::piped()).stderr(Stdio::piped());
-    let spinner = spinner(config, "preparing runtime");
-    let started_at = Instant::now();
-    let output = command.output();
-    keep_spinner_visible(started_at);
-    spinner.finish_and_clear();
-    output
-}
-
-fn spinner(config: Config, message: &str) -> ProgressBar {
-    let spinner = ProgressBar::new_spinner();
-    spinner.set_draw_target(ProgressDrawTarget::stderr());
-    spinner.set_style(
-        ProgressStyle::with_template("{prefix} {spinner:.cyan} {msg}")
-            .unwrap_or_else(|_| ProgressStyle::default_spinner())
-            .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]),
-    );
-    spinner.set_prefix(label(config, "robo:", LabelKind::Status));
-    spinner.set_message(message.to_string());
-    spinner.enable_steady_tick(Duration::from_millis(80));
-    spinner
-}
-
-fn keep_spinner_visible(started_at: Instant) {
-    let minimum = Duration::from_millis(450);
-    let elapsed = started_at.elapsed();
-    if elapsed < minimum {
-        std::thread::sleep(minimum - elapsed);
-    }
+    output_with_spinner(config, command, "preparing runtime")
 }
 
 fn print_captured(label: &str, bytes: &[u8]) {

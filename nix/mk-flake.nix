@@ -330,25 +330,33 @@
               fi
 
               check_ok() {
-                printf "check: %sok:%s %s\n" "$c_ok" "$c_reset" "$1"
+                printf "%sok:%s %s\n" "$c_ok" "$c_reset" "$1"
               }
 
               check_warn() {
                 warnings=$((warnings + 1))
-                printf "check: %swarn:%s %s\n" "$c_warn" "$c_reset" "$1"
+                printf "%swarn:%s %s\n" "$c_warn" "$c_reset" "$1"
               }
 
               check_error() {
                 issues=$((issues + 1))
-                printf "check: %serror:%s %s\n" "$c_error" "$c_reset" "$1"
+                printf "%serror:%s %s\n" "$c_error" "$c_reset" "$1"
               }
 
               check_hint() {
-                printf "check: %shint:%s %s\n" "$c_hint" "$c_reset" "$1"
+                printf "%shint:%s %s\n" "$c_hint" "$c_reset" "$1"
               }
 
               check_next() {
-                printf "check: %snext:%s %s\n" "$c_status" "$c_reset" "$1"
+                printf "%snext:%s %s\n" "$c_status" "$c_reset" "$1"
+              }
+
+              check_status_ok() {
+                printf "%sstatus=%s%sok%s %swarnings=%s%s%s\n" "$c_hint" "$c_reset" "$c_ok" "$c_reset" "$c_hint" "$c_reset" "$c_warn" "$warnings"
+              }
+
+              check_status_error() {
+                printf "%sstatus=%s%serror%s %sissues=%s%s%s %swarnings=%s%s%s\n" "$c_hint" "$c_reset" "$c_error" "$c_reset" "$c_hint" "$c_reset" "$c_error" "$issues" "$c_hint" "$c_reset" "$c_warn" "$warnings" >&2
               }
 
               bootstrap_error() {
@@ -356,10 +364,10 @@
               }
 
               run_check() {
-                printf "check: env=%s\n" "$ROBO_NIX_ENV_NAME"
-                printf "check: python=%s\n" "$ROBO_NIX_PYTHON_VERSION"
-                printf "check: system=%s\n" "$ROBO_NIX_SYSTEM"
-                printf "check: workspace=%s\n" "$WORKSPACE_ROOT"
+                printf "env=%s\n" "$ROBO_NIX_ENV_NAME"
+                printf "python=%s\n" "$ROBO_NIX_PYTHON_VERSION"
+                printf "system=%s\n" "$ROBO_NIX_SYSTEM"
+                printf "workspace=%s\n" "$WORKSPACE_ROOT"
 
                 if [ -d "$WORKSPACE_ROOT" ]; then
                   check_ok "workspace root exists"
@@ -374,13 +382,13 @@
 
                 if [ "$issues" -eq 0 ]; then
                   check_next "run 'robo dry-run' if you want a bootstrap-only validation pass"
-                  check_next "run 'robo shell' to enter the environment"
-                  printf "check: status=ok warnings=%s\n" "$warnings"
+                  check_next "run 'robo activate' to enter the environment"
+                  check_status_ok
                   return 0
                 fi
 
                 check_next "fix the issues above and rerun 'robo check'"
-                printf "check: status=error issues=%s warnings=%s\n" "$issues" "$warnings" >&2
+                check_status_error
                 return 1
               }
 
@@ -428,10 +436,44 @@
                 mkdir -p "$WORKSPACE_ROOT/.robo-nix"
               fi
               if [ -z "''${ROBO_NIX_QUIET:-}" ]; then
-                echo "robo-nix env: $ROBO_NIX_ENV_NAME"
-                echo "python: uv-managed $ROBO_NIX_PYTHON_VERSION"
-                echo "system: $ROBO_NIX_SYSTEM"
-                echo "workspace: $WORKSPACE_ROOT"
+                if { [ "''${ROBO_NIX_COLOR:-}" = "1" ] || { [ -z "''${NO_COLOR:-}" ] && [ -t 1 ]; }; } && [ "''${ROBO_NIX_COLOR:-}" != "0" ]; then
+                  c_status="$(printf '\033[36;1m')"
+                  c_hint="$(printf '\033[2m')"
+                  c_command="$(printf '\033[32m')"
+                  c_reset="$(printf '\033[0m')"
+                  box_top="╭────────────────────────────────────────────────────────────╮"
+                  box_mid="│"
+                  box_bot="╰────────────────────────────────────────────────────────────╯"
+                else
+                  c_status=""
+                  c_hint=""
+                  c_command=""
+                  c_reset=""
+                  box_top="+------------------------------------------------------------+"
+                  box_mid="|"
+                  box_bot="+------------------------------------------------------------+"
+                fi
+                if [ -n "''${ROBO_NIX_ACTIVATE:-}" ]; then
+                  printf "%s%s%s\n" "$c_status" "$box_top" "$c_reset"
+                  printf "%s%s%s  %sactive%s  %-44s %s%s%s\n" "$c_status" "$box_mid" "$c_reset" "$c_status" "$c_reset" "$ROBO_NIX_ENV_NAME" "$c_status" "$box_mid" "$c_reset"
+                  printf "%s%s%s  %spython%s  %-8s  %ssystem%s  %-18s %s%s%s\n" "$c_status" "$box_mid" "$c_reset" "$c_hint" "$c_reset" "$ROBO_NIX_PYTHON_VERSION" "$c_hint" "$c_reset" "$ROBO_NIX_SYSTEM" "$c_status" "$box_mid" "$c_reset"
+                  printf "%s%s%s  %sworkspace%s  %s%s%s\n" "$c_status" "$box_mid" "$c_reset" "$c_hint" "$c_reset" "$WORKSPACE_ROOT" "$c_status" "$box_mid" "$c_reset"
+                  printf "%s%s%s  %scommands%s  %sstatus%s  %sdeactivate%s  %sexit%s          %s%s%s\n" "$c_status" "$box_mid" "$c_reset" "$c_hint" "$c_reset" "$c_command" "$c_reset" "$c_command" "$c_reset" "$c_command" "$c_reset" "$c_status" "$box_mid" "$c_reset"
+                  printf "%s%s%s  %snext%s      %suv sync%s                                %s%s%s\n" "$c_status" "$box_mid" "$c_reset" "$c_hint" "$c_reset" "$c_command" "$c_reset" "$c_status" "$box_mid" "$c_reset"
+                  printf "%s%s%s\n" "$c_status" "$box_bot" "$c_reset"
+                else
+                  printf "  %sruntime%s\n" "$c_status" "$c_reset"
+                  printf "    %spython=%s%s\n" "$c_hint" "$c_reset" "$ROBO_NIX_PYTHON_VERSION"
+                  printf "    %ssystem=%s%s\n" "$c_hint" "$c_reset" "$ROBO_NIX_SYSTEM"
+                  printf "    %sworkspace=%s%s\n" "$c_hint" "$c_reset" "$WORKSPACE_ROOT"
+                fi
+              fi
+              if [ -n "''${ROBO_NIX_ACTIVATE:-}" ]; then
+                export ROBO_NIX_ACTIVE=1
+                if [ -n "''${ROBO_NIX_ACTIVATION_SHELL:-}" ]; then
+                  export SHELL="$ROBO_NIX_ACTIVATION_SHELL"
+                fi
+                export ROBO_NIX_PROMPT_PREFIX="<$ROBO_NIX_ENV_NAME> "
               fi
             '';
           };
@@ -464,7 +506,7 @@
               grep -F "workspace=$ROBO_NIX_WORKSPACE" "$report"
               grep -F "validated ${envName} with Python ${envSpec.pythonVersion} on ${system}" "$dryrun"
               ${lib.optionalString (!merged.gpuRequired) ''
-                grep -F "check: status=ok" "$check_report"
+                grep -F "status=ok" "$check_report"
               ''}
               ${merged.checks}
 

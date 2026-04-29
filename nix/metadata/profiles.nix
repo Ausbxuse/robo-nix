@@ -1,3 +1,5 @@
+# Starter profiles for `robo init --profile`. Keep these broad and boring;
+# package-specific expansion belongs in runtime-inference.nix.
 {
   minimal = {
     description = "Minimal Python robotics environment with common CLI tooling and native build support.";

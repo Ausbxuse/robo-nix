@@ -60,16 +60,17 @@ assert_basic_project_init() {
 		cd "$tmpdir/project"
 		nix run .#default -- --check >"$check_output"
 	)
-	assert_file_contains "$check_output" "check: env=project"
-	assert_file_contains "$check_output" "check: next: run 'robo shell' to enter the environment"
-	assert_file_contains "$check_output" "check: status=ok"
+	assert_file_contains "$check_output" "env=project"
+	assert_file_contains "$check_output" "next: run 'robo activate' to enter the environment"
+	assert_file_contains "$check_output" "status=ok"
 
 	(
 		cd "$tmpdir/project"
 		nix run "path:${repo_root}#robo" -- check >"$robo_wrapper_check_output"
 	)
-	assert_file_contains "$robo_wrapper_check_output" "check: env=project"
-	assert_file_contains "$robo_wrapper_check_output" "check: status=ok"
+	assert_file_contains "$robo_wrapper_check_output" "robo: checked project"
+	assert_file_contains "$robo_wrapper_check_output" "status"
+	assert_file_contains "$robo_wrapper_check_output" "ok,"
 }
 
 assert_python_version_preflight() {
@@ -100,7 +101,7 @@ EOF
 	sed -i 's/3.12.11/3.12/' "$tmpdir/python-version-project/robo.nix"
 	(
 		cd "$tmpdir/python-version-project"
-		assert_command_fails_capture "$output" nix run "path:${repo_root}#robo" -- sync
+		assert_command_fails_capture "$output" nix run "path:${repo_root}#robo" -- run python -c 'print("unreachable")'
 	)
 	assert_file_contains "$output" "robo.nix declares Python 3.12, but pyproject.toml requires Python 3.12.11"
 
@@ -121,7 +122,7 @@ EOF
 	printf '3.11\n' >"$tmpdir/python-version-wildcard-project/.python-version"
 	(
 		cd "$tmpdir/python-version-wildcard-project"
-		assert_command_fails_capture "$output" nix run "path:${repo_root}#robo" -- sync
+		assert_command_fails_capture "$output" nix run "path:${repo_root}#robo" -- run python -c 'print("unreachable")'
 	)
 	assert_file_contains "$output" ".python-version is 3.11, but pyproject.toml requires Python 3.10"
 
@@ -147,7 +148,8 @@ assert_runtime_repairs_legacy_github_source() {
 		nix run "path:${repo_root}#robo" -- check >"$check_output"
 	)
 	assert_file_contains "$tmpdir/legacy-source-project/flake.nix" 'robo-nix.url = "path:/nix/store/'
-	assert_file_contains "$check_output" "check: status=ok"
+	assert_file_contains "$check_output" "robo: checked legacy-source-project"
+	assert_file_contains "$check_output" "ok,"
 }
 
 assert_interactive_project_init() {
@@ -168,9 +170,9 @@ assert_interactive_project_init() {
 		cd "$tmpdir/interactive-project"
 		nix run .#default -- --check >"$interactive_check_output"
 	)
-	assert_file_contains "$interactive_check_output" "check: env=interactive-project"
-	assert_file_contains "$interactive_check_output" "check: next: run 'robo shell' to enter the environment"
-	assert_file_contains "$interactive_check_output" "check: status=ok"
+	assert_file_contains "$interactive_check_output" "env=interactive-project"
+	assert_file_contains "$interactive_check_output" "next: run 'robo activate' to enter the environment"
+	assert_file_contains "$interactive_check_output" "status=ok"
 }
 
 assert_robo_wrapper_runtime_flow() {
@@ -206,8 +208,8 @@ EOF
 		cd "$tmpdir/robo-project"
 		nix run .#default -- --check >"$robo_check_output"
 	)
-	assert_file_contains "$robo_check_output" "check: env=dexmate-teleop"
-	assert_file_contains "$robo_check_output" "check: status=ok"
+	assert_file_contains "$robo_check_output" "env=dexmate-teleop"
+	assert_file_contains "$robo_check_output" "status=ok"
 
 	(
 		cd "$tmpdir/robo-project"
@@ -232,6 +234,7 @@ dependencies = [
   "mujoco>=3.3",
   "opencv-python",
   "av",
+  "isaacsim[all,extscache]==4.5.0",
   "pyside6",
 ]
 EOF
@@ -251,6 +254,8 @@ EOF
 	assert_file_contains "$tmpdir/probed-project/robo.nix" '"mujoco"'
 	assert_file_contains "$tmpdir/probed-project/robo.nix" '"x11-gl"'
 	assert_file_contains "$tmpdir/probed-project/robo.nix" '"media"'
+	assert_file_contains "$tmpdir/probed-project/robo.nix" '"cuda-toolkit"'
+	assert_file_contains "$tmpdir/probed-project/robo.nix" '"isaac-sim"'
 	assert_file_contains "$tmpdir/probed-project/robo.nix" '"qt6"'
 	assert_file_contains "$tmpdir/probed-project/robo.nix" 'provenance = {'
 	assert_file_contains "$tmpdir/probed-project/robo.nix" 'componentReasons = ['
@@ -280,6 +285,7 @@ EOF
 	assert_file_contains "$probed_why_output" '"name": "base"'
 	assert_file_contains "$probed_why_output" '"source": "profile"'
 	assert_file_contains "$probed_why_output" '"name": "mujoco"'
+	assert_file_contains "$probed_why_output" '"name": "isaac-sim"'
 	assert_file_contains "$probed_why_output" '"source": "pyproject inference"'
 	assert_file_contains "$probed_why_output" '"suggestions": ['
 	assert_file_contains "$probed_contract_output" '"envName": "probed-project"'
@@ -299,9 +305,9 @@ EOF
 		cd "$tmpdir/probed-project"
 		nix run .#default -- --check >"$probed_check_output"
 	)
-	assert_file_contains "$probed_check_output" "check: env=probed-project"
-	assert_file_contains "$probed_check_output" "check: suggestion: check whether third_party/local-sdk/setup.py should be required for this project"
-	assert_file_contains "$probed_check_output" "check: status=ok"
+	assert_file_contains "$probed_check_output" "env=probed-project"
+	assert_file_contains "$probed_check_output" "suggestion: check whether third_party/local-sdk/setup.py should be required for this project"
+	assert_file_contains "$probed_check_output" "status=ok"
 }
 
 assert_cuda_workspace_component_suggestion() {
@@ -371,9 +377,9 @@ EOF
 		cd "$tmpdir/stale-project"
 		nix run "path:${repo_root}#robo" -- check >"$stale_check_output"
 	)
-	assert_file_contains "$stale_check_output" "check: warn: pyproject.toml implies component media but robo.nix does not select it"
-	assert_file_contains "$stale_check_output" "reason: pyproject.toml uses FFmpeg/media packages"
-	assert_file_contains "$stale_check_output" "check: status=ok"
+	assert_file_contains "$stale_check_output" "runtime components may be incomplete"
+	assert_file_contains "$stale_check_output" "missing: media"
+	assert_file_contains "$stale_check_output" "ok,"
 }
 
 assert_tricky_package_runtime_inference() {
@@ -439,8 +445,8 @@ assert_ros_project_init_full() {
 		cd "$tmpdir/ros-project"
 		nix run .#default -- --check >"$ros_check_output"
 	)
-	assert_file_contains "$ros_check_output" "check: env=ros-project"
-	assert_file_contains "$ros_check_output" "check: status=ok"
+	assert_file_contains "$ros_check_output" "env=ros-project"
+	assert_file_contains "$ros_check_output" "status=ok"
 }
 
 assert_stdout_generation() {

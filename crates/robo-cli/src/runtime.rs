@@ -378,15 +378,27 @@ fn explain_component(
 }
 
 fn explain_required_path(kind: &str, path: &str, provenance: &ProjectProvenance) -> WhyEntry {
+    let (source, reason) = if provenance.inferred.is_empty() {
+        (
+            "manual config".to_string(),
+            format!("listed in required {kind}s in robo.nix"),
+        )
+    } else if path.starts_with("third_party/") {
+        (
+            "workspace scan".to_string(),
+            "third_party checkout detected during init".to_string(),
+        )
+    } else {
+        (
+            "workspace inference".to_string(),
+            format!("listed in required {kind}s in robo.nix"),
+        )
+    };
+
     WhyEntry {
         name: path.to_string(),
-        source: if provenance.inferred.is_empty() {
-            "manual config".to_string()
-        } else {
-            "workspace inference".to_string()
-        },
-        reason: first_inference(provenance)
-            .unwrap_or_else(|| format!("listed in required {kind}s in robo.nix")),
+        source,
+        reason,
         remove_hint: format!(
             "remove `{path}` from required{} in robo.nix",
             if kind == "file" {

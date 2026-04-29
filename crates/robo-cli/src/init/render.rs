@@ -2,7 +2,7 @@ use std::fs;
 use std::path::Path;
 use std::process::{Command, ExitCode, Stdio};
 
-use crate::{error, hint, ok, Config};
+use crate::{error, hint, Config};
 
 use super::manifest::Manifest;
 use super::spec::ProjectSpec;
@@ -139,28 +139,46 @@ fn print_summary(
     lock_status: LockStatus,
     config: Config,
 ) {
-    eprintln!("{} init", crate::label(config, "robo", crate::LabelKind::Status));
-    eprintln!("  target: {}", target.display());
-    eprintln!("  env:    {}", spec.env_name);
-    eprintln!("  source: {source_url}");
-    if !spec.probe_notes.is_empty() {
-        eprintln!();
-        eprintln!("Detected:");
-        for note in &spec.probe_notes {
-            eprintln!("  + {note}");
+    eprintln!(
+        "{} initialized {}",
+        crate::label(config, "robo:", crate::LabelKind::Status),
+        spec.env_name
+    );
+    eprintln!();
+    crate::section_err(config, "project");
+    crate::field_err(config, "directory", &target.display().to_string());
+    crate::field_err(config, "runtime", &spec.env_name);
+    if config.debug {
+        crate::field_err(config, "source", source_url);
+    }
+    let mut inferred_notes = Vec::new();
+    let mut attention_notes = Vec::new();
+    for note in &spec.probe_notes {
+        if note_needs_attention(note) {
+            attention_notes.push(note);
+        } else {
+            inferred_notes.push(note);
         }
     }
-    print_suggestions(spec);
+
+    if !inferred_notes.is_empty() {
+        eprintln!();
+        crate::section_err(config, "inferred");
+        for note in inferred_notes {
+            print_inferred_note(config, note);
+        }
+    }
+    print_attention(spec, &attention_notes, config);
     eprintln!();
-    ok(config, "Generated:");
-    eprintln!("  wrote {}", target.join("flake.nix").display());
-    eprintln!("  wrote {}", target.join("robo.nix").display());
-    eprintln!("  wrote {}", target.join(".python-version").display());
-    eprintln!("  {pyproject_status} {}", target.join("pyproject.toml").display());
+    crate::section_err(config, "generated");
+    print_file_change(config, "wrote", &target.join("flake.nix"));
+    print_file_change(config, "wrote", &target.join("robo.nix"));
+    print_file_change(config, "wrote", &target.join(".python-version"));
+    print_file_change(config, pyproject_status, &target.join("pyproject.toml"));
     match lock_status {
-        LockStatus::Updated => eprintln!("  updated {}", target.join("flake.lock").display()),
+        LockStatus::Updated => print_file_change(config, "updated", &target.join("flake.lock")),
         LockStatus::Failed(message) => {
-            eprintln!("  skipped {}", target.join("flake.lock").display());
+            print_file_change(config, "skipped", &target.join("flake.lock"));
             hint(
                 config,
                 &format!(
@@ -171,24 +189,108 @@ fn print_summary(
         }
     }
     eprintln!();
-    eprintln!("{} Next steps:", crate::label(config, "robo", crate::LabelKind::Status));
-    eprintln!("  (cd {} && robo check)", shell_quote(target));
-    eprintln!("  robo sync --group dev");
-    eprintln!("  robo run pytest tests");
+    crate::section_err(config, "next steps");
+    if target != Path::new(".") {
+        crate::command_row_err(config, &format!("cd {}", shell_quote(target)));
+    }
+    crate::command_row_err(config, "robo check");
+    crate::command_row_err(config, "robo activate");
+    crate::command_row_err(config, "uv sync");
 }
 
-fn print_suggestions(spec: &ProjectSpec) {
-    if spec.suggestions.is_empty() && spec.component_suggestions.is_empty() {
+fn print_file_change(config: Config, action: &str, path: &Path) {
+    let action = format!("{action:<7}");
+    eprintln!(
+        "  {} {}",
+        crate::label(config, &action, file_action_kind(action.trim())),
+        path.display()
+    );
+}
+
+fn file_action_kind(action: &str) -> crate::LabelKind {
+    match action {
+        "wrote" => crate::LabelKind::Ok,
+        "updated" | "skipped" => crate::LabelKind::Warn,
+        "kept" => crate::LabelKind::Hint,
+        _ => crate::LabelKind::Status,
+    }
+}
+
+fn print_inferred_note(config: Config, note: &str) {
+    let (fact, reason) = inferred_note_summary(note);
+    let marker = crate::label(config, "✓", crate::LabelKind::Ok);
+    match reason {
+        Some(reason) => eprintln!("  {marker} {fact:<28} {reason}"),
+        None => eprintln!("  {marker} {fact}"),
+    }
+}
+
+fn note_needs_attention(note: &str) -> bool {
+    note.starts_with("skipped bootstrap ")
+}
+
+fn inferred_note_summary(note: &str) -> (String, Option<String>) {
+    if let Some(rest) = note.strip_prefix("cudaWheelVersion=") {
+        if let Some((version, reason)) = rest.split_once(": ") {
+            return (format!("CUDA wheel {version}"), Some(reason.to_string()));
+        }
+    }
+
+    match note {
+        "pyproject.toml uses MuJoCo/simulation packages" => (
+            "MuJoCo/simulation".to_string(),
+            Some("pyproject.toml dependencies".to_string()),
+        ),
+        "LeRobot workflows commonly need media and graphics runtime libraries" => (
+            "media/graphics runtime".to_string(),
+            Some("LeRobot workflow".to_string()),
+        ),
+        "Isaac Sim Python wheels need NVIDIA CUDA and graphics runtime support" => (
+            "Isaac Sim runtime".to_string(),
+            Some("CUDA and graphics support".to_string()),
+        ),
+        "workspace contains Qt service paths" => (
+            "Qt service paths".to_string(),
+            Some("workspace scan".to_string()),
+        ),
+        _ => match note.split_once(": ") {
+            Some((fact, reason)) => (fact.to_string(), Some(reason.to_string())),
+            None => (note.to_string(), None),
+        },
+    }
+}
+
+fn print_attention(spec: &ProjectSpec, notes: &[&String], config: Config) {
+    if notes.is_empty() && spec.suggestions.is_empty() && spec.component_suggestions.is_empty() {
         return;
     }
     eprintln!();
-    eprintln!("Suggestions:");
+    crate::section_err(config, "attention");
+    for note in notes {
+        print_attention_line(config, note);
+    }
     for item in &spec.suggestions {
-        eprintln!("  ? {} {}: {}", item.kind, item.path, item.reason);
+        print_attention_line(
+            config,
+            &format!("review {} {}: {}", item.kind, item.path, item.reason),
+        );
     }
     for item in &spec.component_suggestions {
-        eprintln!("  ? component {}: {}; {}", item.name, item.reason, item.evidence);
+        print_attention_line(
+            config,
+            &format!(
+                "review component {}: {}; {}",
+                item.name, item.reason, item.evidence
+            ),
+        );
     }
+}
+
+fn print_attention_line(config: Config, message: &str) {
+    eprintln!(
+        "  {} {message}",
+        crate::label(config, "!", crate::LabelKind::Warn)
+    );
 }
 
 pub(super) fn render_flake(source_url: &str) -> String {

@@ -84,6 +84,7 @@ assert_runtime_inference_contract() {
       assert builtins.any (rule: builtins.elem "pyqt6" rule.dependencies && builtins.elem "qt6" rule.components && builtins.elem "x11-gl" rule.components) inference.dependencyRules;
       assert builtins.any (rule: builtins.elem "cuda-python" rule.dependencies && builtins.elem "cuda-toolkit" rule.components) inference.dependencyRules;
       assert builtins.any (rule: builtins.elem "cupy-cuda12x" rule.dependencies && builtins.elem "cuda-toolkit" rule.components) inference.dependencyRules;
+      assert builtins.any (rule: builtins.elem "isaacsim" rule.dependencies && builtins.elem "isaac-sim" rule.components && builtins.elem "cuda-toolkit" rule.components && builtins.elem "x11-gl" rule.components) inference.dependencyRules;
       assert builtins.any (rule: builtins.elem "flash-attn" rule.dependencies && builtins.elem "cuda-toolkit" rule.components) inference.dependencyRules;
       assert builtins.any (rule: builtins.elem "flash-attn" rule.dependencies && builtins.elem "native-build" rule.components) inference.dependencyRules;
       assert builtins.any (rule: builtins.elem "pytorch3d" rule.dependencies && builtins.elem "cuda-toolkit" rule.components) inference.dependencyRules;
@@ -288,7 +289,9 @@ EOF
 
 assert_project_flake_contract() {
 	local tmpdir
+	local system
 	tmpdir="$(mktemp_dir)"
+	system="$(current_nix_system)"
 	trap 'cleanup_dir "$tmpdir"' RETURN
 
 	cat >"$tmpdir/flake.nix" <<EOF
@@ -307,7 +310,7 @@ assert_project_flake_contract() {
       description = "Contract fixture";
       pythonVersion = "3.11";
       supportedSystems = [
-        "x86_64-linux"
+        "${system}"
       ];
       workspaceRoot = ".";
     };
@@ -318,11 +321,11 @@ EOF
 	expr='
     let
       flake = builtins.getFlake "'"path:${tmpdir}"'";
+      system = "'"${system}"'";
     in
-      assert builtins.hasAttr "x86_64-linux" flake.apps;
-      assert !(builtins.hasAttr "aarch64-darwin" flake.apps);
-      assert builtins.hasAttr "default" flake.apps.x86_64-linux;
-      assert builtins.hasAttr "contract" flake.apps.x86_64-linux;
+      assert builtins.hasAttr system flake.apps;
+      assert builtins.hasAttr "default" flake.apps.${system};
+      assert builtins.hasAttr "contract" flake.apps.${system};
       true
   '
 	assert_expr "$expr"
@@ -337,9 +340,9 @@ EOF
 	grep -F "python=3.11" "$config_file" >/dev/null
 	grep -F "component=base" "$config_file" >/dev/null
 	grep -F "component=python-uv" "$config_file" >/dev/null
-	grep -F "check: env=contract" "$check_file" >/dev/null
-	grep -F "check: next: run 'robo shell' to enter the environment" "$check_file" >/dev/null
-	grep -F "check: status=ok" "$check_file" >/dev/null
+	grep -F "env=contract" "$check_file" >/dev/null
+	grep -F "next: run 'robo activate' to enter the environment" "$check_file" >/dev/null
+	grep -F "status=ok" "$check_file" >/dev/null
 
 	trap - RETURN
 	cleanup_dir "$tmpdir"
@@ -347,7 +350,9 @@ EOF
 
 assert_project_extension_contract() {
 	local tmpdir
+	local system
 	tmpdir="$(mktemp_dir)"
+	system="$(current_nix_system)"
 	trap 'cleanup_dir "$tmpdir"' RETURN
 
 	cat >"$tmpdir/flake.nix" <<EOF
@@ -378,7 +383,7 @@ assert_project_extension_contract() {
         "third_party/example"
       ];
       supportedSystems = [
-        "x86_64-linux"
+        "${system}"
       ];
     };
 }
@@ -395,7 +400,7 @@ EOF
 		nix run .#default -- --check >"$check_file"
 		nix run .#default -- --dry-run >"$dryrun_file"
 	)
-	grep -F "check: ok: project extension check ran" "$check_file" >/dev/null
+	grep -F "ok: project extension check ran" "$check_file" >/dev/null
 	grep -F "validated extended with Python 3.11" "$dryrun_file" >/dev/null
 
 	trap - RETURN
@@ -404,7 +409,9 @@ EOF
 
 assert_human_facing_failure_contract() {
 	local tmpdir
+	local system
 	tmpdir="$(mktemp_dir)"
+	system="$(current_nix_system)"
 	trap 'cleanup_dir "$tmpdir"' RETURN
 
 	cat >"$tmpdir/flake.nix" <<EOF
@@ -424,7 +431,7 @@ assert_human_facing_failure_contract() {
       ];
       pythonVersion = "3.11";
       supportedSystems = [
-        "x86_64-linux"
+        "${system}"
       ];
       workspaceRoot = ".";
     };
@@ -437,14 +444,14 @@ EOF
 	dryrun_file="$tmpdir/failure.dryrun"
 
 	assert_command_fails_capture "$check_file" nix run "$tmpdir#default" -- --check
-	grep -F "check: error: missing workspace directory: ros_ws/src" "$check_file" >/dev/null
-	grep -F "check: hint: create " "$check_file" >/dev/null
-	grep -F "check: next: fix the issues above and rerun 'robo check'" "$check_file" >/dev/null
-	grep -F "check: status=error" "$check_file" >/dev/null
+	grep -F "error: missing workspace directory: ros_ws/src" "$check_file" >/dev/null
+	grep -F "hint: create " "$check_file" >/dev/null
+	grep -F "next: fix the issues above and rerun 'robo check'" "$check_file" >/dev/null
+	grep -F "status=error" "$check_file" >/dev/null
 
 	assert_command_fails_capture "$dryrun_file" nix run "$tmpdir#default" -- --dry-run
 	grep -F "bootstrap error: missing required directory:" "$dryrun_file" >/dev/null
-	grep -F "check: hint: run 'robo check' for a full setup report" "$dryrun_file" >/dev/null
+	grep -F "hint: run 'robo check' for a full setup report" "$dryrun_file" >/dev/null
 
 	trap - RETURN
 	cleanup_dir "$tmpdir"

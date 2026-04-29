@@ -1,3 +1,5 @@
+# User-facing component catalog metadata. Add entries here when a runtime
+# component exists in nix/modules and should be visible to `robo init --list-components`.
 {
   base = {
     category = "core";

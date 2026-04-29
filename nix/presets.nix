@@ -1,5 +1,5 @@
 let
-  profiles = import ./modules/profile-metadata.nix;
+  profiles = import ./metadata/profiles.nix;
 
   # NOTE: repo presets are convenience outputs for demos and checks. The
   # scalable downstream API is still mkProjectFlake/mkProjectFlakeFromManifest.

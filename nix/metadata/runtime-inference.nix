@@ -1,3 +1,8 @@
+# Add rules here when a common Python package or workspace shape reliably
+# implies reusable native runtime support. Keep rules generic: do not encode
+# project-specific uv groups, extras, source pins, package indexes, or install
+# modes here. `note` is shown to users by `robo init`, so write it as concise
+# product text, not internal commentary.
 {
   defaultProfile = "minimal";
 
@@ -94,6 +99,15 @@
       ];
       components = ["cuda-toolkit"];
       note = "CUDA Python packages and CUDA extension builds need host CUDA integration";
+    }
+    {
+      dependencies = ["isaacsim"];
+      components = [
+        "isaac-sim"
+        "cuda-toolkit"
+        "x11-gl"
+      ];
+      note = "Isaac Sim Python wheels need NVIDIA CUDA and graphics runtime support";
     }
     {
       dependencies = ["flash-attn"];

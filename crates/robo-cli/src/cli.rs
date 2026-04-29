@@ -6,7 +6,10 @@ use std::ffi::OsString;
 use std::io::IsTerminal;
 use std::process::ExitCode;
 
-use crate::command::{run_project_app, run_project_command, run_project_shell, run_uv_sync};
+use crate::command::{
+    run_project_activate, run_project_app, run_project_command, run_project_deactivate,
+    run_project_status,
+};
 use crate::{check, contract, cuda, error, init, Config};
 
 #[derive(Parser)]
@@ -37,6 +40,15 @@ enum CliCommand {
     #[command(about = "Initialize robo-nix runtime files")]
     Init(init::InitArgs),
 
+    #[command(about = "Activate the project runtime environment")]
+    Activate(PassthroughArgs),
+
+    #[command(about = "Show current runtime activation status")]
+    Status,
+
+    #[command(about = "Show how to leave the active runtime shell")]
+    Deactivate,
+
     #[command(about = "Run project bootstrap scripts")]
     Bootstrap(PassthroughArgs),
 
@@ -51,12 +63,6 @@ enum CliCommand {
         about = "Validate bootstrap without entering a shell"
     )]
     DryRun(PassthroughArgs),
-
-    #[command(about = "Run uv sync inside the Nix runtime")]
-    Sync(PassthroughArgs),
-
-    #[command(about = "Open a project runtime shell")]
-    Shell(PassthroughArgs),
 
     #[command(about = "Run a Python command with uv inside the project runtime")]
     Run(PassthroughArgs),
@@ -99,12 +105,13 @@ pub(crate) fn run() -> ExitCode {
 
     match cli.command {
         Some(CliCommand::Init(args)) => init::run(args, config),
+        Some(CliCommand::Activate(args)) => run_project_activate(args.args, config),
+        Some(CliCommand::Status) => run_project_status(config),
+        Some(CliCommand::Deactivate) => run_project_deactivate(config),
         Some(CliCommand::Bootstrap(args)) => run_project_app(None, args.args, config),
         Some(CliCommand::Check(args)) => check::run(args, config),
         Some(CliCommand::Contract(args)) => contract::run(args, config),
         Some(CliCommand::DryRun(args)) => run_project_app(Some("--dry-run"), args.args, config),
-        Some(CliCommand::Sync(args)) => run_uv_sync(args.args, config),
-        Some(CliCommand::Shell(args)) => run_project_shell(args.args, config),
         Some(CliCommand::Run(args)) => run_project_command(args.args, config),
         Some(CliCommand::Completion(args)) => print_completions(args.args, config),
         Some(CliCommand::CudaCheck) => cuda::check(config),
