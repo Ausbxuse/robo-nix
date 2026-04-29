@@ -20,8 +20,7 @@ if [ -z "$runtime" ]; then
 fi
 
 case "$runtime" in
-docker | podman)
-	;;
+docker | podman) ;;
 *)
 	echo "unsupported container runtime: $runtime" >&2
 	exit 2

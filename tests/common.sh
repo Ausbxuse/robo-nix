@@ -5,7 +5,23 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 mktemp_dir() {
-	mktemp -d
+	local dir
+	dir="$(mktemp -d)"
+	physical_path "$dir"
+}
+
+physical_path() {
+	local path="$1"
+	local dir
+	local base
+
+	if [ -d "$path" ]; then
+		(cd "$path" && pwd -P)
+	else
+		dir="$(dirname "$path")"
+		base="$(basename "$path")"
+		printf '%s/%s\n' "$(cd "$dir" && pwd -P)" "$base"
+	fi
 }
 
 cleanup_dir() {
