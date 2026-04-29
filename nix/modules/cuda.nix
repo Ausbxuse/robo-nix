@@ -19,6 +19,7 @@
       name = "robo-cuda-toolkit-${cudaPackages.cudaMajorMinorVersion}";
       paths = with cudaPackages; [
         cuda_cccl
+        cuda_cudart.dev
         cuda_cudart
         cuda_nvcc
         cuda_nvrtc

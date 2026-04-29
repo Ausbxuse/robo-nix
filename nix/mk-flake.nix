@@ -454,12 +454,21 @@
                   box_bot="+------------------------------------------------------------+"
                 fi
                 if [ -n "''${ROBO_NIX_ACTIVATE:-}" ]; then
+                  card_line() {
+                    text="$1"
+                    length="''${#text}"
+                    if [ "$length" -gt 56 ]; then
+                      printf "%s%s%s  %s\n" "$c_status" "$box_mid" "$c_reset" "$text"
+                    else
+                      printf "%s%s%s  %-56s %s%s%s\n" "$c_status" "$box_mid" "$c_reset" "$text" "$c_status" "$box_mid" "$c_reset"
+                    fi
+                  }
                   printf "%s%s%s\n" "$c_status" "$box_top" "$c_reset"
-                  printf "%s%s%s  %sactive%s  %-44s %s%s%s\n" "$c_status" "$box_mid" "$c_reset" "$c_status" "$c_reset" "$ROBO_NIX_ENV_NAME" "$c_status" "$box_mid" "$c_reset"
-                  printf "%s%s%s  %spython%s  %-8s  %ssystem%s  %-18s %s%s%s\n" "$c_status" "$box_mid" "$c_reset" "$c_hint" "$c_reset" "$ROBO_NIX_PYTHON_VERSION" "$c_hint" "$c_reset" "$ROBO_NIX_SYSTEM" "$c_status" "$box_mid" "$c_reset"
-                  printf "%s%s%s  %sworkspace%s  %s%s%s\n" "$c_status" "$box_mid" "$c_reset" "$c_hint" "$c_reset" "$WORKSPACE_ROOT" "$c_status" "$box_mid" "$c_reset"
-                  printf "%s%s%s  %scommands%s  %sstatus%s  %sdeactivate%s  %sexit%s          %s%s%s\n" "$c_status" "$box_mid" "$c_reset" "$c_hint" "$c_reset" "$c_command" "$c_reset" "$c_command" "$c_reset" "$c_command" "$c_reset" "$c_status" "$box_mid" "$c_reset"
-                  printf "%s%s%s  %snext%s      %suv sync%s                                %s%s%s\n" "$c_status" "$box_mid" "$c_reset" "$c_hint" "$c_reset" "$c_command" "$c_reset" "$c_status" "$box_mid" "$c_reset"
+                  card_line "$(printf "active   %s" "$ROBO_NIX_ENV_NAME")"
+                  card_line "$(printf "python   %-8s system %s" "$ROBO_NIX_PYTHON_VERSION" "$ROBO_NIX_SYSTEM")"
+                  card_line "$(printf "workspace %s" "$WORKSPACE_ROOT")"
+                  card_line "commands  robo status  robo deactivate  exit"
+                  card_line "next      uv sync"
                   printf "%s%s%s\n" "$c_status" "$box_bot" "$c_reset"
                 else
                   printf "  %sruntime%s\n" "$c_status" "$c_reset"
@@ -472,6 +481,9 @@
                 export ROBO_NIX_ACTIVE=1
                 if [ -n "''${ROBO_NIX_ACTIVATION_SHELL:-}" ]; then
                   export SHELL="$ROBO_NIX_ACTIVATION_SHELL"
+                fi
+                if [ -n "''${ROBO_NIX_ROBO_BIN:-}" ]; then
+                  export PATH="$(dirname "$ROBO_NIX_ROBO_BIN"):$PATH"
                 fi
                 export ROBO_NIX_PROMPT_PREFIX="<$ROBO_NIX_ENV_NAME> "
               fi

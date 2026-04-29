@@ -51,6 +51,9 @@ pub(crate) fn run_project_activate(args: Vec<OsString>, config: Config) -> ExitC
 
     let mut command = command_for_runtime(config);
     command.env("ROBO_NIX_ACTIVATE", "1");
+    if let Ok(current_exe) = env::current_exe() {
+        command.env("ROBO_NIX_ROBO_BIN", current_exe);
+    }
     command.env_remove("ROBO_NIX_QUIET");
     for (name, value) in launch.env {
         command.env(name, value);

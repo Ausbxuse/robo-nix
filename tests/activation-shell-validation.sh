@@ -64,6 +64,8 @@ test "${ROBO_NIX_ACTIVE:-}" = "1"
 test "${ROBO_NIX_ENV_NAME:-}" = "activation-shell-project"
 test "${SHELL:-}" = "${EXPECTED_SHELL:?}"
 test "${ROBO_NIX_PROMPT_PREFIX:-}" = "<activation-shell-project> "
+command -v robo >/dev/null
+robo status >/dev/null
 test "$#" -eq 1
 test "$1" = "-i"
 EOF
