@@ -28,4 +28,4 @@ grep -F "component=cuda-toolkit" "$gpu_config_file" >/dev/null
 grep -F "python=3.11" "$gpu_config_file" >/dev/null
 nix run "path:${repo_root}#gpu-learning" -- --dry-run >/dev/null
 # shellcheck disable=SC2016
-nix develop "path:${repo_root}#gpu-learning" --command bash -lc 'test -n "${CUDA_HOME:-}" && test -n "${CUDA_PATH:-}"'
+nix develop "path:${repo_root}#gpu-learning" --command bash -lc 'test -n "${CUDA_HOME:-}" && test -n "${CUDA_PATH:-}" && test -n "${LIBRARY_PATH:-}" && test -e "$CUDA_PATH/lib/libcudart.so"'

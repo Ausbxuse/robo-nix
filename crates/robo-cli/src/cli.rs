@@ -7,8 +7,8 @@ use std::io::IsTerminal;
 use std::process::ExitCode;
 
 use crate::command::{
-    run_project_activate, run_project_app, run_project_command, run_project_deactivate,
-    run_project_status,
+    run_internal_exec, run_project_activate, run_project_app, run_project_command,
+    run_project_deactivate, run_project_status,
 };
 use crate::{check, contract, cuda, error, init, Config};
 
@@ -73,6 +73,9 @@ enum CliCommand {
     #[command(name = "cuda-check", hide = true)]
     CudaCheck,
 
+    #[command(name = "__exec", hide = true)]
+    InternalExec(PassthroughArgs),
+
     #[command(about = "Show help")]
     Help,
 }
@@ -115,6 +118,7 @@ pub(crate) fn run() -> ExitCode {
         Some(CliCommand::Run(args)) => run_project_command(args.args, config),
         Some(CliCommand::Completion(args)) => print_completions(args.args, config),
         Some(CliCommand::CudaCheck) => cuda::check(config),
+        Some(CliCommand::InternalExec(args)) => run_internal_exec(args.args, config),
         Some(CliCommand::Help) | None => print_help(config),
     }
 }

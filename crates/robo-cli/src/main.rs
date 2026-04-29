@@ -14,6 +14,7 @@ pub(crate) use command::{
 pub(crate) use ui::{
     command_row, command_row_err, error, field, field_err, hint, inline, label, ok,
     output_with_spinner, section, section_err, status, warn, Config, LabelKind, UiProgress,
+    UiSpinner,
 };
 
 fn main() -> std::process::ExitCode {

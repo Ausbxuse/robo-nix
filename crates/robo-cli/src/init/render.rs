@@ -2,7 +2,7 @@ use std::fs;
 use std::path::Path;
 use std::process::{Command, ExitCode, Stdio};
 
-use crate::{error, hint, Config};
+use crate::{combined_output, error, hint, output_with_spinner, Config};
 
 use super::manifest::Manifest;
 use super::spec::ProjectSpec;
@@ -67,7 +67,7 @@ pub(super) fn write_project(
     if gitignore_status != "kept" {
         register_git(target, &[".gitignore"]);
     }
-    let lock_status = update_flake_lock(target);
+    let lock_status = update_flake_lock(target, config);
     if matches!(lock_status, LockStatus::Updated) {
         register_git(target, &["flake.lock"]);
     }
@@ -138,29 +138,30 @@ fn register_git(target: &Path, paths: &[&str]) {
     }
 }
 
-fn update_flake_lock(target: &Path) -> LockStatus {
-    match Command::new("nix")
+fn update_flake_lock(target: &Path, config: Config) -> LockStatus {
+    let mut command = Command::new("nix");
+    command
         .arg("flake")
         .arg("lock")
         .arg("--update-input")
         .arg("robo-nix")
         .current_dir(target)
         .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .output()
-    {
+        .stderr(Stdio::piped());
+
+    match output_with_spinner(config, &mut command, "updating flake lock") {
         Ok(output) if output.status.success() => LockStatus::Updated,
         Ok(output) => {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            let detail = stderr
+            let detail = combined_output(&output);
+            let message = detail
                 .lines()
                 .rev()
                 .find(|line| line.trim_start().starts_with("error:"))
-                .or_else(|| stderr.lines().rev().find(|line| !line.trim().is_empty()))
+                .or_else(|| detail.lines().rev().find(|line| !line.trim().is_empty()))
                 .unwrap_or("nix flake lock failed")
                 .trim()
                 .to_string();
-            LockStatus::Failed(detail)
+            LockStatus::Failed(message)
         }
         Err(err) => LockStatus::Failed(format!("failed to run nix flake lock: {err}")),
     }

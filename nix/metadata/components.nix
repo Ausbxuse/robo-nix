@@ -115,7 +115,7 @@
 
   cuda-toolkit = {
     category = "gpu";
-    description = "Host CUDA integration and NVIDIA runtime expectations for GPU workloads.";
+    description = "CUDA compiler, headers, and native extension build support for GPU workloads.";
     scaffoldDirectories = [];
     supportedSystems = [
       "x86_64-linux"

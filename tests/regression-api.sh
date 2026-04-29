@@ -125,6 +125,9 @@ assert_cuda_toolkit_uses_requested_wheel_version() {
     in
       assert builtins.elem expectedCompiler packageNames;
       assert builtins.elem "robo-cuda-toolkit-12.6" packageNames;
+      assert flake.inputs.nixpkgs.lib.hasInfix "LIBRARY_PATH" component.shellInit;
+      assert flake.inputs.nixpkgs.lib.hasInfix "CPATH" component.shellInit;
+      assert flake.inputs.nixpkgs.lib.hasInfix "CUDA native build surface present" component.diagnostics;
       true
   '
 	assert_expr "$expr"
@@ -318,16 +321,18 @@ assert_project_flake_contract() {
 EOF
 
 	local expr
-	expr='
+	expr="$(
+		cat <<EOF
     let
-      flake = builtins.getFlake "'"path:${tmpdir}"'";
-      system = "'"${system}"'";
+      flake = builtins.getFlake "path:${tmpdir}";
+      system = "${system}";
     in
       assert builtins.hasAttr system flake.apps;
-      assert builtins.hasAttr "default" flake.apps.${system};
-      assert builtins.hasAttr "contract" flake.apps.${system};
+      assert builtins.hasAttr "default" flake.apps.\${system};
+      assert builtins.hasAttr "contract" flake.apps.\${system};
       true
-  '
+EOF
+	)"
 	assert_expr "$expr"
 
 	local config_file

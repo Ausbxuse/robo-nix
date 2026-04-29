@@ -27,6 +27,7 @@ docker | podman) ;;
 	;;
 esac
 
+# shellcheck disable=SC2016
 "$runtime" run --rm --privileged \
 	-v "${repo_root}:/workspace/robo-nix:ro" \
 	-e NIX_CONFIG="experimental-features = nix-command flakes

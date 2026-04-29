@@ -150,6 +150,35 @@ pub(crate) struct UiProgress {
     total: u64,
 }
 
+pub(crate) struct UiSpinner {
+    bar: Option<ProgressBar>,
+}
+
+impl UiSpinner {
+    pub(crate) fn new(config: Config, message: &str) -> Self {
+        if config.debug || !std::io::stderr().is_terminal() {
+            status(config, message);
+            return Self { bar: None };
+        }
+
+        Self {
+            bar: Some(spinner(config, message)),
+        }
+    }
+
+    pub(crate) fn finish(&mut self) {
+        if let Some(bar) = &self.bar {
+            bar.finish_and_clear();
+        }
+    }
+}
+
+impl Drop for UiSpinner {
+    fn drop(&mut self) {
+        self.finish();
+    }
+}
+
 impl UiProgress {
     pub(crate) fn new(config: Config, total: u64, message: &str) -> Self {
         if config.debug || !std::io::stderr().is_terminal() {

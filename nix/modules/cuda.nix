@@ -18,8 +18,10 @@
     cudaToolkit = pkgs.symlinkJoin {
       name = "robo-cuda-toolkit-${cudaPackages.cudaMajorMinorVersion}";
       paths = with cudaPackages; [
+        cuda_cccl.dev
         cuda_cccl
         cuda_cudart.dev
+        cuda_cudart.lib
         cuda_cudart
         cuda_nvcc
         cuda_nvrtc
@@ -50,11 +52,50 @@
         CXX = "${cudaCompiler}/bin/c++";
       }
       + "\n"
+      + common.prependPath "CPATH" "$CUDA_PATH/include"
+      + "\n"
+      + common.prependPath "C_INCLUDE_PATH" "$CUDA_PATH/include"
+      + "\n"
+      + common.prependPath "CPLUS_INCLUDE_PATH" "$CUDA_PATH/include"
+      + "\n"
+      + common.prependPath "CMAKE_INCLUDE_PATH" "$CUDA_PATH/include"
+      + "\n"
+      + common.prependPath "CMAKE_LIBRARY_PATH" "$CUDA_PATH/lib"
+      + "\n"
+      + common.prependPath "LIBRARY_PATH" "$CUDA_PATH/lib"
+      + "\n"
       + common.prependPath "LD_LIBRARY_PATH" "$CUDA_PATH/lib"
       + "\n"
       + common.prependPath "LD_LIBRARY_PATH" "/run/opengl-driver/lib";
     supportedSystems = common.x86LinuxSystems;
     gpuRequired = true;
     check = common.mkComponentCheck "cuda-toolkit" [];
+    diagnostics = ''
+      if [ -z "''${CUDA_PATH:-}" ] || [ ! -d "$CUDA_PATH" ]; then
+        check_error "CUDA native build toolkit is not visible"
+        check_hint "cuda-toolkit should set CUDA_HOME/CUDA_PATH inside the runtime"
+      else
+        cuda_missing=0
+        if [ ! -x "$CUDA_PATH/bin/nvcc" ]; then
+          check_error "CUDA native compiler is missing: $CUDA_PATH/bin/nvcc"
+          cuda_missing=1
+        fi
+        if [ ! -f "$CUDA_PATH/include/cuda_runtime.h" ]; then
+          check_error "CUDA runtime headers are missing: $CUDA_PATH/include/cuda_runtime.h"
+          cuda_missing=1
+        fi
+        if [ ! -f "$CUDA_PATH/include/nv/target" ]; then
+          check_error "CUDA CCCL headers are missing: $CUDA_PATH/include/nv/target"
+          cuda_missing=1
+        fi
+        if [ ! -e "$CUDA_PATH/lib/libcudart.so" ]; then
+          check_error "CUDA runtime link library is missing: $CUDA_PATH/lib/libcudart.so"
+          cuda_missing=1
+        fi
+        if [ "$cuda_missing" -eq 0 ]; then
+          check_ok "CUDA native build surface present (nvcc, headers, libcudart)"
+        fi
+      fi
+    '';
   };
 }

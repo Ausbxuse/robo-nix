@@ -1,14 +1,20 @@
 use std::env;
 use std::ffi::OsString;
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::ExitCode;
+use std::process::{Command, ExitCode};
 
-use crate::{command_row, error, field, hint, label, section, status, Config, LabelKind};
+use crate::{
+    command_row, error, field, hint, label, output_with_spinner, section, status, Config, LabelKind,
+};
 
 use super::bootstrap::run_bootstrap;
 use super::cuda_compat::ensure_runtime_cuda_compat;
-use super::nix::{check_command, command_for_runtime, nix_command, run_status};
+use super::nix::{
+    check_command, command_for_runtime, exit_code, hint_native_cuda_link_failure, nix_command,
+    run_status, run_status_after_marker,
+};
 use super::python::ensure_python_version_files;
 
 pub(crate) fn ensure_project_runtime(config: Config) -> Result<(), ExitCode> {
@@ -46,6 +52,9 @@ pub(crate) fn run_project_activate(args: Vec<OsString>, config: Config) -> ExitC
     if let Err(code) = ensure_project_runtime(config) {
         return code;
     }
+    if let Err(code) = prepare_activation_env(config) {
+        return code;
+    }
 
     let launch = normalize_shell_args(args);
 
@@ -59,6 +68,42 @@ pub(crate) fn run_project_activate(args: Vec<OsString>, config: Config) -> ExitC
         command.env(name, value);
     }
     run_status(command.arg("develop").args(launch.args), config)
+}
+
+fn prepare_activation_env(config: Config) -> Result<(), ExitCode> {
+    let mut command = command_for_runtime(config);
+    command.arg("develop").arg("-c").arg("true");
+
+    if config.debug {
+        let status = run_status(&mut command, config);
+        if status == ExitCode::SUCCESS {
+            return Ok(());
+        }
+        return Err(status);
+    }
+
+    match output_with_spinner(config, &mut command, "preparing activation environment") {
+        Ok(output) if output.status.success() => Ok(()),
+        Ok(output) => {
+            error(config, "activation environment failed to build");
+            print_captured("stdout", &output.stdout);
+            print_captured("stderr", &output.stderr);
+            hint_native_cuda_link_failure(config, &output);
+            Err(exit_code(output.status.code()))
+        }
+        Err(err) => {
+            error(config, &format!("failed to start activation environment: {err}"));
+            Err(ExitCode::from(1))
+        }
+    }
+}
+
+fn print_captured(label: &str, bytes: &[u8]) {
+    if bytes.is_empty() {
+        return;
+    }
+    eprintln!("--- activation {label} ---");
+    eprint!("{}", String::from_utf8_lossy(bytes));
 }
 
 pub(crate) fn run_project_status(config: Config) -> ExitCode {
@@ -109,18 +154,80 @@ pub(crate) fn run_project_command(args: Vec<OsString>, config: Config) -> ExitCo
         args
     };
 
-    run_status(
+    run_marked_uv_command(args, config)
+}
+
+pub(crate) fn run_internal_exec(args: Vec<OsString>, config: Config) -> ExitCode {
+    if args.is_empty() {
+        error(config, "internal exec needs a command.");
+        return ExitCode::from(2);
+    }
+    let marker = env::var("ROBO_NIX_EXEC_MARKER").unwrap_or_default();
+    if !marker.is_empty() {
+        let _ = std::io::stdout().write_all(marker.as_bytes());
+        let _ = std::io::stderr().write_all(marker.as_bytes());
+        let _ = std::io::stdout().flush();
+        let _ = std::io::stderr().flush();
+    }
+
+    let mut command = Command::new(&args[0]);
+    command.args(&args[1..]);
+    exec_command(command)
+}
+
+#[cfg(unix)]
+fn exec_command(mut command: Command) -> ExitCode {
+    use std::os::unix::process::CommandExt;
+    let err = command.exec();
+    eprintln!("error: failed to exec command: {err}");
+    ExitCode::from(1)
+}
+
+#[cfg(not(unix))]
+fn exec_command(mut command: Command) -> ExitCode {
+    match command.status() {
+        Ok(status) => exit_code(status.code()),
+        Err(err) => {
+            eprintln!("error: failed to exec command: {err}");
+            ExitCode::from(1)
+        }
+    }
+}
+
+fn run_marked_uv_command(args: Vec<OsString>, config: Config) -> ExitCode {
+    let marker = format!("__ROBO_NIX_COMMAND_STARTED_{}__", std::process::id());
+    let Ok(current_exe) = env::current_exe() else {
+        return run_status(
+            command_for_runtime(config)
+                .arg("develop")
+                .arg("-c")
+                .arg("uv")
+                .arg("run")
+                .args(args),
+            config,
+        );
+    };
+
+    run_status_after_marker(
         command_for_runtime(config)
+            .env("ROBO_NIX_EXEC_MARKER", &marker)
             .arg("develop")
             .arg("-c")
+            .arg(current_exe)
+            .arg("__exec")
             .arg("uv")
             .arg("run")
             .args(args),
         config,
+        &marker,
     )
 }
 
-fn prepare_uv_runtime(config: Config, command_name: &str, cuda_strict: bool) -> Result<(), ExitCode> {
+fn prepare_uv_runtime(
+    config: Config,
+    command_name: &str,
+    cuda_strict: bool,
+) -> Result<(), ExitCode> {
     ensure_pyproject(config, command_name)?;
     ensure_python_version_files(config)?;
     prepare_runtime(config, cuda_strict)

@@ -8,8 +8,16 @@ use crate::runtime::{build_runtime_why, read_project_runtime, ProjectRuntime, Ru
 use crate::{
     combined_output, command_for_runtime, error, exact_python_requirement, ensure_project_runtime,
     field, inline, label, nix_command, quoted_value, run_bootstrap_with_progress, section, Config,
-    LabelKind, UiProgress,
+    LabelKind, UiProgress, UiSpinner,
 };
+
+const HOST_CUDA_DRIVER_LIBS: &[&str] = &[
+    "/run/opengl-driver/lib/libcuda.so.1",
+    "/usr/lib/x86_64-linux-gnu/libcuda.so.1",
+    "/usr/lib/x86_64-linux-gnu/nvidia/current/libcuda.so.1",
+    "/usr/lib/x86_64-linux-gnu/nvidia/libcuda.so.1",
+    "/usr/lib/wsl/lib/libcuda.so.1",
+];
 
 #[derive(Args)]
 pub(crate) struct CheckArgs {
@@ -27,12 +35,20 @@ pub(crate) struct CheckArgs {
 }
 
 pub(crate) fn run(args: CheckArgs, config: Config) -> ExitCode {
+    let mut preflight = (!args.json).then(|| UiSpinner::new(config, "loading runtime contract"));
     if let Err(code) = ensure_project_runtime(config) {
+        if let Some(progress) = &mut preflight {
+            progress.finish();
+        }
         return code;
     }
 
     let runtime = read_project_runtime();
     let why = build_runtime_why(&runtime);
+    if let Some(progress) = &mut preflight {
+        progress.finish();
+    }
+
     if args.why && args.json {
         match serde_json::to_string_pretty(&why) {
             Ok(text) => {
@@ -88,7 +104,7 @@ fn run_detailed(
     }
 
     if args.deep {
-        let mut progress = UiProgress::new(config, 4, "running deep checks");
+        let mut progress = UiProgress::new(config, 5, "running deep checks");
         check_runtime_preview(config, &mut warnings, Some(&mut progress));
         if let Err(code) = run_bootstrap_with_progress(config, &mut progress) {
             progress.finish();
@@ -96,6 +112,8 @@ fn run_detailed(
         }
         progress.step("checking runtime tools");
         progress.suspend(|| check_runtime_tools(config, &mut issues));
+        progress.step("checking CUDA native build surface");
+        progress.suspend(|| check_runtime_cuda_build_surface(config, &runtime, &mut issues));
         progress.step("checking Python runtime probes");
         progress.suspend(|| {
             check_runtime_probes(config, pyproject_lower.as_deref(), &mut warnings)
@@ -165,6 +183,7 @@ fn run_summary(
     runtime: ProjectRuntime,
     why: RuntimeWhy,
 ) -> ExitCode {
+    let mut progress = UiSpinner::new(config, "checking runtime status");
     let pyproject = fs::read_to_string("pyproject.toml").ok();
     let pyproject_lower = pyproject.as_deref().map(str::to_ascii_lowercase);
     let workspace =
@@ -284,9 +303,10 @@ fn run_summary(
         &mut ready,
         &mut attention,
     );
+    progress.finish();
 
     if args.deep {
-        let mut progress = UiProgress::new(config, 4, "running deep checks");
+        let mut progress = UiProgress::new(config, 5, "running deep checks");
         check_runtime_preview(config, &mut warnings, Some(&mut progress));
         if let Err(code) = run_bootstrap_with_progress(config, &mut progress) {
             progress.finish();
@@ -294,6 +314,8 @@ fn run_summary(
         }
         progress.step("checking runtime tools");
         progress.suspend(|| check_runtime_tools(config, &mut issues));
+        progress.step("checking CUDA native build surface");
+        progress.suspend(|| check_runtime_cuda_build_surface(config, &runtime, &mut issues));
         progress.step("checking Python runtime probes");
         progress.suspend(|| {
             check_runtime_probes(config, pyproject_lower.as_deref(), &mut warnings)
@@ -368,6 +390,16 @@ fn summarize_cuda_host(
         }
     }
 
+    if let Some(path) = host_cuda_driver_lib() {
+        ready.push(format!("CUDA driver library ({path})"));
+    } else {
+        *warnings += 1;
+        attention.push(
+            Attention::new("CUDA driver library not found in common host locations")
+                .detail("note: Nix provides the CUDA build toolkit, but libcuda.so.1 comes from the host driver"),
+        );
+    }
+
     if crate::runtime::cuda_root_from_env().is_none() {
         *warnings += 1;
         let mut item = Attention::new("CUDA toolkit not visible in this shell")
@@ -437,15 +469,23 @@ fn print_summary(
     };
     let status = if issues == 0 { "ok" } else { "error" };
     println!(
-        "  {}, {} warnings{}",
+        "  {}, {}{}",
         label(config, status, status_kind),
-        label(config, &warnings.to_string(), LabelKind::Warn),
+        count_label(config, warnings, "warning", LabelKind::Warn),
         if issues == 0 {
             String::new()
         } else {
-            format!(", {} issues", label(config, &issues.to_string(), LabelKind::Error))
+            format!(", {}", count_label(config, issues, "issue", LabelKind::Error))
         }
     );
+}
+
+fn count_label(config: Config, count: usize, noun: &str, kind: LabelKind) -> String {
+    let suffix = if count == 1 { "" } else { "s" };
+    format!(
+        "{} {noun}{suffix}",
+        label(config, &count.to_string(), kind)
+    )
 }
 
 fn summary_detail(config: Config, detail: &str) -> String {
@@ -717,6 +757,20 @@ fn check_cuda_host(
         }
     }
 
+    if let Some(path) = host_cuda_driver_lib() {
+        check_ok(config, &format!("CUDA driver library visible at {path}"));
+    } else {
+        check_warn(
+            config,
+            warnings,
+            "libcuda.so.1 was not found in common host driver locations",
+        );
+        check_hint(
+            config,
+            "Nix provides the CUDA build toolkit; libcuda.so.1 must come from the NVIDIA host driver",
+        );
+    }
+
     let expected_cuda_version = runtime
         .cuda_wheel_version
         .clone()
@@ -868,6 +922,89 @@ fn check_runtime_tools(config: Config, issues: &mut usize) {
     }
 }
 
+fn check_runtime_cuda_build_surface(
+    config: Config,
+    runtime: &ProjectRuntime,
+    issues: &mut usize,
+) {
+    if !runtime
+        .components
+        .iter()
+        .any(|component| component == "cuda-toolkit")
+    {
+        return;
+    }
+
+    let script = r#"
+root="${ROBO_NIX_CUDA_ROOT:-${CUDA_HOME:-${CUDA_PATH:-}}}"
+if [ -z "$root" ] || [ ! -d "$root" ]; then
+  printf 'CUDA_HOME/CUDA_PATH did not point at a toolkit\n'
+  exit 1
+fi
+
+missing=0
+for path in \
+  "$root/bin/nvcc" \
+  "$root/include/cuda_runtime.h" \
+  "$root/include/cuda_runtime_api.h" \
+  "$root/include/nv/target" \
+  "$root/lib/libcudart.so"
+do
+  if [ ! -e "$path" ]; then
+    printf 'missing %s\n' "$path"
+    missing=1
+  fi
+done
+
+case ":${LIBRARY_PATH:-}:" in
+  *":$root/lib:"*) ;;
+  *)
+    printf 'LIBRARY_PATH does not include %s/lib\n' "$root"
+    missing=1
+    ;;
+esac
+
+if [ "$missing" -ne 0 ]; then
+  exit 1
+fi
+
+printf 'root=%s\n' "$root"
+"#;
+
+    match runtime_output(config, "bash", ["-lc", script], []) {
+        Ok(output) if output.status.success() => {
+            let text = String::from_utf8_lossy(&output.stdout);
+            let root = text
+                .lines()
+                .find_map(|line| line.strip_prefix("root="))
+                .unwrap_or("runtime CUDA toolkit");
+            check_ok(
+                config,
+                &format!("CUDA native build surface is available at {root}"),
+            );
+        }
+        Ok(output) => {
+            check_error(config, issues, "CUDA native build surface is incomplete");
+            check_hint(
+                config,
+                "Nix owns nvcc, CUDA headers, CCCL headers, and the libcudart link surface for native extension builds",
+            );
+            check_hint(
+                config,
+                "uv owns PyTorch and nvidia-* CUDA runtime wheels such as cuBLAS, cuDNN, and NCCL",
+            );
+            check_hint(config, &combined_output(&output));
+        }
+        Err(err) => {
+            check_error(
+                config,
+                issues,
+                &format!("failed to probe CUDA native build surface: {err}"),
+            );
+        }
+    }
+}
+
 fn check_runtime_probes(config: Config, pyproject_lower: Option<&str>, warnings: &mut usize) {
     let Some(pyproject_lower) = pyproject_lower else {
         return;
@@ -984,6 +1121,13 @@ fn has_dependency(text: &str, names: &[&str]) -> bool {
     names
         .iter()
         .any(|name| text.contains(&format!("\"{name}")) || text.contains(&format!("'{name}")))
+}
+
+fn host_cuda_driver_lib() -> Option<&'static str> {
+    HOST_CUDA_DRIVER_LIBS
+        .iter()
+        .copied()
+        .find(|path| Path::new(path).is_file())
 }
 
 fn check_field(config: Config, message: &str) {

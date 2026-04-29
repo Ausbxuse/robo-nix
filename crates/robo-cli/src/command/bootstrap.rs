@@ -2,7 +2,7 @@ use std::process::{Command, ExitCode};
 
 use crate::{error, ok, output_with_spinner, status, Config, UiProgress};
 
-use super::nix::{exit_code, nix_command, run_status};
+use super::nix::{exit_code, hint_native_cuda_link_failure, nix_command, run_status};
 
 pub(crate) fn run_bootstrap(config: Config) -> Result<(), ExitCode> {
     let mut command = nix_command(config);
@@ -27,6 +27,7 @@ pub(crate) fn run_bootstrap(config: Config) -> Result<(), ExitCode> {
             error(config, "runtime bootstrap failed");
             print_captured("stdout", &output.stdout);
             print_captured("stderr", &output.stderr);
+            hint_native_cuda_link_failure(config, &output);
             Err(exit_code(output.status.code()))
         }
         Err(err) => {
@@ -62,6 +63,7 @@ pub(crate) fn run_bootstrap_with_progress(
             error(config, "runtime bootstrap failed");
             print_captured("stdout", &output.stdout);
             print_captured("stderr", &output.stderr);
+            hint_native_cuda_link_failure(config, &output);
             Err(exit_code(output.status.code()))
         }
         Err(err) => {
