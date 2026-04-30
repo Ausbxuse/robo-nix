@@ -3,6 +3,10 @@
 # project-specific uv groups, extras, source pins, package indexes, or install
 # modes here. `note` is shown to users by `robo init`, so write it as concise
 # product text, not internal commentary.
+#
+# CUDA wheel ABI requirements are inferred from uv.lock by the CLI. Do not add
+# cuda-toolkit just because a wheel is CUDA-enabled; reserve cuda-toolkit for
+# native CUDA extension build/link support.
 {
   defaultProfile = "minimal";
 
@@ -93,12 +97,14 @@
         "cupy"
         "cupy-cuda11x"
         "cupy-cuda12x"
+        "deepspeed"
         "flash-attn"
+        "nvidia-curobo"
         "pytorch3d"
         "torch3d"
       ];
       components = ["cuda-toolkit"];
-      note = "CUDA Python packages and CUDA extension builds need host CUDA integration";
+      note = "CUDA extension packages need CUDA compiler, headers, and link support";
     }
     {
       dependencies = ["isaacsim"];
@@ -171,4 +177,41 @@
       note = "bootstrap script references Linux headers";
     }
   ];
+
+  cudaMarkerScan = {
+    maxDepth = 6;
+    maxFiles = 2000;
+    sourceExtensions = [
+      "cu"
+      "cuh"
+    ];
+    buildFiles = [
+      "pyproject.toml"
+      "setup.cfg"
+      "setup.py"
+      "CMakeLists.txt"
+      "Makefile"
+      "makefile"
+    ];
+    textContains = [
+      "cudaextension"
+      "cuda_extension"
+      "cudatoolkit"
+      "nvcc"
+    ];
+    skipNames = [
+      ".git"
+      ".hg"
+      ".mypy_cache"
+      ".nox"
+      ".pytest_cache"
+      ".robo-nix"
+      ".tox"
+      ".venv"
+      "__pycache__"
+      "node_modules"
+    ];
+    component = "cuda-toolkit";
+    note = "workspace contains CUDA extension markers";
+  };
 }

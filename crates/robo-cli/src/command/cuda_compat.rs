@@ -1,4 +1,3 @@
-use std::path::Path;
 use std::process::ExitCode;
 
 use crate::{error, hint, ok, warn, Config};
@@ -7,30 +6,12 @@ use super::nix::command_for_runtime;
 
 pub(super) fn ensure_runtime_cuda_compat(config: Config, strict: bool) -> Result<(), ExitCode> {
     let runtime = crate::runtime::read_project_runtime();
-    if !runtime
-        .components
-        .iter()
-        .any(|component| component == "cuda-toolkit")
-    {
-        return Ok(());
-    }
-
     let expected_version = runtime
         .cuda_wheel_version
         .clone()
         .or_else(crate::runtime::infer_cuda_wheel_version_from_uv_lock);
+    let has_cuda_toolkit = runtime.components.iter().any(|item| item == "cuda-toolkit");
     let Some(expected_version) = expected_version else {
-        if Path::new("uv.lock").exists() {
-            hint(
-                config,
-                "robo.nix does not contain `cudaWheelVersion`; run `robo init . --force` to regenerate metadata.",
-            );
-        } else {
-            hint(
-                config,
-                "create/update uv.lock so robo can infer CUDA runtime expectations.",
-            );
-        }
         return Ok(());
     };
 
@@ -59,7 +40,7 @@ pub(super) fn ensure_runtime_cuda_compat(config: Config, strict: bool) -> Result
             }
         }
         None => {
-            let message = "could not detect host NVIDIA driver CUDA support with nvidia-smi";
+            let message = "could not detect host NVIDIA driver CUDA support";
             if strict {
                 error(config, message);
             } else {
@@ -75,6 +56,32 @@ pub(super) fn ensure_runtime_cuda_compat(config: Config, strict: bool) -> Result
                 Ok(())
             };
         }
+    }
+
+    if crate::runtime::find_host_libcuda().is_none() {
+        let message = "libcuda.so.1 is not visible to the runtime loader";
+        if strict {
+            error(config, message);
+        } else {
+            warn(config, message);
+        }
+        hint(
+            config,
+            "Nix provides CUDA build tooling; libcuda.so.1 must come from the host NVIDIA driver.",
+        );
+        return if strict {
+            Err(ExitCode::from(1))
+        } else {
+            Ok(())
+        };
+    }
+
+    if !has_cuda_toolkit {
+        ok(
+            config,
+            &format!("CUDA host compatibility check passed ({expected_version})"),
+        );
+        return Ok(());
     }
 
     let Some((root, actual_version)) = probe_runtime_cuda(config) else {

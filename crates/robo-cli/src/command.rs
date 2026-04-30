@@ -11,4 +11,4 @@ pub(crate) use project::{
     run_project_app, run_project_command, run_project_deactivate, run_project_hook,
     run_project_status,
 };
-pub(crate) use python::{exact_python_requirement, quoted_value};
+pub(crate) use python::quoted_value;

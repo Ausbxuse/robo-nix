@@ -64,9 +64,7 @@
       + "\n"
       + common.prependPath "LIBRARY_PATH" "$CUDA_PATH/lib"
       + "\n"
-      + common.prependPath "LD_LIBRARY_PATH" "$CUDA_PATH/lib"
-      + "\n"
-      + common.prependPath "LD_LIBRARY_PATH" "/run/opengl-driver/lib";
+      + common.prependPath "LD_LIBRARY_PATH" "$CUDA_PATH/lib";
     supportedSystems = common.x86LinuxSystems;
     gpuRequired = true;
     check = common.mkComponentCheck "cuda-toolkit" [];

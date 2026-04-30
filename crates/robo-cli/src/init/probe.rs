@@ -1,8 +1,8 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::Path;
 
-use super::manifest::{Manifest, ScriptDiscovery};
+use super::manifest::{CudaMarkerScan, Manifest, ScriptDiscovery};
 
 // Flat facts from project probing. Keep policy decisions in spec/pipeline, not here.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -80,39 +80,27 @@ fn probe_cuda_lock_version(target: &Path, probe: &mut ProbeResult) {
 }
 
 fn probe_pyproject_name(text: &str, probe: &mut ProbeResult) {
-    for line in text.lines() {
-        let line = line.trim();
-        if let Some(value) = line.strip_prefix("name") {
-            if let Some(name) = crate::quoted_value(value) {
-                probe.env_name = Some(name.to_string());
-                return;
-            }
-        }
+    if let Some(name) = crate::pyproject::project_name(text) {
+        probe.env_name = Some(name);
     }
 }
 
 fn probe_python_version(text: &str, probe: &mut ProbeResult) {
     if let Some(version) = crate::exact_python_requirement(text) {
         probe.python_version = Some(ProbeValue {
-            value: version.to_string(),
+            value: version.clone(),
             note: format!("python {version}: pyproject.toml requires-python"),
         });
         return;
     }
 
-    for line in text.lines() {
-        let line = line.trim();
-        if let Some(value) = line.strip_prefix("requires-python") {
-            if let Some(raw) = crate::quoted_value(value) {
-                if let Some(version) = infer_python_version(raw) {
-                    probe.python_version = Some(ProbeValue {
-                        value: version.to_string(),
-                        note: format!("python {version}: pyproject.toml requires-python"),
-                    });
-                    return;
-                }
-            }
-        }
+    if let Some(raw) = crate::pyproject::python_requirement(text)
+        && let Some(version) = infer_python_version(&raw)
+    {
+        probe.python_version = Some(ProbeValue {
+            value: version.to_string(),
+            note: format!("python {version}: pyproject.toml requires-python"),
+        });
     }
 }
 
@@ -155,7 +143,7 @@ fn infer_python_version(raw: &str) -> Option<&str> {
 }
 
 fn probe_dependencies(text: &str, manifest: &Manifest, probe: &mut ProbeResult) {
-    let deps = text.to_ascii_lowercase();
+    let deps = crate::pyproject::dependency_names(text);
     for rule in &manifest.runtime_inference.dependency_rules {
         if has_dep(&deps, &rule.dependencies) {
             for component in &rule.components {
@@ -168,14 +156,10 @@ fn probe_dependencies(text: &str, manifest: &Manifest, probe: &mut ProbeResult) 
 fn probe_workspace(target: &Path, manifest: &Manifest, probe: &mut ProbeResult) {
     probe_workspace_directories(target, manifest, probe);
     probe_workspace_scripts(target, manifest, probe);
-    probe_workspace_cuda_markers(target, probe);
+    probe_workspace_cuda_markers(target, &manifest.runtime_inference.cuda_marker_scan, probe);
 }
 
-fn probe_workspace_directories(
-    target: &Path,
-    manifest: &Manifest,
-    probe: &mut ProbeResult,
-) {
+fn probe_workspace_directories(target: &Path, manifest: &Manifest, probe: &mut ProbeResult) {
     for rule in &manifest.runtime_inference.workspace_directory_rules {
         if let Ok(entries) = fs::read_dir(target.join(&rule.root)) {
             for entry in entries.flatten() {
@@ -224,19 +208,25 @@ fn probe_workspace_scripts(target: &Path, manifest: &Manifest, probe: &mut Probe
     }
 }
 
-fn probe_workspace_cuda_markers(target: &Path, probe: &mut ProbeResult) {
-    let mut remaining = 2000usize;
-    if let Some(evidence) = find_cuda_marker(target, target, 0, &mut remaining) {
+fn probe_workspace_cuda_markers(target: &Path, scan: &CudaMarkerScan, probe: &mut ProbeResult) {
+    let mut remaining = scan.max_files;
+    if let Some(evidence) = find_cuda_marker(target, target, scan, 0, &mut remaining) {
         probe.component_suggestions.push(ProbeComponentSuggestion {
-            name: "cuda-toolkit".to_string(),
+            name: scan.component.clone(),
             evidence,
-            reason: "workspace contains CUDA extension markers".to_string(),
+            reason: scan.note.clone(),
         });
     }
 }
 
-fn find_cuda_marker(root: &Path, path: &Path, depth: usize, remaining: &mut usize) -> Option<String> {
-    if depth > 6 || *remaining == 0 {
+fn find_cuda_marker(
+    root: &Path,
+    path: &Path,
+    scan: &CudaMarkerScan,
+    depth: usize,
+    remaining: &mut usize,
+) -> Option<String> {
+    if depth > scan.max_depth || *remaining == 0 {
         return None;
     }
     let entries = fs::read_dir(path).ok()?;
@@ -246,14 +236,15 @@ fn find_cuda_marker(root: &Path, path: &Path, depth: usize, remaining: &mut usiz
         }
         let entry_path = entry.path();
         let name = entry.file_name().to_string_lossy().to_string();
-        if should_skip_probe_path(&name) {
+        if scan.skip_names.iter().any(|item| item == &name) {
             continue;
         }
         let Ok(file_type) = entry.file_type() else {
             continue;
         };
         if file_type.is_dir() {
-            if let Some(evidence) = find_cuda_marker(root, &entry_path, depth + 1, remaining) {
+            if let Some(evidence) = find_cuda_marker(root, &entry_path, scan, depth + 1, remaining)
+            {
                 return Some(evidence);
             }
         } else if file_type.is_file() {
@@ -263,20 +254,19 @@ fn find_cuda_marker(root: &Path, path: &Path, depth: usize, remaining: &mut usiz
                 .unwrap_or(&entry_path)
                 .display()
                 .to_string();
-            if matches!(
-                entry_path.extension().and_then(|extension| extension.to_str()),
-                Some("cu" | "cuh")
-            ) {
+            if entry_path
+                .extension()
+                .and_then(|extension| extension.to_str())
+                .is_some_and(|extension| {
+                    scan.source_extensions.iter().any(|item| item == extension)
+                })
+            {
                 return Some(format!("{relative}: CUDA source file"));
             }
-            if likely_cuda_build_file(&name) {
+            if scan.build_files.iter().any(|item| item == &name) {
                 if let Ok(text) = fs::read_to_string(&entry_path) {
                     let lower = text.to_ascii_lowercase();
-                    if lower.contains("cudaextension")
-                        || lower.contains("cuda_extension")
-                        || lower.contains("cudatoolkit")
-                        || lower.contains("nvcc")
-                    {
+                    if contains_any(&lower, &scan.text_contains) {
                         return Some(format!("{relative}: CUDA build marker"));
                     }
                 }
@@ -284,29 +274,6 @@ fn find_cuda_marker(root: &Path, path: &Path, depth: usize, remaining: &mut usiz
         }
     }
     None
-}
-
-fn should_skip_probe_path(name: &str) -> bool {
-    matches!(
-        name,
-        ".git"
-            | ".hg"
-            | ".mypy_cache"
-            | ".nox"
-            | ".pytest_cache"
-            | ".robo-nix"
-            | ".tox"
-            | ".venv"
-            | "__pycache__"
-            | "node_modules"
-    )
-}
-
-fn likely_cuda_build_file(name: &str) -> bool {
-    matches!(
-        name,
-        "pyproject.toml" | "setup.cfg" | "setup.py" | "CMakeLists.txt" | "Makefile" | "makefile"
-    )
 }
 
 fn probe_script_rules(text: &str, manifest: &Manifest, probe: &mut ProbeResult) {
@@ -376,7 +343,10 @@ fn probe_script_paths(text: &str, discovery: &ScriptDiscovery, probe: &mut Probe
 
 fn is_discovered_script(name: &str, discovery: &ScriptDiscovery) -> bool {
     discovery.names.iter().any(|item| item == name)
-        || discovery.prefixes.iter().any(|prefix| name.starts_with(prefix))
+        || discovery
+            .prefixes
+            .iter()
+            .any(|prefix| name.starts_with(prefix))
 }
 
 fn looks_like_daemon(text: &str, discovery: &ScriptDiscovery) -> bool {
@@ -386,10 +356,8 @@ fn looks_like_daemon(text: &str, discovery: &ScriptDiscovery) -> bool {
         .any(|pattern| text.contains(pattern))
 }
 
-fn has_dep(text: &str, names: &[String]) -> bool {
-    names
-        .iter()
-        .any(|name| text.contains(&format!("\"{name}")) || text.contains(&format!("'{name}")))
+fn has_dep(dependencies: &BTreeSet<String>, names: &[String]) -> bool {
+    crate::pyproject::has_dependency_name(dependencies, names.iter().map(String::as_str))
 }
 
 fn contains_any(text: &str, patterns: &[String]) -> bool {

@@ -1,11 +1,11 @@
 use std::env;
 use std::path::PathBuf;
 
-use super::manifest::{validate, Manifest};
+use super::InitArgs;
+use super::manifest::{Manifest, validate};
 use super::probe::probe_project;
 use super::render::{render_flake, render_project};
-use super::spec::{dedupe_all, parse_list, push_unique, ComponentProvenance, ProjectSpec};
-use super::InitArgs;
+use super::spec::{ComponentProvenance, ProjectSpec, dedupe_all, parse_list, push_unique};
 
 // Keep init as a flat pipeline. Add new inference coverage in metadata/probe code,
 // then apply it here; do not turn this into a builder framework.
@@ -130,7 +130,8 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::super::manifest::{
-        Component, DependencyRule, Manifest, Profile, RuntimeInference, ScriptDiscovery, ScriptRule,
+        Component, CudaMarkerScan, DependencyRule, Manifest, Profile, RuntimeInference,
+        ScriptDiscovery, ScriptRule,
     };
     use super::*;
 
@@ -175,7 +176,13 @@ dependencies = ["opencv-python"]
         assert_eq!(draft.spec.env_name, "manual-name");
         assert_eq!(draft.spec.python_version, "3.11");
         assert!(draft.spec.components.iter().any(|item| item == "graphics"));
-        assert!(draft.spec.components.iter().any(|item| item == "cuda-toolkit"));
+        assert!(
+            draft
+                .spec
+                .components
+                .iter()
+                .any(|item| item == "cuda-toolkit")
+        );
 
         fs::remove_dir_all(target).unwrap();
     }
@@ -228,6 +235,16 @@ dependencies = ["opencv-python"]
                     path_root: "third_party".to_string(),
                 },
                 script_rules: Vec::<ScriptRule>::new(),
+                cuda_marker_scan: CudaMarkerScan {
+                    max_depth: 0,
+                    max_files: 0,
+                    source_extensions: Vec::new(),
+                    build_files: Vec::new(),
+                    text_contains: Vec::new(),
+                    skip_names: Vec::new(),
+                    component: "core".to_string(),
+                    note: "CUDA marker scan disabled".to_string(),
+                },
             },
         }
     }

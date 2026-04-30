@@ -1,6 +1,6 @@
 use anstyle::AnsiColor;
 use clap::{Args, CommandFactory, Parser, Subcommand};
-use clap_complete::{generate, Shell};
+use clap_complete::{Shell, generate};
 use std::env;
 use std::ffi::OsString;
 use std::io::IsTerminal;
@@ -10,7 +10,8 @@ use crate::command::{
     run_internal_activate_env, run_internal_exec, run_project_activate, run_project_app,
     run_project_command, run_project_deactivate, run_project_hook, run_project_status,
 };
-use crate::{check, contract, cuda, error, init, label, Config, LabelKind};
+use crate::shell::{SUPPORTED_INTERACTIVE_SHELLS, requested_shell_name};
+use crate::{Config, LabelKind, check, contract, cuda, error, init, label};
 
 #[derive(Parser)]
 #[command(
@@ -109,7 +110,10 @@ struct CompletionArgs {
 
 #[derive(Args)]
 struct HookArgs {
-    #[arg(value_name = "SHELL", help = "Shell to print a hook for: bash, zsh, fish")]
+    #[arg(
+        value_name = "SHELL",
+        help = "Shell to print a hook for: bash, zsh, fish"
+    )]
     shell: Option<OsString>,
 }
 
@@ -123,7 +127,7 @@ pub(crate) fn run() -> ExitCode {
     let color = !cli.no_color
         && env::var_os("NO_COLOR").is_none()
         && (std::io::stdout().is_terminal() || std::io::stderr().is_terminal());
-    let config = Config {color, debug};
+    let config = Config { color, debug };
     console::set_colors_enabled(config.color);
     console::set_colors_enabled_stderr(config.color);
 
@@ -165,8 +169,16 @@ fn print_help(config: Config) -> ExitCode {
     }
     println!("\n");
     help_section(config, "common workflows");
-    help_row(config, "robo init .", "write robo.nix, flake.nix, and .python-version");
-    help_row(config, "robo check", "verify the runtime contract and host prerequisites");
+    help_row(
+        config,
+        "robo init .",
+        "write robo.nix, flake.nix, and .python-version",
+    );
+    help_row(
+        config,
+        "robo check",
+        "verify the runtime contract and host prerequisites",
+    );
     help_row(config, "robo activate", "enter an activated runtime shell");
     help_row(config, "uv sync", "sync Python packages with uv");
 
@@ -235,16 +247,7 @@ fn print_completions(args: Vec<OsString>, config: Config) -> ExitCode {
 }
 
 fn completion_shell(shell: Option<&OsString>) -> Result<Shell, String> {
-    let shell = match shell {
-        Some(shell) => shell.to_string_lossy().into_owned(),
-        None => match env::var("SHELL") {
-            Ok(shell) if shell.ends_with("bash") => "bash".to_string(),
-            Ok(shell) if shell.ends_with("zsh") => "zsh".to_string(),
-            Ok(shell) if shell.ends_with("fish") => "fish".to_string(),
-            _ => return Err("robo completion needs a shell name when SHELL is unknown.".to_string()),
-        },
-    };
-
+    let shell = requested_shell_name(shell, "robo completion")?;
     match shell.as_str() {
         "bash" => Ok(Shell::Bash),
         "zsh" => Ok(Shell::Zsh),
@@ -255,6 +258,9 @@ fn completion_shell(shell: Option<&OsString>) -> Result<Shell, String> {
 
 fn completion_error(config: Config, message: &str) -> ExitCode {
     error(config, message);
-    crate::hint(config, "supported shells: bash, zsh, fish");
+    crate::hint(
+        config,
+        &format!("supported shells: {SUPPORTED_INTERACTIVE_SHELLS}"),
+    );
     ExitCode::from(2)
 }

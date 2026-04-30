@@ -4,8 +4,11 @@
     pkgs,
     system,
     ...
-  }: {
+  }: let
+    certFile = "${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt";
+  in {
     packages = [
+      pkgs.cacert
       pkgs.git
       pkgs.just
       pkgs.ripgrep
@@ -14,6 +17,11 @@
     shellInit = common.exportVars {
       ROBO_NIX_SYSTEM = system;
       ROBO_NIX_PYTHON_VERSION = envSpec.pythonVersion;
+      SSL_CERT_FILE = certFile;
+      NIX_SSL_CERT_FILE = certFile;
+      REQUESTS_CA_BUNDLE = certFile;
+      CURL_CA_BUNDLE = certFile;
+      GIT_SSL_CAINFO = certFile;
     };
   };
 
@@ -73,19 +81,10 @@
   };
 
   isaac-sim = _: {
-    # TODO(robo): keep this as a workspace hook until common Isaac packaging
-    # behavior is proven across real downstream projects.
-    shellInit =
-      common.exportVars {
-        ISAAC_SIM_ROOT = "$WORKSPACE_ROOT/third_party/isaac-sim";
-        OMNI_KIT_ROOT = "$ISAAC_SIM_ROOT";
-      }
-      + "\n"
-      + common.exportDefaults {
-        OMNI_KIT_ACCEPT_EULA = "Y";
-      };
-    requiredDirectories = ["third_party/isaac-sim"];
+    shellInit = common.exportDefaults {
+      OMNI_KIT_ACCEPT_EULA = "Y";
+    };
     supportedSystems = common.x86LinuxSystems;
-    check = common.mkComponentCheck "isaac-sim" ["required_dir=third_party/isaac-sim"];
+    check = common.mkComponentCheck "isaac-sim" [];
   };
 }

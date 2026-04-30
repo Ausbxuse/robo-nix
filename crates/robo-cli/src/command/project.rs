@@ -7,9 +7,10 @@ use std::process::{Command, ExitCode, Stdio};
 
 use console::measure_text_width;
 
-use crate::{
-    error, field, hint, label, output_with_spinner, section, status, Config, LabelKind,
+use crate::shell::{
+    SUPPORTED_INTERACTIVE_SHELLS, requested_shell_name, supports_interactive_shell,
 };
+use crate::{Config, LabelKind, error, field, hint, label, output_with_spinner, section, status};
 
 use super::bootstrap::run_bootstrap;
 use super::cuda_compat::ensure_runtime_cuda_compat;
@@ -18,6 +19,21 @@ use super::nix::{
     run_status, run_status_after_marker,
 };
 use super::python::ensure_python_version_files;
+
+const HOOK_STATE_VARS: &[&str] = &[
+    "PATH",
+    "LD_LIBRARY_PATH",
+    "LIBRARY_PATH",
+    "CPATH",
+    "CUDA_HOME",
+    "CUDA_PATH",
+    "XDG_DATA_DIRS",
+    "SHELL",
+];
+
+const ACTIVATION_ENV_CAPTURE_SCRIPT: &str = "source /dev/stdin >/dev/null; \
+     if [ -n \"${shellHook:-}\" ]; then eval \"$shellHook\" >/dev/null; fi; \
+     env -0";
 
 pub(crate) fn ensure_project_runtime(config: Config) -> Result<(), ExitCode> {
     if !Path::new("flake.nix").exists() || !Path::new("robo.nix").exists() {
@@ -51,56 +67,27 @@ pub(crate) fn run_project_app(mode: Option<&str>, args: Vec<OsString>, config: C
 }
 
 pub(crate) fn run_project_activate(args: Vec<OsString>, config: Config) -> ExitCode {
-    if let Err(code) = ensure_project_runtime(config) {
-        return code;
+    let state = RuntimeState::read();
+    if state.active {
+        print_already_active(config, &state);
+        return ExitCode::SUCCESS;
     }
-    if let Err(code) = prepare_activation_env(config) {
+
+    if let Err(code) = ensure_project_runtime(config) {
         return code;
     }
 
     let show_card = args.is_empty();
     let launch = normalize_shell_args(args);
+    let env = match load_activation_env(config, "preparing activation environment") {
+        Ok(env) => env,
+        Err(code) => return code,
+    };
     if show_card {
         print_activation_card(config);
     }
 
-    let mut command = command_for_runtime(config);
-    command.env("ROBO_NIX_ACTIVATE", "1");
-    if let Ok(current_exe) = env::current_exe() {
-        command.env("ROBO_NIX_ROBO_BIN", current_exe);
-    }
-    for (name, value) in launch.env {
-        command.env(name, value);
-    }
-    run_status(command.arg("develop").args(launch.args), config)
-}
-
-fn prepare_activation_env(config: Config) -> Result<(), ExitCode> {
-    let mut command = command_for_runtime(config);
-    command.arg("develop").arg("-c").arg("true");
-
-    if config.debug {
-        let status = run_status(&mut command, config);
-        if status == ExitCode::SUCCESS {
-            return Ok(());
-        }
-        return Err(status);
-    }
-
-    match output_with_spinner(config, &mut command, "preparing activation environment") {
-        Ok(output) if output.status.success() => Ok(()),
-        Ok(output) => {
-            error(config, "activation environment failed to build");
-            print_captured("stdout", &output.stdout);
-            print_captured("stderr", &output.stderr);
-            hint_native_cuda_link_failure(config, &output);
-            Err(exit_code(output.status.code()))
-        }
-        Err(err) => {
-            error(config, &format!("failed to start activation environment: {err}"));
-            Err(ExitCode::from(1))
-        }
-    }
+    run_activation_shell(launch, env, config)
 }
 
 fn print_captured(label: &str, bytes: &[u8]) {
@@ -116,53 +103,24 @@ fn print_activation_card(config: Config) {
     let system = nix_system_name();
     let workspace = shorten_middle(&home_tilde(&state.workspace), 62);
 
-    let field = |name: &str, value: &str| {
-        (
-            format!("{name:<7} {value}"),
-            format!(
-                "{} {}",
-                label(config, &format!("{name:<7}"), LabelKind::Hint),
-                label(config, value, LabelKind::Status)
-            ),
-        )
-    };
-    let field_pair = |left_name: &str, left_value: &str, right_name: &str, right_value: &str| {
-        (
-            format!("{left_name:<7} {left_value:<8}  {right_name} {right_value}"),
-            format!(
-                "{} {}  {} {}",
-                label(config, &format!("{left_name:<7}"), LabelKind::Hint),
-                label(config, &format!("{left_value:<8}"), LabelKind::Status),
-                label(config, right_name, LabelKind::Hint),
-                label(config, right_value, LabelKind::Status)
-            ),
-        )
-    };
-    let action = |command: &str, description: &str| {
-        (
-            format!("  {command:<9} {description}"),
-            format!(
-                "  {} {}",
-                label(config, &format!("{command:<9}"), LabelKind::Command),
-                label(config, description, LabelKind::Hint)
-            ),
-        )
-    };
-
     let rows = [
         (
             format!("{} runtime", state.env_name),
-            label(config, &format!("{} runtime", state.env_name), LabelKind::Status),
+            label(
+                config,
+                &format!("{} runtime", state.env_name),
+                LabelKind::Status,
+            ),
         ),
-        field_pair("python", &state.python_version, "system", system),
-        field("path", &workspace),
+        card_field_pair(config, "python", &state.python_version, "system", system),
+        card_field(config, "path", &workspace),
         (String::new(), String::new()),
         (
             "commands".to_string(),
             label(config, "commands", LabelKind::Hint),
         ),
-        action("uv sync", "sync Python packages from uv.lock"),
-        action("exit", "leave this runtime shell"),
+        card_action(config, "uv sync", "sync Python packages from uv.lock"),
+        card_action(config, "exit", "leave this runtime shell"),
     ];
     let row_width = rows
         .iter()
@@ -170,12 +128,11 @@ fn print_activation_card(config: Config) {
         .max()
         .unwrap_or(0);
     let inner_width = row_width + 2;
-    let (top_left, horizontal, top_right, vertical, bottom_left, bottom_right) =
-        if config.color {
-            ("╭", "─", "╮", "│", "╰", "╯")
-        } else {
-            ("+", "-", "+", "|", "+", "+")
-        };
+    let (top_left, horizontal, top_right, vertical, bottom_left, bottom_right) = if config.color {
+        ("╭", "─", "╮", "│", "╰", "╯")
+    } else {
+        ("+", "-", "+", "|", "+", "+")
+    };
 
     println!(
         "{}{}{}",
@@ -202,6 +159,47 @@ fn print_activation_card(config: Config) {
     );
 }
 
+fn card_field(config: Config, name: &str, value: &str) -> (String, String) {
+    (
+        format!("{name:<7} {value}"),
+        format!(
+            "{} {}",
+            label(config, &format!("{name:<7}"), LabelKind::Hint),
+            label(config, value, LabelKind::Status)
+        ),
+    )
+}
+
+fn card_field_pair(
+    config: Config,
+    left_name: &str,
+    left_value: &str,
+    right_name: &str,
+    right_value: &str,
+) -> (String, String) {
+    (
+        format!("{left_name:<7} {left_value:<8}  {right_name} {right_value}"),
+        format!(
+            "{} {}  {} {}",
+            label(config, &format!("{left_name:<7}"), LabelKind::Hint),
+            label(config, &format!("{left_value:<8}"), LabelKind::Status),
+            label(config, right_name, LabelKind::Hint),
+            label(config, right_value, LabelKind::Status)
+        ),
+    )
+}
+
+fn card_action(config: Config, command: &str, description: &str) -> (String, String) {
+    (
+        format!("  {command:<9} {description}"),
+        format!(
+            "  {} {}",
+            label(config, &format!("{command:<9}"), LabelKind::Command),
+            label(config, description, LabelKind::Hint)
+        ),
+    )
+}
+
 fn home_tilde(value: &str) -> String {
     let Ok(home) = env::var("HOME") else {
         return value.to_string();
@@ -221,10 +219,7 @@ fn shorten_middle(value: &str, max_len: usize) -> String {
     }
 
     let keep = max_len.saturating_sub(3);
-    let tail: String = value
-        .chars()
-        .skip(len.saturating_sub(keep))
-        .collect();
+    let tail: String = value.chars().skip(len.saturating_sub(keep)).collect();
     format!("...{tail}")
 }
 
@@ -239,7 +234,10 @@ pub(crate) fn run_project_hook(args: Vec<OsString>, config: Config) -> ExitCode 
         Ok(shell) => shell,
         Err(message) => {
             error(config, &message);
-            hint(config, "supported hooks: bash, zsh, fish");
+            hint(
+                config,
+                &format!("supported hooks: {SUPPORTED_INTERACTIVE_SHELLS}"),
+            );
             return ExitCode::from(2);
         }
     };
@@ -261,23 +259,25 @@ pub(crate) fn run_internal_activate_env(config: Config) -> ExitCode {
         return code;
     }
 
+    let env = match load_activation_env(config, "loading activation environment") {
+        Ok(env) => env,
+        Err(code) => return code,
+    };
+    print_exports(&env);
+    ExitCode::SUCCESS
+}
+
+fn load_activation_env(config: Config, message: &str) -> Result<Vec<(String, String)>, ExitCode> {
     let mut command = command_for_runtime(config);
     command.arg("print-dev-env").arg(".#default");
-    let output = if config.debug {
-        match command.output() {
-            Ok(output) => output,
-            Err(err) => {
-                error(config, &format!("failed to load activation environment: {err}"));
-                return ExitCode::from(1);
-            }
-        }
-    } else {
-        match output_with_spinner(config, &mut command, "loading activation environment") {
-            Ok(output) => output,
-            Err(err) => {
-                error(config, &format!("failed to load activation environment: {err}"));
-                return ExitCode::from(1);
-            }
+    let output = match output_with_spinner(config, &mut command, message) {
+        Ok(output) => output,
+        Err(err) => {
+            error(
+                config,
+                &format!("failed to load activation environment: {err}"),
+            );
+            return Err(ExitCode::from(1));
         }
     };
 
@@ -286,21 +286,69 @@ pub(crate) fn run_internal_activate_env(config: Config) -> ExitCode {
         print_captured("stdout", &output.stdout);
         print_captured("stderr", &output.stderr);
         hint_native_cuda_link_failure(config, &output);
-        return exit_code(output.status.code());
+        return Err(exit_code(output.status.code()));
     }
 
-    let env = match activation_env_exports(&output.stdout) {
+    let mut env = match activation_env_exports(&output.stdout) {
         Ok(env) => env,
         Err(message) => {
             error(config, &message);
+            return Err(ExitCode::from(1));
+        }
+    };
+    append_activation_state(&mut env);
+    Ok(env)
+}
+
+fn run_activation_shell(
+    launch: ShellLaunch,
+    env: Vec<(String, String)>,
+    config: Config,
+) -> ExitCode {
+    let mut command = match command_from_launch_args(launch.args) {
+        Ok(command) => command,
+        Err(message) => {
+            error(config, &message);
+            hint(
+                config,
+                "set ROBO_NIX_SHELL to the shell you want robo to launch.",
+            );
             return ExitCode::from(1);
         }
     };
     for (name, value) in env {
+        command.env(name, value);
+    }
+    for (name, value) in launch.env {
+        command.env(name, value);
+    }
+    exec_command(command)
+}
+
+fn command_from_launch_args(args: Vec<OsString>) -> Result<Command, String> {
+    let mut args = args.into_iter();
+    let Some(first) = args.next() else {
+        return Err("could not determine an interactive shell to launch.".to_string());
+    };
+
+    let (program, args): (OsString, Vec<_>) = if first == "-c" {
+        let Some(program) = args.next() else {
+            return Err("activation command is missing a program after -c.".to_string());
+        };
+        (program, args.collect())
+    } else {
+        (first, args.collect())
+    };
+
+    let mut command = Command::new(program);
+    command.args(args);
+    Ok(command)
+}
+
+fn print_exports(env: &[(String, String)]) {
+    for (name, value) in env {
         println!("export {name}={}", shell_quote(&value));
     }
-    print_activation_env_exports();
-    ExitCode::SUCCESS
 }
 
 pub(crate) fn run_project_deactivate(config: Config) -> ExitCode {
@@ -317,32 +365,54 @@ pub(crate) fn run_project_deactivate(config: Config) -> ExitCode {
             )
         );
     } else {
-        println!("{} not activated\n", label(config, "robo:", LabelKind::Status));
         section(config, "status");
-        println!("  {}", label(config, "ok", LabelKind::Ok));
+        println!("  {}", label(config, "inactive", LabelKind::Hint));
+        println!();
+        section(config, "action");
+        action_row(config, "robo activate", "enter the Nix runtime shell");
     }
     ExitCode::SUCCESS
 }
 
-fn print_activation_env_exports() {
+fn append_activation_state(envs: &mut Vec<(String, String)>) {
     let state = RuntimeState::read();
-    println!();
-    println!("# robo activation");
-    println!("export ROBO_NIX_ACTIVE=1");
-    println!("export ROBO_NIX_ENV_NAME={}", shell_quote(&state.env_name));
-    println!(
-        "export ROBO_NIX_PYTHON_VERSION={}",
-        shell_quote(&state.python_version)
+    set_activation_env(envs, "ROBO_NIX_ACTIVE", "1".to_string());
+    set_activation_env(envs, "ROBO_NIX_ENV_NAME", state.env_name.clone());
+    set_activation_env(
+        envs,
+        "ROBO_NIX_PYTHON_VERSION",
+        state.python_version.clone(),
     );
-    println!("export WORKSPACE_ROOT={}", shell_quote(&state.workspace));
-    println!(
-        "export ROBO_NIX_PROMPT_PREFIX={}",
-        shell_quote(&format!("<{}> ", state.env_name))
+    set_activation_env(envs, "WORKSPACE_ROOT", state.workspace.clone());
+    set_activation_env(
+        envs,
+        "ROBO_NIX_PROMPT_PREFIX",
+        format!("<{}> ", state.env_name),
     );
+
     if let Ok(current_exe) = env::current_exe() {
         if let Some(parent) = current_exe.parent() {
-            println!("export PATH={}:\"$PATH\"", shell_quote(&parent.display().to_string()));
+            let parent = parent.display().to_string();
+            let base = activation_env_value(envs, "PATH")
+                .cloned()
+                .or_else(|| env::var("PATH").ok())
+                .unwrap_or_default();
+            set_activation_env(envs, "PATH", format!("{parent}:{base}"));
         }
+    }
+}
+
+fn activation_env_value<'a>(envs: &'a [(String, String)], name: &str) -> Option<&'a String> {
+    envs.iter()
+        .rev()
+        .find_map(|(candidate, value)| (candidate == name).then_some(value))
+}
+
+fn set_activation_env(envs: &mut Vec<(String, String)>, name: &str, value: String) {
+    if let Some((_, existing)) = envs.iter_mut().find(|(candidate, _)| candidate == name) {
+        *existing = value;
+    } else {
+        envs.push((name.to_string(), value));
     }
 }
 
@@ -350,11 +420,7 @@ fn activation_env_exports(script: &[u8]) -> Result<Vec<(String, String)>, String
     let mut command = Command::new("bash");
     command
         .arg("-c")
-        .arg(
-            "source /dev/stdin >/dev/null; \
-             if [ -n \"${shellHook:-}\" ]; then eval \"$shellHook\" >/dev/null; fi; \
-             env -0",
-        )
+        .arg(ACTIVATION_ENV_CAPTURE_SCRIPT)
         .env("ROBO_NIX_QUIET", "1")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -387,14 +453,20 @@ fn activation_env_exports(script: &[u8]) -> Result<Vec<(String, String)>, String
 }
 
 fn should_export_activation_var(name: &str) -> bool {
-    !matches!(
+    !is_activation_export_blocked(name) && is_shell_identifier(name)
+}
+
+fn is_activation_export_blocked(name: &str) -> bool {
+    matches!(
         name,
         "" | "_" | "PWD" | "OLDPWD" | "SHLVL" | "shellHook" | "ROBO_NIX_QUIET"
-    ) && !name.starts_with("BASH")
-        && name
-            .chars()
-            .enumerate()
-            .all(|(index, ch)| ch == '_' || ch.is_ascii_alphanumeric() && (index > 0 || !ch.is_ascii_digit()))
+    ) || name.starts_with("BASH")
+}
+
+fn is_shell_identifier(name: &str) -> bool {
+    name.chars().enumerate().all(|(index, ch)| {
+        ch == '_' || ch.is_ascii_alphanumeric() && (index > 0 || !ch.is_ascii_digit())
+    })
 }
 
 pub(crate) fn run_project_command(args: Vec<OsString>, config: Config) -> ExitCode {
@@ -513,7 +585,7 @@ struct RuntimeState {
 impl RuntimeState {
     fn read() -> Self {
         let active = env::var_os("ROBO_NIX_ACTIVE").is_some();
-        let runtime = if Path::new("robo.nix").exists() {
+        let runtime = if !active && Path::new("robo.nix").exists() {
             Some(crate::runtime::read_project_runtime())
         } else {
             None
@@ -524,7 +596,11 @@ impl RuntimeState {
             .unwrap_or_else(|| "unknown".to_string());
         let python_version = env::var("ROBO_NIX_PYTHON_VERSION")
             .ok()
-            .or_else(|| runtime.as_ref().map(|runtime| runtime.python_version.clone()))
+            .or_else(|| {
+                runtime
+                    .as_ref()
+                    .map(|runtime| runtime.python_version.clone())
+            })
             .unwrap_or_else(|| "unknown".to_string());
         let workspace = env::var("WORKSPACE_ROOT").unwrap_or_else(|_| {
             env::current_dir().map_or_else(|_| ".".into(), |path| path.display().to_string())
@@ -561,16 +637,29 @@ fn print_runtime_state(config: Config, state: &RuntimeState) {
     println!();
     if state.active {
         section(config, "actions");
-        action_row(
-            config,
-            "uv sync",
-            "sync Python packages from uv.lock",
-        );
+        action_row(config, "uv sync", "sync Python packages from uv.lock");
         action_row(config, "exit", "leave this runtime shell");
     } else {
         section(config, "action");
         action_row(config, "robo activate", "enter the Nix runtime shell");
     }
+}
+
+fn print_already_active(config: Config, state: &RuntimeState) {
+    section(config, "status");
+    println!("  {}", label(config, "already active", LabelKind::Ok));
+    println!();
+    section(config, "runtime");
+    field(config, "env", &state.env_name);
+    field(config, "python", &state.python_version);
+    if let Some(shell) = &state.shell {
+        field(config, "shell", &shell_name(shell));
+    }
+    field(config, "workspace", &state.workspace);
+    println!();
+    section(config, "actions");
+    action_row(config, "uv sync", "sync Python packages from uv.lock");
+    action_row(config, "exit", "leave this runtime shell");
 }
 
 fn action_row(config: Config, command: &str, description: &str) {
@@ -582,30 +671,98 @@ fn action_row(config: Config, command: &str, description: &str) {
 }
 
 fn hook_shell(arg: Option<&OsString>) -> Result<String, String> {
-    let shell = match arg {
-        Some(shell) => shell.to_string_lossy().into_owned(),
-        None => env::var("SHELL")
-            .ok()
-            .and_then(|shell| {
-                Path::new(&shell)
-                    .file_name()
-                    .and_then(|name| name.to_str())
-                    .map(ToOwned::to_owned)
-            })
-            .ok_or_else(|| "robo hook needs a shell name when SHELL is unknown.".to_string())?,
-    };
-
-    match shell.as_str() {
-        "bash" | "zsh" | "fish" => Ok(shell),
-        unknown => Err(format!("unsupported hook shell: {unknown}")),
+    let shell = requested_shell_name(arg, "robo hook")?;
+    if supports_interactive_shell(&shell) {
+        Ok(shell)
+    } else {
+        Err(format!("unsupported hook shell: {shell}"))
     }
 }
 
 fn print_posix_hook(robo: &Path) {
-    let robo = shell_quote(&robo.display().to_string());
-    println!(
-        r#"__robo_bin={robo}; __robo_save_var() {{ eval "__robo_state=\${{__ROBO_SAVED_${{1}}_STATE+x}}"; if [ -n "$__robo_state" ]; then unset __robo_state; return; fi; eval "__robo_has_value=\${{${{1}}+x}}"; if [ -n "$__robo_has_value" ]; then eval "__ROBO_SAVED_${{1}}_STATE=set"; eval "__ROBO_SAVED_${{1}}=\${{${{1}}}}"; else eval "__ROBO_SAVED_${{1}}_STATE=unset"; fi; unset __robo_state __robo_has_value; }}; __robo_restore_var() {{ eval "__robo_state=\${{__ROBO_SAVED_${{1}}_STATE:-}}"; case "$__robo_state" in set) eval "export $1=\"\${{__ROBO_SAVED_${{1}}}}\"" ;; unset) unset "$1" ;; esac; eval "unset __ROBO_SAVED_${{1}}_STATE __ROBO_SAVED_${{1}}"; unset __robo_state; }}; __robo_prompt_enable() {{ if [ -n "${{ROBO_NIX_PROMPT_PREFIX:-}}" ] && [ -z "${{__ROBO_PROMPT_ACTIVE:-}}" ]; then __ROBO_PROMPT_ACTIVE=1; __ROBO_SAVED_PS1="${{PS1-}}"; PS1="${{ROBO_NIX_PROMPT_PREFIX}}${{PS1-}}"; fi; }}; __robo_prompt_disable() {{ if [ -n "${{__ROBO_PROMPT_ACTIVE:-}}" ]; then PS1="${{__ROBO_SAVED_PS1-}}"; unset __ROBO_PROMPT_ACTIVE __ROBO_SAVED_PS1; fi; }}; robo() {{ case "${{1-}}" in activate) shift; if [ "$#" -eq 0 ]; then __robo_save_var PATH; __robo_save_var LD_LIBRARY_PATH; __robo_save_var LIBRARY_PATH; __robo_save_var CPATH; __robo_save_var CUDA_HOME; __robo_save_var CUDA_PATH; __robo_save_var XDG_DATA_DIRS; __robo_save_var SHELL; __robo_env="$("$__robo_bin" __activate-env)" || return; eval "$__robo_env"; unset __robo_env; __robo_prompt_enable; else "$__robo_bin" activate "$@"; fi ;; deactivate) if [ -n "${{ROBO_NIX_ACTIVE:-}}" ]; then __robo_prompt_disable; __robo_restore_var PATH; __robo_restore_var LD_LIBRARY_PATH; __robo_restore_var LIBRARY_PATH; __robo_restore_var CPATH; __robo_restore_var CUDA_HOME; __robo_restore_var CUDA_PATH; __robo_restore_var XDG_DATA_DIRS; __robo_restore_var SHELL; unset ROBO_NIX_ACTIVE ROBO_NIX_ENV_NAME ROBO_NIX_PYTHON_VERSION ROBO_NIX_PROMPT_PREFIX; hash -r 2>/dev/null || true; else "$__robo_bin" deactivate; fi ;; *) "$__robo_bin" "$@" ;; esac; }}; if [ -n "${{ROBO_NIX_ACTIVE:-}}" ]; then __robo_prompt_enable; fi"#
+    println!("{}", posix_hook_text(robo));
+}
+
+fn posix_hook_text(robo: &Path) -> String {
+    let save_vars = posix_hook_var_calls("__robo_save_var");
+    let restore_vars = posix_hook_var_calls("__robo_restore_var");
+    [
+        format!("__robo_bin={}", shell_quote(&robo.display().to_string())),
+        posix_save_var_function(),
+        posix_restore_var_function(),
+        posix_prompt_enable_function(),
+        posix_prompt_disable_function(),
+        posix_robo_function(&save_vars, &restore_vars),
+        r#"if [ -n "${ROBO_NIX_ACTIVE:-}" ]; then __robo_prompt_enable; fi"#.to_string(),
+    ]
+    .join("; ")
+}
+
+fn posix_save_var_function() -> String {
+    posix_function(
+        "__robo_save_var",
+        &[
+            r#"eval "__robo_state=\${__ROBO_SAVED_${1}_STATE+x}""#,
+            r#"if [ -n "$__robo_state" ]; then unset __robo_state; return; fi"#,
+            r#"eval "__robo_has_value=\${${1}+x}""#,
+            r#"if [ -n "$__robo_has_value" ]; then eval "__ROBO_SAVED_${1}_STATE=set"; eval "__ROBO_SAVED_${1}=\${${1}}"; else eval "__ROBO_SAVED_${1}_STATE=unset"; fi"#,
+            r#"unset __robo_state __robo_has_value"#,
+        ],
+    )
+}
+
+fn posix_restore_var_function() -> String {
+    posix_function(
+        "__robo_restore_var",
+        &[
+            r#"eval "__robo_state=\${__ROBO_SAVED_${1}_STATE:-}""#,
+            r#"case "$__robo_state" in set) eval "export $1=\"\${__ROBO_SAVED_${1}}\"" ;; unset) unset "$1" ;; esac"#,
+            r#"eval "unset __ROBO_SAVED_${1}_STATE __ROBO_SAVED_${1}""#,
+            r#"unset __robo_state"#,
+        ],
+    )
+}
+
+fn posix_prompt_enable_function() -> String {
+    posix_function(
+        "__robo_prompt_enable",
+        &[
+            r#"if [ -n "${ROBO_NIX_PROMPT_PREFIX:-}" ] && [ -z "${__ROBO_PROMPT_ACTIVE:-}" ]; then __ROBO_PROMPT_ACTIVE=1; __ROBO_SAVED_PS1="${PS1-}"; PS1="${ROBO_NIX_PROMPT_PREFIX}${PS1-}"; fi"#,
+        ],
+    )
+}
+
+fn posix_prompt_disable_function() -> String {
+    posix_function(
+        "__robo_prompt_disable",
+        &[
+            r#"if [ -n "${__ROBO_PROMPT_ACTIVE:-}" ]; then PS1="${__ROBO_SAVED_PS1-}"; unset __ROBO_PROMPT_ACTIVE __ROBO_SAVED_PS1; fi"#,
+        ],
+    )
+}
+
+fn posix_robo_function(save_vars: &str, restore_vars: &str) -> String {
+    let activate = format!(
+        r#"activate) shift; if [ -n "${{ROBO_NIX_ACTIVE:-}}" ]; then "$__robo_bin" status; return; fi; if [ "$#" -eq 0 ]; then {save_vars}; __robo_env="$("$__robo_bin" __activate-env)" || return; eval "$__robo_env"; unset __robo_env; __robo_prompt_enable; else "$__robo_bin" activate "$@"; fi ;;"#
     );
+    let deactivate = format!(
+        r#"deactivate) if [ -n "${{ROBO_NIX_ACTIVE:-}}" ]; then __robo_prompt_disable; {restore_vars}; unset ROBO_NIX_ACTIVE ROBO_NIX_ENV_NAME ROBO_NIX_PYTHON_VERSION ROBO_NIX_PROMPT_PREFIX; hash -r 2>/dev/null || true; else "$__robo_bin" deactivate; fi ;;"#
+    );
+    format!(
+        r#"robo() {{ case "${{1-}}" in {activate} {deactivate} *) "$__robo_bin" "$@" ;; esac; }}"#
+    )
+}
+
+fn posix_function(name: &str, body: &[&str]) -> String {
+    format!("{name}() {{ {}; }}", body.join("; "))
+}
+
+fn posix_hook_var_calls(function: &str) -> String {
+    HOOK_STATE_VARS
+        .iter()
+        .map(|name| format!("{function} {name}"))
+        .collect::<Vec<_>>()
+        .join("; ")
 }
 
 fn print_fish_hook(robo: &Path) {
@@ -781,7 +938,9 @@ fn default_interactive_shell() -> Option<PathBuf> {
     }
     if let Some(shell) = env::var_os("SHELL").map(PathBuf::from) {
         if is_nix_bash(&shell) {
-            return login_shell().filter(|login| login.is_file()).or(Some(shell));
+            return login_shell()
+                .filter(|login| login.is_file())
+                .or(Some(shell));
         }
         return Some(shell);
     }
@@ -838,6 +997,18 @@ fn shell_args_for(shell: &str) -> ShellLaunch {
 mod tests {
     use super::*;
     use std::ffi::OsString;
+    use std::path::Path;
+
+    #[test]
+    fn posix_hook_stays_single_line_for_unquoted_eval() {
+        let hook = posix_hook_text(Path::new("/bin/robo"));
+
+        assert!(!hook.contains('\n'));
+        assert!(hook.contains("__activate-env"));
+        assert!(hook.contains(r#"if [ -n "${ROBO_NIX_ACTIVE:-}" ]"#));
+        assert!(hook.contains("__robo_save_var PATH"));
+        assert!(hook.contains("__robo_restore_var SHELL"));
+    }
 
     #[test]
     fn shell_command_with_single_quoted_string_uses_shell() {
@@ -871,6 +1042,25 @@ mod tests {
                     OsString::from("/bin/sh")
                 )
             ]
+        );
+    }
+
+    #[test]
+    fn activation_shell_command_uses_program_after_develop_command_flag() {
+        let command = command_from_launch_args(vec![
+            OsString::from("-c"),
+            OsString::from("/bin/sh"),
+            OsString::from("-i"),
+        ])
+        .expect("activation command should parse");
+
+        assert_eq!(command.get_program(), "/bin/sh");
+        assert_eq!(
+            command
+                .get_args()
+                .map(|arg| arg.to_string_lossy().into_owned())
+                .collect::<Vec<_>>(),
+            vec!["-i"]
         );
     }
 

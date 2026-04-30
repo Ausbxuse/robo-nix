@@ -124,10 +124,8 @@
 
   isaac-sim = {
     category = "simulation";
-    description = "Isaac Sim workspace integration with third_party/isaac-sim layout.";
-    scaffoldDirectories = [
-      "third_party/isaac-sim"
-    ];
+    description = "Isaac Sim runtime environment hooks.";
+    scaffoldDirectories = [];
     supportedSystems = [
       "x86_64-linux"
     ];

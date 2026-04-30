@@ -1,13 +1,13 @@
 use std::fs;
 use std::process::ExitCode;
 
-use crate::{error, hint, Config};
+use crate::{Config, error, hint};
 
 pub(super) fn ensure_python_version_files(config: Config) -> Result<(), ExitCode> {
     let Ok(pyproject) = fs::read_to_string("pyproject.toml") else {
         return Ok(());
     };
-    let Some(required) = exact_python_requirement(&pyproject) else {
+    let Some(required) = crate::exact_python_requirement(&pyproject) else {
         return Ok(());
     };
     let Ok(project_python) = fs::read_to_string(".python-version") else {
@@ -29,7 +29,9 @@ pub(super) fn ensure_python_version_files(config: Config) -> Result<(), ExitCode
                 if robo_python != required {
                     error(
                         config,
-                        &format!("robo.nix declares Python {robo_python}, but pyproject.toml requires Python {required}."),
+                        &format!(
+                            "robo.nix declares Python {robo_python}, but pyproject.toml requires Python {required}."
+                        ),
                     );
                     hint(
                         config,
@@ -44,7 +46,9 @@ pub(super) fn ensure_python_version_files(config: Config) -> Result<(), ExitCode
 
     error(
         config,
-        &format!(".python-version is {project_python}, but pyproject.toml requires Python {required}."),
+        &format!(
+            ".python-version is {project_python}, but pyproject.toml requires Python {required}."
+        ),
     );
     hint(
         config,
@@ -64,37 +68,6 @@ fn robo_python_version(text: &str) -> Option<&str> {
             continue;
         };
         return quoted_value(value);
-    }
-    None
-}
-
-pub(crate) fn exact_python_requirement(text: &str) -> Option<&str> {
-    for line in text.lines() {
-        let line = line.trim();
-        let Some(value) = line.strip_prefix("requires-python") else {
-            continue;
-        };
-        let Some(raw) = quoted_value(value) else {
-            continue;
-        };
-        let raw = raw.trim();
-        let Some(rest) = raw.strip_prefix("===").or_else(|| raw.strip_prefix("==")) else {
-            continue;
-        };
-        let rest = rest.trim_start();
-        let end = rest
-            .find(|ch: char| !(ch.is_ascii_digit() || ch == '.' || ch == '*'))
-            .unwrap_or(rest.len());
-        let token = &rest[..end];
-        let version = token.strip_suffix(".*").unwrap_or(token);
-        let parts = version.split('.').collect::<Vec<_>>();
-        if matches!(parts.len(), 2 | 3)
-            && parts
-                .iter()
-                .all(|part| !part.is_empty() && part.chars().all(|ch| ch.is_ascii_digit()))
-        {
-            return Some(version);
-        }
     }
     None
 }

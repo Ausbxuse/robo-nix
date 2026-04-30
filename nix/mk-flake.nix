@@ -4,6 +4,7 @@
   nix-ros-overlay,
   nixpkgs,
 }: let
+  common = import ./modules/common.nix {inherit lib;};
   defaultSupportedSystems = [
     "x86_64-linux"
     "aarch64-linux"
@@ -251,6 +252,14 @@
         ctx = mkContext envName envSpec;
         resolvedComponents = builtins.map (resolveComponent ctx) envSpec.components;
         componentNames = builtins.map (component: component.name) resolvedComponents;
+        needsHostCudaDriver =
+          lib.hasSuffix "-linux" system
+          && (
+            (envSpec.cudaWheelVersion or null)
+            != null
+            || lib.elem "cuda-toolkit" componentNames
+            || lib.elem "isaac-sim" componentNames
+          );
         projectPackages =
           if builtins.isFunction envSpec.extraPackages
           then envSpec.extraPackages pkgs
@@ -293,6 +302,7 @@
             WORKSPACE_ROOT="$(realpath -m "$workspace_input")"
             export WORKSPACE_ROOT
             ${merged.shellInit}
+            ${lib.optionalString needsHostCudaDriver common.hostCudaDriverShellInit}
           '';
           printConfig = renderPrintConfig componentNames merged;
           checkDirectoryChecks = renderCheckDirectoryChecks merged.requiredDirectories;

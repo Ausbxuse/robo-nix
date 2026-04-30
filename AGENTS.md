@@ -81,6 +81,14 @@ Default to simple, flat code.
 - Match existing style, even if you would choose a different style in a new project.
 - Keep production-grade robustness, but do not add defensive handling for impossible scenarios.
 
+Host runtime path handling:
+
+- Do not treat hardcoded host path inventories as a scalable abstraction. Moving lists such as NVIDIA driver library search paths into shared metadata or common helpers is not automatically cleaner; it can centralize brittle host assumptions and make them harder to audit.
+- Do not add generated-shell scans over host NVIDIA, Vulkan, EGL, WSL, distro, or driver-version directories. Existing host-driver visibility should be diagnosed from observed environment/tool output, not guessed by mutating `LD_LIBRARY_PATH`, `VK_ICD_FILENAMES`, `__EGL_VENDOR_LIBRARY_FILENAMES`, or package-specific variables.
+- Do not add package-specific environment variables, path probes, or compatibility workarounds to generic runtime modules just because one downstream Python package fails. Prefer narrow downstream workarounds while debugging, then promote only a documented, product-level contract.
+- For host GPU/driver discovery, prefer explicit diagnostics that report observed facts and ownership boundaries over expanding generated shell behavior. If a generic exported fact is needed, first design the contract, document it, and add focused validation; do not introduce it opportunistically during a playground bring-up.
+- Keep host-driver path logic local to the component or CLI diagnostic that actually owns the behavior. Avoid duplicating or “deduplicating” path lists unless the new shape demonstrably reduces product surface area and has tests.
+
 Comment style:
 
 - Add comments only where behavior is easy to misunderstand or future iteration would otherwise require rediscovery.

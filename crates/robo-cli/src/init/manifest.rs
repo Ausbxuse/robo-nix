@@ -40,6 +40,7 @@ pub(super) struct RuntimeInference {
     pub(super) workspace_directory_rules: Vec<WorkspaceDirectoryRule>,
     pub(super) script_discovery: ScriptDiscovery,
     pub(super) script_rules: Vec<ScriptRule>,
+    pub(super) cuda_marker_scan: CudaMarkerScan,
 }
 
 #[derive(Deserialize)]
@@ -75,6 +76,19 @@ pub(super) struct ScriptDiscovery {
 pub(super) struct ScriptRule {
     pub(super) text_contains: Vec<String>,
     pub(super) components: Vec<String>,
+    pub(super) note: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct CudaMarkerScan {
+    pub(super) max_depth: usize,
+    pub(super) max_files: usize,
+    pub(super) source_extensions: Vec<String>,
+    pub(super) build_files: Vec<String>,
+    pub(super) text_contains: Vec<String>,
+    pub(super) skip_names: Vec<String>,
+    pub(super) component: String,
     pub(super) note: String,
 }
 
@@ -125,7 +139,10 @@ pub(super) fn resolve_profile_selection(profiles: &[String], selection: &str) ->
     if let Ok(index) = selection.parse::<usize>() {
         return profiles.get(index.checked_sub(1)?).cloned();
     }
-    profiles.iter().find(|profile| *profile == selection).cloned()
+    profiles
+        .iter()
+        .find(|profile| *profile == selection)
+        .cloned()
 }
 
 pub(super) fn validate(manifest: &Manifest, spec: &ProjectSpec) -> Result<(), String> {
@@ -145,6 +162,15 @@ pub(super) fn validate(manifest: &Manifest, spec: &ProjectSpec) -> Result<(), St
                 ));
             }
         }
+    }
+    if !manifest
+        .components
+        .contains_key(&manifest.runtime_inference.cuda_marker_scan.component)
+    {
+        return Err(format!(
+            "CUDA marker scan references unknown component: {}",
+            manifest.runtime_inference.cuda_marker_scan.component
+        ));
     }
     Ok(())
 }
