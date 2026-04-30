@@ -23,7 +23,7 @@ if command -v script >/dev/null 2>&1; then
 		echo "custom help sections must keep terminal color styling" >&2
 		exit 1
 	fi
-	if ! grep -F 'eval "$(robo hook)"' <<<"$help_output" >/dev/null; then
+	if ! grep -F "eval \"\$(robo hook)\"" <<<"$help_output" >/dev/null; then
 		echo "help output must explain prompt-prefix hook setup" >&2
 		exit 1
 	fi

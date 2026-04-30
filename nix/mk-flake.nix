@@ -85,6 +85,8 @@
         pkgs.freetype
         pkgs.libGL
         pkgs.libGLU
+        pkgs.libxcrypt-legacy
+        pkgs.vulkan-loader
         pkgs.glib
         pkgs.xorg.libX11
         pkgs.xorg.libXau
