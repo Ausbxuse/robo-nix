@@ -7,8 +7,8 @@ use std::io::IsTerminal;
 use std::process::ExitCode;
 
 use crate::command::{
-    run_internal_exec, run_project_activate, run_project_app, run_project_command,
-    run_project_deactivate, run_project_status,
+    run_internal_activate_env, run_internal_exec, run_project_activate, run_project_app,
+    run_project_command, run_project_deactivate, run_project_hook, run_project_status,
 };
 use crate::{check, contract, cuda, error, init, Config};
 
@@ -49,6 +49,9 @@ enum CliCommand {
     #[command(about = "Show how to leave the active runtime shell")]
     Deactivate,
 
+    #[command(about = "Print shell integration for prompt-aware activation")]
+    Hook(PassthroughArgs),
+
     #[command(about = "Run project bootstrap scripts")]
     Bootstrap(PassthroughArgs),
 
@@ -75,6 +78,12 @@ enum CliCommand {
 
     #[command(name = "__exec", hide = true)]
     InternalExec(PassthroughArgs),
+
+    #[command(name = "__activate-env", hide = true)]
+    InternalActivateEnv,
+
+    #[command(name = "__cuda-driver-probe", hide = true)]
+    InternalCudaDriverProbe,
 
     #[command(about = "Show help")]
     Help,
@@ -111,6 +120,7 @@ pub(crate) fn run() -> ExitCode {
         Some(CliCommand::Activate(args)) => run_project_activate(args.args, config),
         Some(CliCommand::Status) => run_project_status(config),
         Some(CliCommand::Deactivate) => run_project_deactivate(config),
+        Some(CliCommand::Hook(args)) => run_project_hook(args.args, config),
         Some(CliCommand::Bootstrap(args)) => run_project_app(None, args.args, config),
         Some(CliCommand::Check(args)) => check::run(args, config),
         Some(CliCommand::Contract(args)) => contract::run(args, config),
@@ -119,6 +129,8 @@ pub(crate) fn run() -> ExitCode {
         Some(CliCommand::Completion(args)) => print_completions(args.args, config),
         Some(CliCommand::CudaCheck) => cuda::check(config),
         Some(CliCommand::InternalExec(args)) => run_internal_exec(args.args, config),
+        Some(CliCommand::InternalActivateEnv) => run_internal_activate_env(config),
+        Some(CliCommand::InternalCudaDriverProbe) => cuda::driver_probe(config),
         Some(CliCommand::Help) | None => print_help(config),
     }
 }

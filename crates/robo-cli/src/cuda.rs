@@ -51,11 +51,42 @@ pub(crate) fn check(config: Config) -> ExitCode {
                 );
                 return ExitCode::from(1);
             }
+            if let Err(err) = crate::runtime::probe_libcuda_driver_entrypoint("cuDeviceGetUuid") {
+                error(
+                    config,
+                    &format!("CUDA driver entry point unavailable: cuDeviceGetUuid ({err})"),
+                );
+                hint(
+                    config,
+                    "Warp and Isaac require a host NVIDIA driver whose libcuda.so.1 exports this driver API.",
+                );
+                return ExitCode::from(1);
+            }
             ok(config, &format!("CUDA root exists at {cuda_root}"));
             ExitCode::SUCCESS
         }
         _ => {
             error(config, "nvidia-smi failed; GPU driver stack is not healthy.");
+            ExitCode::from(1)
+        }
+    }
+}
+
+pub(crate) fn driver_probe(config: Config) -> ExitCode {
+    match crate::runtime::probe_libcuda_driver_entrypoint("cuDeviceGetUuid") {
+        Ok(()) => {
+            ok(config, "CUDA driver entry point available: cuDeviceGetUuid");
+            ExitCode::SUCCESS
+        }
+        Err(err) => {
+            error(
+                config,
+                &format!("CUDA driver entry point unavailable: cuDeviceGetUuid ({err})"),
+            );
+            hint(
+                config,
+                "Warp and Isaac require a host NVIDIA driver whose libcuda.so.1 exports this driver API.",
+            );
             ExitCode::from(1)
         }
     }

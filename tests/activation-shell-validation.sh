@@ -43,7 +43,7 @@ outside_status="$tmpdir/outside-status.txt"
 	cd "$project"
 	"$robo" status >"$outside_status"
 )
-assert_file_contains "$outside_status" "active=no"
+assert_file_contains "$outside_status" "state=inactive"
 assert_file_contains "$outside_status" "robo activate"
 
 make_fake_shell() {
@@ -100,3 +100,31 @@ active_status="$tmpdir/active-status.txt"
 assert_file_contains "$active_status" "state=active"
 assert_file_contains "$active_status" "uv sync"
 assert_file_contains "$active_status" "leave this runtime shell"
+
+hook_output="$tmpdir/hook.txt"
+"$robo" hook bash >"$hook_output"
+assert_file_contains "$hook_output" "__activate-env"
+assert_file_contains "$hook_output" "robo()"
+
+hook_status="$tmpdir/hook-status.txt"
+(
+	cd "$project"
+	# shellcheck disable=SC2016
+	bash -lc '
+set -euo pipefail
+eval "$("'"$robo"'" hook bash)"
+PS1="$ "
+robo activate >/dev/null
+test "${ROBO_NIX_ACTIVE:-}" = "1"
+test "${ROBO_NIX_ENV_NAME:-}" = "activation-shell-project"
+case "$PS1" in
+  "<activation-shell-project> "*) ;;
+  *) echo "missing prompt prefix: $PS1" >&2; exit 1 ;;
+esac
+robo status
+robo deactivate
+test -z "${ROBO_NIX_ACTIVE:-}"
+test "$PS1" = "$ "
+' >"$hook_status"
+)
+assert_file_contains "$hook_status" "state=active"

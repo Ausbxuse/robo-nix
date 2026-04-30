@@ -83,32 +83,7 @@
       + "\n"
       + common.exportDefaults {
         OMNI_KIT_ACCEPT_EULA = "Y";
-      }
-      + ''
-
-        _robo_isaac_venv="''${UV_PROJECT_ENVIRONMENT:-$WORKSPACE_ROOT/.venv}"
-        _robo_isaac_root="$_robo_isaac_venv/lib"
-        if [ -d "$_robo_isaac_root" ]; then
-          _robo_isaac_ld=""
-          for _robo_isaac_bin in $(find "$_robo_isaac_root"/python*/site-packages/isaacsim -type d -name bin 2>/dev/null); do
-            case ":''${LD_LIBRARY_PATH:-}:$_robo_isaac_ld:" in
-              *":$_robo_isaac_bin:"*) ;;
-              *)
-                if [ -n "$_robo_isaac_ld" ]; then
-                  _robo_isaac_ld="$_robo_isaac_ld:$_robo_isaac_bin"
-                else
-                  _robo_isaac_ld="$_robo_isaac_bin"
-                fi
-                ;;
-            esac
-          done
-          if [ -n "$_robo_isaac_ld" ]; then
-            export LD_LIBRARY_PATH="$_robo_isaac_ld''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-          fi
-          unset _robo_isaac_ld _robo_isaac_bin
-        fi
-        unset _robo_isaac_root _robo_isaac_venv
-      '';
+      };
     requiredDirectories = ["third_party/isaac-sim"];
     supportedSystems = common.x86LinuxSystems;
     check = common.mkComponentCheck "isaac-sim" ["required_dir=third_party/isaac-sim"];

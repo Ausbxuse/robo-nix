@@ -5,6 +5,8 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
+use console::measure_text_width;
+
 use crate::{
     error, field, hint, label, output_with_spinner, section, status, Config, LabelKind,
 };
@@ -112,15 +114,62 @@ fn print_captured(label: &str, bytes: &[u8]) {
 fn print_activation_card(config: Config) {
     let state = RuntimeState::read();
     let system = nix_system_name();
+    let workspace = shorten_middle(&home_tilde(&state.workspace), 62);
+
+    let field = |name: &str, value: &str| {
+        (
+            format!("{name:<7} {value}"),
+            format!(
+                "{} {}",
+                label(config, &format!("{name:<7}"), LabelKind::Hint),
+                label(config, value, LabelKind::Status)
+            ),
+        )
+    };
+    let field_pair = |left_name: &str, left_value: &str, right_name: &str, right_value: &str| {
+        (
+            format!("{left_name:<7} {left_value:<8}  {right_name} {right_value}"),
+            format!(
+                "{} {}  {} {}",
+                label(config, &format!("{left_name:<7}"), LabelKind::Hint),
+                label(config, &format!("{left_value:<8}"), LabelKind::Status),
+                label(config, right_name, LabelKind::Hint),
+                label(config, right_value, LabelKind::Status)
+            ),
+        )
+    };
+    let action = |command: &str, description: &str| {
+        (
+            format!("  {command:<9} {description}"),
+            format!(
+                "  {} {}",
+                label(config, &format!("{command:<9}"), LabelKind::Command),
+                label(config, description, LabelKind::Hint)
+            ),
+        )
+    };
+
     let rows = [
-        format!("active    {}", state.env_name),
-        format!("python    {}    system {}", state.python_version, system),
-        format!("workspace {}", state.workspace),
-        "actions   uv sync    sync Python packages from uv.lock".to_string(),
-        "          exit       leave this runtime shell".to_string(),
+        (
+            format!("{} runtime", state.env_name),
+            label(config, &format!("{} runtime", state.env_name), LabelKind::Status),
+        ),
+        field_pair("python", &state.python_version, "system", system),
+        field("path", &workspace),
+        (String::new(), String::new()),
+        (
+            "commands".to_string(),
+            label(config, "commands", LabelKind::Hint),
+        ),
+        action("uv sync", "sync Python packages from uv.lock"),
+        action("exit", "leave this runtime shell"),
     ];
-    let width = rows.iter().map(|row| row.len()).max().unwrap_or(0) + 4;
-    let inner_width = width.saturating_sub(2);
+    let row_width = rows
+        .iter()
+        .map(|(plain, _)| measure_text_width(plain))
+        .max()
+        .unwrap_or(0);
+    let inner_width = row_width + 2;
     let (top_left, horizontal, top_right, vertical, bottom_left, bottom_right) =
         if config.color {
             ("╭", "─", "╮", "│", "╰", "╯")
@@ -134,11 +183,14 @@ fn print_activation_card(config: Config) {
         label(config, &horizontal.repeat(inner_width), LabelKind::Status),
         label(config, top_right, LabelKind::Status)
     );
-    for row in rows {
+    for (plain, rendered) in rows {
+        let plain_len = measure_text_width(&plain);
+        let padding = " ".repeat(row_width.saturating_sub(plain_len));
         println!(
-            "{} {:inner_width$} {}",
+            "{} {}{} {}",
             label(config, vertical, LabelKind::Status),
-            row,
+            rendered,
+            padding,
             label(config, vertical, LabelKind::Status),
         );
     }
@@ -150,9 +202,95 @@ fn print_activation_card(config: Config) {
     );
 }
 
+fn home_tilde(value: &str) -> String {
+    let Ok(home) = env::var("HOME") else {
+        return value.to_string();
+    };
+    if value == home {
+        return "~".to_string();
+    }
+    value
+        .strip_prefix(&format!("{home}/"))
+        .map_or_else(|| value.to_string(), |rest| format!("~/{rest}"))
+}
+
+fn shorten_middle(value: &str, max_len: usize) -> String {
+    let len = value.chars().count();
+    if len <= max_len {
+        return value.to_string();
+    }
+
+    let keep = max_len.saturating_sub(3);
+    let tail: String = value
+        .chars()
+        .skip(len.saturating_sub(keep))
+        .collect();
+    format!("...{tail}")
+}
+
 pub(crate) fn run_project_status(config: Config) -> ExitCode {
     let state = RuntimeState::read();
     print_runtime_state(config, &state);
+    ExitCode::SUCCESS
+}
+
+pub(crate) fn run_project_hook(args: Vec<OsString>, config: Config) -> ExitCode {
+    let shell = match hook_shell(args.first()) {
+        Ok(shell) => shell,
+        Err(message) => {
+            error(config, &message);
+            hint(config, "supported hooks: bash, zsh, fish");
+            return ExitCode::from(2);
+        }
+    };
+    let robo = env::current_exe()
+        .ok()
+        .and_then(|path| path.is_file().then_some(path))
+        .unwrap_or_else(|| PathBuf::from("robo"));
+
+    match shell.as_str() {
+        "bash" | "zsh" => print_posix_hook(&robo),
+        "fish" => print_fish_hook(&robo),
+        _ => unreachable!(),
+    }
+    ExitCode::SUCCESS
+}
+
+pub(crate) fn run_internal_activate_env(config: Config) -> ExitCode {
+    if let Err(code) = ensure_project_runtime(config) {
+        return code;
+    }
+
+    let mut command = command_for_runtime(config);
+    command.arg("print-dev-env").arg(".#default");
+    let output = if config.debug {
+        match command.output() {
+            Ok(output) => output,
+            Err(err) => {
+                error(config, &format!("failed to load activation environment: {err}"));
+                return ExitCode::from(1);
+            }
+        }
+    } else {
+        match output_with_spinner(config, &mut command, "loading activation environment") {
+            Ok(output) => output,
+            Err(err) => {
+                error(config, &format!("failed to load activation environment: {err}"));
+                return ExitCode::from(1);
+            }
+        }
+    };
+
+    if !output.status.success() {
+        error(config, "activation environment failed to load");
+        print_captured("stdout", &output.stdout);
+        print_captured("stderr", &output.stderr);
+        hint_native_cuda_link_failure(config, &output);
+        return exit_code(output.status.code());
+    }
+
+    print!("{}", String::from_utf8_lossy(&output.stdout));
+    print_activation_env_exports();
     ExitCode::SUCCESS
 }
 
@@ -175,6 +313,28 @@ pub(crate) fn run_project_deactivate(config: Config) -> ExitCode {
         println!("  {}", label(config, "ok", LabelKind::Ok));
     }
     ExitCode::SUCCESS
+}
+
+fn print_activation_env_exports() {
+    let state = RuntimeState::read();
+    println!();
+    println!("# robo activation");
+    println!("export ROBO_NIX_ACTIVE=1");
+    println!("export ROBO_NIX_ENV_NAME={}", shell_quote(&state.env_name));
+    println!(
+        "export ROBO_NIX_PYTHON_VERSION={}",
+        shell_quote(&state.python_version)
+    );
+    println!("export WORKSPACE_ROOT={}", shell_quote(&state.workspace));
+    println!(
+        "export ROBO_NIX_PROMPT_PREFIX={}",
+        shell_quote(&format!("<{}> ", state.env_name))
+    );
+    if let Ok(current_exe) = env::current_exe() {
+        if let Some(parent) = current_exe.parent() {
+            println!("export PATH={}:\"$PATH\"", shell_quote(&parent.display().to_string()));
+        }
+    }
 }
 
 pub(crate) fn run_project_command(args: Vec<OsString>, config: Config) -> ExitCode {
@@ -359,6 +519,156 @@ fn action_row(config: Config, command: &str, description: &str) {
         label(config, command, LabelKind::Command),
         label(config, description, LabelKind::Hint)
     );
+}
+
+fn hook_shell(arg: Option<&OsString>) -> Result<String, String> {
+    let shell = match arg {
+        Some(shell) => shell.to_string_lossy().into_owned(),
+        None => env::var("SHELL")
+            .ok()
+            .and_then(|shell| {
+                Path::new(&shell)
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .map(ToOwned::to_owned)
+            })
+            .ok_or_else(|| "robo hook needs a shell name when SHELL is unknown.".to_string())?,
+    };
+
+    match shell.as_str() {
+        "bash" | "zsh" | "fish" => Ok(shell),
+        unknown => Err(format!("unsupported hook shell: {unknown}")),
+    }
+}
+
+fn print_posix_hook(robo: &Path) {
+    let robo = shell_quote(&robo.display().to_string());
+    println!(
+        r#"
+__robo_bin={robo}
+
+__robo_save_var() {{
+  eval "__robo_state=\${{__ROBO_SAVED_${{1}}_STATE+x}}"
+  if [ -n "$__robo_state" ]; then
+    unset __robo_state
+    return
+  fi
+  eval "__robo_has_value=\${{${{1}}+x}}"
+  if [ -n "$__robo_has_value" ]; then
+    eval "__ROBO_SAVED_${{1}}_STATE=set"
+    eval "__ROBO_SAVED_${{1}}=\${{${{1}}}}"
+  else
+    eval "__ROBO_SAVED_${{1}}_STATE=unset"
+  fi
+  unset __robo_state __robo_has_value
+}}
+
+__robo_restore_var() {{
+  eval "__robo_state=\${{__ROBO_SAVED_${{1}}_STATE:-}}"
+  case "$__robo_state" in
+    set) eval "export $1=\"\${{__ROBO_SAVED_${{1}}}}\"" ;;
+    unset) unset "$1" ;;
+  esac
+  eval "unset __ROBO_SAVED_${{1}}_STATE __ROBO_SAVED_${{1}}"
+  unset __robo_state
+}}
+
+__robo_prompt_enable() {{
+  if [ -n "${{ROBO_NIX_PROMPT_PREFIX:-}}" ] && [ -z "${{__ROBO_PROMPT_ACTIVE:-}}" ]; then
+    __ROBO_PROMPT_ACTIVE=1
+    __ROBO_SAVED_PS1="${{PS1-}}"
+    PS1="${{ROBO_NIX_PROMPT_PREFIX}}${{PS1-}}"
+  fi
+}}
+
+__robo_prompt_disable() {{
+  if [ -n "${{__ROBO_PROMPT_ACTIVE:-}}" ]; then
+    PS1="${{__ROBO_SAVED_PS1-}}"
+    unset __ROBO_PROMPT_ACTIVE __ROBO_SAVED_PS1
+  fi
+}}
+
+robo() {{
+  case "${{1-}}" in
+    activate)
+      shift
+      if [ "$#" -eq 0 ]; then
+        __robo_save_var PATH
+        __robo_save_var LD_LIBRARY_PATH
+        __robo_save_var LIBRARY_PATH
+        __robo_save_var CPATH
+        __robo_save_var CUDA_HOME
+        __robo_save_var CUDA_PATH
+        __robo_save_var XDG_DATA_DIRS
+        __robo_save_var SHELL
+        __robo_env="$("$__robo_bin" __activate-env)" || return
+        eval "$__robo_env"
+        unset __robo_env
+        __robo_prompt_enable
+      else
+        "$__robo_bin" activate "$@"
+      fi
+      ;;
+    deactivate)
+      if [ -n "${{ROBO_NIX_ACTIVE:-}}" ]; then
+        __robo_prompt_disable
+        __robo_restore_var PATH
+        __robo_restore_var LD_LIBRARY_PATH
+        __robo_restore_var LIBRARY_PATH
+        __robo_restore_var CPATH
+        __robo_restore_var CUDA_HOME
+        __robo_restore_var CUDA_PATH
+        __robo_restore_var XDG_DATA_DIRS
+        __robo_restore_var SHELL
+        unset ROBO_NIX_ACTIVE ROBO_NIX_ENV_NAME ROBO_NIX_PYTHON_VERSION ROBO_NIX_PROMPT_PREFIX
+        hash -r 2>/dev/null || true
+      else
+        "$__robo_bin" deactivate
+      fi
+      ;;
+    *)
+      "$__robo_bin" "$@"
+      ;;
+  esac
+}}
+
+if [ -n "${{ROBO_NIX_ACTIVE:-}}" ]; then
+  __robo_prompt_enable
+fi
+"#
+    );
+}
+
+fn print_fish_hook(robo: &Path) {
+    let robo = fish_quote(&robo.display().to_string());
+    println!(
+        r#"
+set -gx __robo_bin {robo}
+
+function robo
+    command $__robo_bin $argv
+end
+
+if test -n "$ROBO_NIX_ACTIVE"; and test -n "$ROBO_NIX_PROMPT_PREFIX"
+    if functions -q fish_prompt; and not functions -q __robo_fish_prompt_orig
+        functions -c fish_prompt __robo_fish_prompt_orig
+    end
+
+    function fish_prompt --description 'robo prompt prefix'
+        printf '%s' "$ROBO_NIX_PROMPT_PREFIX"
+        functions -q __robo_fish_prompt_orig; and __robo_fish_prompt_orig
+    end
+end
+"#
+    );
+}
+
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
+}
+
+fn fish_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\\', "\\\\").replace('\'', "\\'"))
 }
 
 fn shell_name(shell: &str) -> String {

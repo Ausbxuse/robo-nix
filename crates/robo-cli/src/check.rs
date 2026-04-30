@@ -767,6 +767,30 @@ fn check_cuda_host(
         .cuda_wheel_version
         .clone()
         .or_else(crate::runtime::infer_cuda_wheel_version_from_uv_lock);
+    if let Some(expected_cuda_version) = expected_cuda_version.as_deref() {
+        if let Some(host_version) = crate::runtime::host_cuda_driver_version() {
+            if crate::runtime::cuda_version_less_than(&host_version, expected_cuda_version)
+                == Some(true)
+            {
+                check_error(
+                    config,
+                    issues,
+                    &format!(
+                        "CUDA host driver mismatch: host supports {host_version}, uv.lock expects {expected_cuda_version}"
+                    ),
+                );
+                check_hint(
+                    config,
+                    "upgrade the host NVIDIA driver or regenerate uv.lock with CUDA wheels supported by this host",
+                );
+            } else {
+                check_ok(
+                    config,
+                    &format!("CUDA host driver supports {host_version}"),
+                );
+            }
+        }
+    }
     let Some(cuda_root) = crate::runtime::cuda_root_from_env() else {
         check_warn(config, warnings, "CUDA root is not visible in the current shell");
         check_hint(

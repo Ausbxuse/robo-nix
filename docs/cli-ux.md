@@ -36,9 +36,9 @@ Do not mix heading styles such as `Project:`, `ok: Generated:`, and `robo: next 
 
 Generated shell summaries, including activation output from `nix develop`, should follow the same section and `key=value` shape. Do not print ad hoc labels such as `activated:`, `python:`, or `python packages:`.
 
-Activation should enter the user's current interactive shell when possible. Keep this shell-agnostic: detect the parent shell executable, pass it through `ROBO_NIX_ACTIVATION_SHELL`, restore `SHELL` in the activated environment, and avoid shell-specific startup files or hardcoded prompt mutation. The runtime may export `ROBO_NIX_PROMPT_PREFIX` for users or shell integrations that choose to render it.
+Activation should enter the user's current interactive shell when possible. The default `robo activate` path must keep working without shell setup by launching an activated runtime shell. The optional `eval "$(robo hook)"` path may install shell-specific functions for in-place activation, prompt prefixing, and `robo deactivate`.
 
-Because prompt mutation is intentionally shell-owned, `robo status` is the canonical way to see whether the current shell is activated. `robo deactivate` must not pretend a subprocess can exit its parent shell; it should print the clean `exit` action when inside an activated runtime.
+Prompt mutation is shell-owned. `robo hook` may update the prompt for shells it explicitly supports, and the runtime exports `ROBO_NIX_PROMPT_PREFIX` for shell integrations. Without the hook, `robo status` is the canonical way to see whether the current shell is activated. `robo deactivate` should deactivate in-place only when installed as a hook function; the binary path should print the clean `exit` action when inside an activated runtime shell.
 
 Do not repeat command names as prefixes on every line. Prefer this:
 

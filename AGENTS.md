@@ -115,6 +115,14 @@ Use goal-driven verification:
 - For new features or cleanups, a failing test first is not required; make the smallest coherent change and run focused checks afterward.
 - For multi-step tasks, use a brief plan with verification points when the work is nontrivial.
 
+Keep edit loops cheap:
+
+- Classify the failing layer before coding: uv/Python lockfile, generated project files, Nix runtime/native libraries, Rust CLI diagnostics, host GPU/driver, or downstream playground script.
+- Run the narrowest useful check for that layer first, such as one filtered Rust test, `nix-instantiate --parse`, `bash -n`, or `py_compile`.
+- Treat Isaac, datagen, GPU validation, full repository checks, and broad compilation as integration checks. Run them only after cheaper preflight checks say the host and runtime are capable of passing.
+- Keep generated project files out of manual edit loops. Change source metadata or init logic, then let `robo init . --force` regenerate `flake.nix`, `robo.nix`, and bootstrap wiring.
+- In nested playgrounds, check top-level and playground status separately with `git status --short` and `git -C <playground> status --short` before summarizing diffs.
+
 ## Product North Star
 
 The intended beginner experience is:

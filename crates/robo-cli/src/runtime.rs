@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::env;
+#[cfg(target_os = "linux")]
+use std::ffi::{c_char, c_void, CStr, CString};
 use std::fs;
 use std::path::Path;
 use std::process::Command;
@@ -217,10 +219,81 @@ pub(crate) fn cuda_release_version_from_text(text: &str) -> Option<String> {
     find_cuda_release_version(text)
 }
 
+pub(crate) fn host_cuda_driver_version() -> Option<String> {
+    let output = Command::new("nvidia-smi").output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    find_nvidia_smi_cuda_version(&stdout).or_else(|| find_nvidia_smi_cuda_version(&stderr))
+}
+
+pub(crate) fn cuda_version_less_than(actual: &str, expected: &str) -> Option<bool> {
+    Some(parse_major_minor(actual)? < parse_major_minor(expected)?)
+}
+
 pub(crate) fn find_host_libcuda() -> Option<String> {
     find_libcuda_from_env()
         .or_else(find_libcuda_in_library_path)
         .or_else(find_libcuda_with_ldconfig)
+}
+
+#[cfg(target_os = "linux")]
+pub(crate) fn probe_libcuda_driver_entrypoint(symbol: &str) -> Result<(), String> {
+    const RTLD_NOW: i32 = 2;
+
+    #[link(name = "dl")]
+    unsafe extern "C" {
+        fn dlopen(filename: *const c_char, flags: i32) -> *mut c_void;
+        fn dlsym(handle: *mut c_void, symbol: *const c_char) -> *mut c_void;
+        fn dlclose(handle: *mut c_void) -> i32;
+        fn dlerror() -> *const c_char;
+    }
+
+    fn dl_error() -> String {
+        let error = unsafe { dlerror() };
+        if error.is_null() {
+            "unknown dynamic loader error".to_string()
+        } else {
+            unsafe { CStr::from_ptr(error) }
+                .to_string_lossy()
+                .into_owned()
+        }
+    }
+
+    let library = CString::new(LIBCUDA).map_err(|err| err.to_string())?;
+    let symbol = CString::new(symbol).map_err(|err| err.to_string())?;
+    let handle = unsafe { dlopen(library.as_ptr(), RTLD_NOW) };
+    if handle.is_null() {
+        return Err(format!("{LIBCUDA} could not be loaded: {}", dl_error()));
+    }
+
+    unsafe {
+        dlerror();
+    }
+    let entrypoint = unsafe { dlsym(handle, symbol.as_ptr()) };
+    let error = unsafe { dlerror() };
+    unsafe {
+        dlclose(handle);
+    }
+
+    if !error.is_null() {
+        return Err(
+            unsafe { CStr::from_ptr(error) }
+                .to_string_lossy()
+                .into_owned(),
+        );
+    }
+    if entrypoint.is_null() {
+        return Err("driver entry point resolved to a null pointer".to_string());
+    }
+    Ok(())
+}
+
+#[cfg(not(target_os = "linux"))]
+pub(crate) fn probe_libcuda_driver_entrypoint(_symbol: &str) -> Result<(), String> {
+    Ok(())
 }
 
 fn find_libcuda_with_ldconfig() -> Option<String> {
@@ -259,6 +332,15 @@ fn find_libcuda_from_env() -> Option<String> {
 
 fn cuda_major_minor_version(text: &str) -> Option<String> {
     parse_major_minor(text).map(|(major, minor)| format!("{major}.{minor}"))
+}
+
+fn find_nvidia_smi_cuda_version(text: &str) -> Option<String> {
+    for line in text.lines() {
+        if let Some((_, rest)) = line.split_once("CUDA Version:") {
+            return cuda_major_minor_version(rest);
+        }
+    }
+    None
 }
 
 fn parse_major_minor(text: &str) -> Option<(u32, u32)> {
@@ -682,5 +764,18 @@ version = "12.6.77"
     fn parses_release_line() {
         let output = "Cuda compilation tools, release 12.8, V12.8.0";
         assert_eq!(find_cuda_release_version(output), Some("12.8".to_string()));
+    }
+
+    #[test]
+    fn parses_nvidia_smi_cuda_version() {
+        let output = "| NVIDIA-SMI 550.54.15 Driver Version: 550.54.15 CUDA Version: 12.4 |";
+        assert_eq!(find_nvidia_smi_cuda_version(output), Some("12.4".to_string()));
+    }
+
+    #[test]
+    fn compares_cuda_versions() {
+        assert_eq!(cuda_version_less_than("12.4", "12.8"), Some(true));
+        assert_eq!(cuda_version_less_than("12.8", "12.8"), Some(false));
+        assert_eq!(cuda_version_less_than("12.9", "12.8"), Some(false));
     }
 }

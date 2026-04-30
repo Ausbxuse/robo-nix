@@ -441,65 +441,20 @@
               if [ -d "$WORKSPACE_ROOT" ]; then
                 mkdir -p "$WORKSPACE_ROOT/.robo-nix"
               fi
-              if [ -z "''${ROBO_NIX_QUIET:-}" ]; then
+              if [ -z "''${ROBO_NIX_QUIET:-}" ] && [ -z "''${ROBO_NIX_ACTIVATE:-}" ]; then
                 if { [ "''${ROBO_NIX_COLOR:-}" = "1" ] || { [ -z "''${NO_COLOR:-}" ] && [ -t 1 ]; }; } && [ "''${ROBO_NIX_COLOR:-}" != "0" ]; then
                   c_status="$(printf '\033[36;1m')"
                   c_hint="$(printf '\033[2m')"
-                  c_command="$(printf '\033[32m')"
-                  c_value="$(printf '\033[37;1m')"
                   c_reset="$(printf '\033[0m')"
-                  box_top="╭────────────────────────────────────────────────────────────────────────────╮"
-                  box_mid="│"
-                  box_bot="╰────────────────────────────────────────────────────────────────────────────╯"
                 else
                   c_status=""
                   c_hint=""
-                  c_command=""
-                  c_value=""
                   c_reset=""
-                  box_top="+----------------------------------------------------------------------------+"
-                  box_mid="|"
-                  box_bot="+----------------------------------------------------------------------------+"
                 fi
-                if [ -n "''${ROBO_NIX_ACTIVATE:-}" ]; then
-                  card_value() {
-                    value="$1"
-                    if [ "''${#value}" -gt 63 ]; then
-                      value="''${value:0:60}..."
-                    fi
-                    printf "%s" "$value"
-                  }
-                  card_row() {
-                    label_text="$1"
-                    value_text="$(card_value "$2")"
-                    printf "%s%s%s  %s%-9s%s %s%-63s%s %s%s%s\n" \
-                      "$c_status" "$box_mid" "$c_reset" \
-                      "$c_hint" "$label_text" "$c_reset" \
-                      "$c_value" "$value_text" "$c_reset" \
-                      "$c_status" "$box_mid" "$c_reset"
-                  }
-                  card_runtime_row() {
-                    printf "%s%s%s  %s%-9s%s %s%-8s%s  %s%-6s%s %s%-42s%s     %s%s%s\n" \
-                      "$c_status" "$box_mid" "$c_reset" \
-                      "$c_hint" "python" "$c_reset" \
-                      "$c_value" "$ROBO_NIX_PYTHON_VERSION" "$c_reset" \
-                      "$c_hint" "system" "$c_reset" \
-                      "$c_value" "$ROBO_NIX_SYSTEM" "$c_reset" \
-                      "$c_status" "$box_mid" "$c_reset"
-                  }
-                  printf "%s%s%s\n" "$c_status" "$box_top" "$c_reset"
-                  card_row "active" "$ROBO_NIX_ENV_NAME"
-                  card_runtime_row
-                  card_row "workspace" "$WORKSPACE_ROOT"
-                  card_row "commands" "robo status  robo deactivate  exit"
-                  card_row "next" "uv sync"
-                  printf "%s%s%s\n" "$c_status" "$box_bot" "$c_reset"
-                else
-                  printf "  %sruntime%s\n" "$c_status" "$c_reset"
-                  printf "    %spython=%s%s\n" "$c_hint" "$c_reset" "$ROBO_NIX_PYTHON_VERSION"
-                  printf "    %ssystem=%s%s\n" "$c_hint" "$c_reset" "$ROBO_NIX_SYSTEM"
-                  printf "    %sworkspace=%s%s\n" "$c_hint" "$c_reset" "$WORKSPACE_ROOT"
-                fi
+                printf "  %sruntime%s\n" "$c_status" "$c_reset"
+                printf "    %spython=%s%s\n" "$c_hint" "$c_reset" "$ROBO_NIX_PYTHON_VERSION"
+                printf "    %ssystem=%s%s\n" "$c_hint" "$c_reset" "$ROBO_NIX_SYSTEM"
+                printf "    %sworkspace=%s%s\n" "$c_hint" "$c_reset" "$WORKSPACE_ROOT"
               fi
               if [ -n "''${ROBO_NIX_ACTIVATE:-}" ]; then
                 export ROBO_NIX_ACTIVE=1

@@ -34,6 +34,15 @@ robo status
 
 `robo status` shows whether the current shell is inside an activated runtime. To leave an activated runtime shell, run `exit`; `robo deactivate` prints that clean exit path when users need a reminder.
 
+For a Conda-like prompt prefix and in-place activation, install the optional shell hook:
+
+```bash
+eval "$(robo hook)"
+robo activate
+```
+
+The hook supports bash and zsh in-place activation. Fish currently keeps the standard subprocess activation path.
+
 ## Repository Shape
 
 ```text
