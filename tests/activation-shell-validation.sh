@@ -109,10 +109,10 @@ assert_file_contains "$hook_output" "robo()"
 hook_status="$tmpdir/hook-status.txt"
 (
 	cd "$project"
-	# shellcheck disable=SC2016
-	bash -lc '
+	# shellcheck disable=SC2016,SC2046
+	ROBO_BIN="$robo" bash -lc '
 set -euo pipefail
-eval "$("'"$robo"'" hook bash)"
+eval $("$ROBO_BIN" hook bash)
 PS1="$ "
 robo activate >/dev/null
 test "${ROBO_NIX_ACTIVE:-}" = "1"
@@ -128,3 +128,27 @@ test "$PS1" = "$ "
 ' >"$hook_status"
 )
 assert_file_contains "$hook_status" "state=active"
+
+if command -v zsh >/dev/null 2>&1; then
+	zsh_hook_status="$tmpdir/zsh-hook-status.txt"
+	(
+		cd "$project"
+		ROBO_BIN="$robo" zsh -lc '
+set -e
+eval $("$ROBO_BIN" hook zsh)
+PS1="$ "
+robo activate >/dev/null
+test "${ROBO_NIX_ACTIVE:-}" = "1"
+test "${ROBO_NIX_ENV_NAME:-}" = "activation-shell-project"
+case "$PS1" in
+  "<activation-shell-project> "*) ;;
+  *) echo "missing zsh prompt prefix: $PS1" >&2; exit 1 ;;
+esac
+robo status
+robo deactivate
+test -z "${ROBO_NIX_ACTIVE:-}"
+test "$PS1" = "$ "
+' >"$zsh_hook_status"
+	)
+	assert_file_contains "$zsh_hook_status" "state=active"
+fi

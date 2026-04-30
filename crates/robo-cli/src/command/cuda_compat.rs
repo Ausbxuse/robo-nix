@@ -3,7 +3,7 @@ use std::process::ExitCode;
 
 use crate::{error, hint, ok, warn, Config};
 
-use super::nix::{combined_output, command_for_runtime};
+use super::nix::command_for_runtime;
 
 pub(super) fn ensure_runtime_cuda_compat(config: Config, strict: bool) -> Result<(), ExitCode> {
     let runtime = crate::runtime::read_project_runtime();
@@ -77,41 +77,24 @@ pub(super) fn ensure_runtime_cuda_compat(config: Config, strict: bool) -> Result
         }
     }
 
-    let (root, actual_version) = match probe_runtime_cuda(config) {
-        Ok(probe) => probe,
-        Err(message) if message.contains("cuDeviceGetUuid") => {
-            if strict {
-                error(config, "CUDA driver API required by Warp/Isaac is not available");
-            } else {
-                warn(config, "CUDA driver API required by Warp/Isaac is not available");
-            }
-            hint(config, &message);
-            hint(config, "upgrade or repair the host NVIDIA driver before running Isaac workloads.");
-            return if strict {
-                Err(ExitCode::from(1))
-            } else {
-                Ok(())
-            };
+    let Some((root, actual_version)) = probe_runtime_cuda(config) else {
+        let message = format!(
+            "runtime CUDA toolkit is not available inside nix develop; expected CUDA {expected_version}"
+        );
+        if strict {
+            error(config, &message);
+        } else {
+            warn(config, &message);
         }
-        Err(_) => {
-            let message = format!(
-                "runtime CUDA toolkit is not available inside nix develop; expected CUDA {expected_version}"
-            );
-            if strict {
-                error(config, &message);
-            } else {
-                warn(config, &message);
-            }
-            hint(
-                config,
-                "run `robo check --deep` and check the cuda-toolkit component in robo.nix.",
-            );
-            return if strict {
-                Err(ExitCode::from(1))
-            } else {
-                Ok(())
-            };
-        }
+        hint(
+            config,
+            "run `robo check --deep` and check the cuda-toolkit component in robo.nix.",
+        );
+        return if strict {
+            Err(ExitCode::from(1))
+        } else {
+            Ok(())
+        };
     };
 
     if actual_version != expected_version {
@@ -141,10 +124,8 @@ pub(super) fn ensure_runtime_cuda_compat(config: Config, strict: bool) -> Result
     Ok(())
 }
 
-fn probe_runtime_cuda(config: Config) -> Result<(String, String), String> {
-    let current_exe = std::env::current_exe().map_err(|err| err.to_string())?;
+fn probe_runtime_cuda(config: Config) -> Option<(String, String)> {
     let script = r#"root="${ROBO_NIX_CUDA_ROOT:-${CUDA_HOME:-${CUDA_PATH:-}}}"
-"$1" --no-color __cuda-driver-probe || exit 20
 printf 'root=%s\n' "$root"
 if [ -n "$root" ] && [ -x "$root/bin/nvcc" ]; then
   "$root/bin/nvcc" --version
@@ -157,23 +138,19 @@ fi"#;
         .arg("bash")
         .arg("-lc")
         .arg(script)
-        .arg("robo-cuda-probe")
-        .arg(current_exe)
         .output()
-        .map_err(|err| err.to_string())?;
+        .ok()?;
     if !output.status.success() {
-        return Err(combined_output(&output));
+        return None;
     }
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
     let root = stdout
         .lines()
         .find_map(|line| line.strip_prefix("root="))
-        .filter(|root| !root.is_empty())
-        .ok_or_else(|| combined_output(&output))?
+        .filter(|root| !root.is_empty())?
         .to_string();
     let version = crate::runtime::cuda_release_version_from_text(&stdout)
-        .or_else(|| crate::runtime::cuda_release_version_from_text(&stderr))
-        .ok_or_else(|| combined_output(&output))?;
-    Ok((root, version))
+        .or_else(|| crate::runtime::cuda_release_version_from_text(&stderr))?;
+    Some((root, version))
 }

@@ -3,7 +3,7 @@ use std::ffi::OsString;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::{Command, ExitCode};
+use std::process::{Command, ExitCode, Stdio};
 
 use console::measure_text_width;
 
@@ -289,7 +289,16 @@ pub(crate) fn run_internal_activate_env(config: Config) -> ExitCode {
         return exit_code(output.status.code());
     }
 
-    print!("{}", String::from_utf8_lossy(&output.stdout));
+    let env = match activation_env_exports(&output.stdout) {
+        Ok(env) => env,
+        Err(message) => {
+            error(config, &message);
+            return ExitCode::from(1);
+        }
+    };
+    for (name, value) in env {
+        println!("export {name}={}", shell_quote(&value));
+    }
     print_activation_env_exports();
     ExitCode::SUCCESS
 }
@@ -335,6 +344,57 @@ fn print_activation_env_exports() {
             println!("export PATH={}:\"$PATH\"", shell_quote(&parent.display().to_string()));
         }
     }
+}
+
+fn activation_env_exports(script: &[u8]) -> Result<Vec<(String, String)>, String> {
+    let mut command = Command::new("bash");
+    command
+        .arg("-c")
+        .arg(
+            "source /dev/stdin >/dev/null; \
+             if [ -n \"${shellHook:-}\" ]; then eval \"$shellHook\" >/dev/null; fi; \
+             env -0",
+        )
+        .env("ROBO_NIX_QUIET", "1")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    let mut child = command
+        .spawn()
+        .map_err(|err| format!("failed to materialize activation environment: {err}"))?;
+    child
+        .stdin
+        .take()
+        .ok_or_else(|| "failed to open activation environment stdin".to_string())?
+        .write_all(script)
+        .map_err(|err| format!("failed to write activation environment: {err}"))?;
+    let output = child
+        .wait_with_output()
+        .map_err(|err| format!("failed to read activation environment: {err}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("activation shell hook failed: {}", stderr.trim()));
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout)
+        .split('\0')
+        .filter_map(|entry| entry.split_once('='))
+        .filter(|(name, _)| should_export_activation_var(name))
+        .map(|(name, value)| (name.to_string(), value.to_string()))
+        .collect())
+}
+
+fn should_export_activation_var(name: &str) -> bool {
+    !matches!(
+        name,
+        "" | "_" | "PWD" | "OLDPWD" | "SHLVL" | "shellHook" | "ROBO_NIX_QUIET"
+    ) && !name.starts_with("BASH")
+        && name
+            .chars()
+            .enumerate()
+            .all(|(index, ch)| ch == '_' || ch.is_ascii_alphanumeric() && (index > 0 || !ch.is_ascii_digit()))
 }
 
 pub(crate) fn run_project_command(args: Vec<OsString>, config: Config) -> ExitCode {
@@ -544,98 +604,7 @@ fn hook_shell(arg: Option<&OsString>) -> Result<String, String> {
 fn print_posix_hook(robo: &Path) {
     let robo = shell_quote(&robo.display().to_string());
     println!(
-        r#"
-__robo_bin={robo}
-
-__robo_save_var() {{
-  eval "__robo_state=\${{__ROBO_SAVED_${{1}}_STATE+x}}"
-  if [ -n "$__robo_state" ]; then
-    unset __robo_state
-    return
-  fi
-  eval "__robo_has_value=\${{${{1}}+x}}"
-  if [ -n "$__robo_has_value" ]; then
-    eval "__ROBO_SAVED_${{1}}_STATE=set"
-    eval "__ROBO_SAVED_${{1}}=\${{${{1}}}}"
-  else
-    eval "__ROBO_SAVED_${{1}}_STATE=unset"
-  fi
-  unset __robo_state __robo_has_value
-}}
-
-__robo_restore_var() {{
-  eval "__robo_state=\${{__ROBO_SAVED_${{1}}_STATE:-}}"
-  case "$__robo_state" in
-    set) eval "export $1=\"\${{__ROBO_SAVED_${{1}}}}\"" ;;
-    unset) unset "$1" ;;
-  esac
-  eval "unset __ROBO_SAVED_${{1}}_STATE __ROBO_SAVED_${{1}}"
-  unset __robo_state
-}}
-
-__robo_prompt_enable() {{
-  if [ -n "${{ROBO_NIX_PROMPT_PREFIX:-}}" ] && [ -z "${{__ROBO_PROMPT_ACTIVE:-}}" ]; then
-    __ROBO_PROMPT_ACTIVE=1
-    __ROBO_SAVED_PS1="${{PS1-}}"
-    PS1="${{ROBO_NIX_PROMPT_PREFIX}}${{PS1-}}"
-  fi
-}}
-
-__robo_prompt_disable() {{
-  if [ -n "${{__ROBO_PROMPT_ACTIVE:-}}" ]; then
-    PS1="${{__ROBO_SAVED_PS1-}}"
-    unset __ROBO_PROMPT_ACTIVE __ROBO_SAVED_PS1
-  fi
-}}
-
-robo() {{
-  case "${{1-}}" in
-    activate)
-      shift
-      if [ "$#" -eq 0 ]; then
-        __robo_save_var PATH
-        __robo_save_var LD_LIBRARY_PATH
-        __robo_save_var LIBRARY_PATH
-        __robo_save_var CPATH
-        __robo_save_var CUDA_HOME
-        __robo_save_var CUDA_PATH
-        __robo_save_var XDG_DATA_DIRS
-        __robo_save_var SHELL
-        __robo_env="$("$__robo_bin" __activate-env)" || return
-        eval "$__robo_env"
-        unset __robo_env
-        __robo_prompt_enable
-      else
-        "$__robo_bin" activate "$@"
-      fi
-      ;;
-    deactivate)
-      if [ -n "${{ROBO_NIX_ACTIVE:-}}" ]; then
-        __robo_prompt_disable
-        __robo_restore_var PATH
-        __robo_restore_var LD_LIBRARY_PATH
-        __robo_restore_var LIBRARY_PATH
-        __robo_restore_var CPATH
-        __robo_restore_var CUDA_HOME
-        __robo_restore_var CUDA_PATH
-        __robo_restore_var XDG_DATA_DIRS
-        __robo_restore_var SHELL
-        unset ROBO_NIX_ACTIVE ROBO_NIX_ENV_NAME ROBO_NIX_PYTHON_VERSION ROBO_NIX_PROMPT_PREFIX
-        hash -r 2>/dev/null || true
-      else
-        "$__robo_bin" deactivate
-      fi
-      ;;
-    *)
-      "$__robo_bin" "$@"
-      ;;
-  esac
-}}
-
-if [ -n "${{ROBO_NIX_ACTIVE:-}}" ]; then
-  __robo_prompt_enable
-fi
-"#
+        r#"__robo_bin={robo}; __robo_save_var() {{ eval "__robo_state=\${{__ROBO_SAVED_${{1}}_STATE+x}}"; if [ -n "$__robo_state" ]; then unset __robo_state; return; fi; eval "__robo_has_value=\${{${{1}}+x}}"; if [ -n "$__robo_has_value" ]; then eval "__ROBO_SAVED_${{1}}_STATE=set"; eval "__ROBO_SAVED_${{1}}=\${{${{1}}}}"; else eval "__ROBO_SAVED_${{1}}_STATE=unset"; fi; unset __robo_state __robo_has_value; }}; __robo_restore_var() {{ eval "__robo_state=\${{__ROBO_SAVED_${{1}}_STATE:-}}"; case "$__robo_state" in set) eval "export $1=\"\${{__ROBO_SAVED_${{1}}}}\"" ;; unset) unset "$1" ;; esac; eval "unset __ROBO_SAVED_${{1}}_STATE __ROBO_SAVED_${{1}}"; unset __robo_state; }}; __robo_prompt_enable() {{ if [ -n "${{ROBO_NIX_PROMPT_PREFIX:-}}" ] && [ -z "${{__ROBO_PROMPT_ACTIVE:-}}" ]; then __ROBO_PROMPT_ACTIVE=1; __ROBO_SAVED_PS1="${{PS1-}}"; PS1="${{ROBO_NIX_PROMPT_PREFIX}}${{PS1-}}"; fi; }}; __robo_prompt_disable() {{ if [ -n "${{__ROBO_PROMPT_ACTIVE:-}}" ]; then PS1="${{__ROBO_SAVED_PS1-}}"; unset __ROBO_PROMPT_ACTIVE __ROBO_SAVED_PS1; fi; }}; robo() {{ case "${{1-}}" in activate) shift; if [ "$#" -eq 0 ]; then __robo_save_var PATH; __robo_save_var LD_LIBRARY_PATH; __robo_save_var LIBRARY_PATH; __robo_save_var CPATH; __robo_save_var CUDA_HOME; __robo_save_var CUDA_PATH; __robo_save_var XDG_DATA_DIRS; __robo_save_var SHELL; __robo_env="$("$__robo_bin" __activate-env)" || return; eval "$__robo_env"; unset __robo_env; __robo_prompt_enable; else "$__robo_bin" activate "$@"; fi ;; deactivate) if [ -n "${{ROBO_NIX_ACTIVE:-}}" ]; then __robo_prompt_disable; __robo_restore_var PATH; __robo_restore_var LD_LIBRARY_PATH; __robo_restore_var LIBRARY_PATH; __robo_restore_var CPATH; __robo_restore_var CUDA_HOME; __robo_restore_var CUDA_PATH; __robo_restore_var XDG_DATA_DIRS; __robo_restore_var SHELL; unset ROBO_NIX_ACTIVE ROBO_NIX_ENV_NAME ROBO_NIX_PYTHON_VERSION ROBO_NIX_PROMPT_PREFIX; hash -r 2>/dev/null || true; else "$__robo_bin" deactivate; fi ;; *) "$__robo_bin" "$@" ;; esac; }}; if [ -n "${{ROBO_NIX_ACTIVE:-}}" ]; then __robo_prompt_enable; fi"#
     );
 }
 

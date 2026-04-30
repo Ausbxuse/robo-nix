@@ -1,8 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::env;
-#[cfg(target_os = "linux")]
-use std::ffi::{c_char, c_void, CStr, CString};
 use std::fs;
 use std::path::Path;
 use std::process::Command;
@@ -237,63 +235,6 @@ pub(crate) fn find_host_libcuda() -> Option<String> {
     find_libcuda_from_env()
         .or_else(find_libcuda_in_library_path)
         .or_else(find_libcuda_with_ldconfig)
-}
-
-#[cfg(target_os = "linux")]
-pub(crate) fn probe_libcuda_driver_entrypoint(symbol: &str) -> Result<(), String> {
-    const RTLD_NOW: i32 = 2;
-
-    #[link(name = "dl")]
-    unsafe extern "C" {
-        fn dlopen(filename: *const c_char, flags: i32) -> *mut c_void;
-        fn dlsym(handle: *mut c_void, symbol: *const c_char) -> *mut c_void;
-        fn dlclose(handle: *mut c_void) -> i32;
-        fn dlerror() -> *const c_char;
-    }
-
-    fn dl_error() -> String {
-        let error = unsafe { dlerror() };
-        if error.is_null() {
-            "unknown dynamic loader error".to_string()
-        } else {
-            unsafe { CStr::from_ptr(error) }
-                .to_string_lossy()
-                .into_owned()
-        }
-    }
-
-    let library = CString::new(LIBCUDA).map_err(|err| err.to_string())?;
-    let symbol = CString::new(symbol).map_err(|err| err.to_string())?;
-    let handle = unsafe { dlopen(library.as_ptr(), RTLD_NOW) };
-    if handle.is_null() {
-        return Err(format!("{LIBCUDA} could not be loaded: {}", dl_error()));
-    }
-
-    unsafe {
-        dlerror();
-    }
-    let entrypoint = unsafe { dlsym(handle, symbol.as_ptr()) };
-    let error = unsafe { dlerror() };
-    unsafe {
-        dlclose(handle);
-    }
-
-    if !error.is_null() {
-        return Err(
-            unsafe { CStr::from_ptr(error) }
-                .to_string_lossy()
-                .into_owned(),
-        );
-    }
-    if entrypoint.is_null() {
-        return Err("driver entry point resolved to a null pointer".to_string());
-    }
-    Ok(())
-}
-
-#[cfg(not(target_os = "linux"))]
-pub(crate) fn probe_libcuda_driver_entrypoint(_symbol: &str) -> Result<(), String> {
-    Ok(())
 }
 
 fn find_libcuda_with_ldconfig() -> Option<String> {
