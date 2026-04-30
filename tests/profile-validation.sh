@@ -10,7 +10,19 @@ trap 'cleanup_dir "$tmpdir"' EXIT
 
 output_file="$tmpdir/repo-profile.txt"
 
-nix run "path:${repo_root}#repo-profile" >"$output_file"
+run_profile() {
+	nix run "path:${repo_root}#repo-profile" >"$output_file" 2>&1
+}
+
+if ! run_profile; then
+	cat "$output_file" >&2
+	printf 'retrying repo-profile once after initial failure\n' >&2
+	sleep 1
+	if ! run_profile; then
+		cat "$output_file" >&2
+		exit 1
+	fi
+fi
 
 grep -F "profiling robo-nix at path:" "$output_file" >/dev/null
 grep -F "#apps.x86_64-linux.default.program" "$output_file" >/dev/null

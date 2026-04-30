@@ -87,6 +87,8 @@
         pkgs.libGLU
         pkgs.libxcrypt-legacy
         pkgs.vulkan-loader
+        pkgs.expat
+        pkgs.util-linux.lib
         pkgs.glib
         pkgs.xorg.libX11
         pkgs.xorg.libXau

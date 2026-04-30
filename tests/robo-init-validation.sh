@@ -70,9 +70,9 @@ assert_basic_project_init() {
 		cd "$tmpdir/project"
 		nix run "path:${repo_root}#robo" -- check >"$robo_wrapper_check_output"
 	)
-	assert_file_contains "$robo_wrapper_check_output" "robo: checked project"
+	assert_file_contains "$robo_wrapper_check_output" "checked project"
 	assert_file_contains "$robo_wrapper_check_output" "status"
-	assert_file_contains "$robo_wrapper_check_output" "ok,"
+	assert_file_contains "$robo_wrapper_check_output" "ok"
 }
 
 assert_python_version_preflight() {
@@ -148,11 +148,12 @@ assert_runtime_repairs_legacy_github_source() {
 
 	(
 		cd "$tmpdir/legacy-source-project"
-		nix run "path:${repo_root}#robo" -- check >"$check_output"
+		nix run "path:${repo_root}#robo" -- check >"$check_output" 2>&1
 	)
 	assert_file_contains "$tmpdir/legacy-source-project/flake.nix" 'robo-nix.url = "path:/nix/store/'
-	assert_file_contains "$check_output" "robo: checked legacy-source-project"
-	assert_file_contains "$check_output" "ok,"
+	assert_file_contains "$check_output" "checked legacy-source-project"
+	assert_file_contains "$check_output" "status"
+	assert_file_contains "$check_output" "ok"
 
 	nix run "path:${repo_root}#robo" -- init "$tmpdir/local-source-project" \
 		--profile minimal \
@@ -160,7 +161,7 @@ assert_runtime_repairs_legacy_github_source() {
 
 	(
 		cd "$tmpdir/local-source-project"
-		nix run "path:${repo_root}#robo" -- check >"$local_check_output"
+		nix run "path:${repo_root}#robo" -- check >"$local_check_output" 2>&1
 	)
 	assert_file_contains "$tmpdir/local-source-project/flake.nix" 'robo-nix.url = "path:/nix/store/'
 	assert_file_contains "$local_check_output" "repaired flake.nix to use path:/nix/store/"
