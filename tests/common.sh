@@ -49,7 +49,13 @@ copy_fixture_to_tmp() {
 assert_file_contains() {
 	local file="$1"
 	local expected="$2"
-	grep -F "$expected" "$file" >/dev/null
+	if ! grep -F "$expected" "$file" >/dev/null; then
+		printf 'expected %s to contain: %s\n' "$file" "$expected" >&2
+		printf -- '--- %s ---\n' "$file" >&2
+		cat "$file" >&2
+		printf -- '--- end %s ---\n' "$file" >&2
+		exit 1
+	fi
 }
 
 assert_command_fails() {

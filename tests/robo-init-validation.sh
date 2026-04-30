@@ -146,11 +146,16 @@ assert_runtime_repairs_legacy_github_source() {
 		--robo-nix-url "path:${repo_root}" >/dev/null
 	sed -i 's|path:[^"]*|github:ausbxuse/robo-nix|' "$tmpdir/legacy-source-project/flake.nix"
 
-	(
+	if ! (
 		cd "$tmpdir/legacy-source-project"
 		nix run "path:${repo_root}#robo" -- check >"$check_output" 2>&1
-	)
+	); then
+		cat "$check_output" >&2
+		exit 1
+	fi
 	assert_file_contains "$tmpdir/legacy-source-project/flake.nix" 'robo-nix.url = "path:/nix/store/'
+	assert_file_contains "$check_output" "repaired flake.nix to use path:/nix/store/"
+	assert_file_contains "$check_output" "avoids copying large local checkout paths"
 	assert_file_contains "$check_output" "checked legacy-source-project"
 	assert_file_contains "$check_output" "status"
 	assert_file_contains "$check_output" "ok"
@@ -159,13 +164,17 @@ assert_runtime_repairs_legacy_github_source() {
 		--profile minimal \
 		--robo-nix-url "path:${repo_root}" >/dev/null
 
-	(
+	if ! (
 		cd "$tmpdir/local-source-project"
 		nix run "path:${repo_root}#robo" -- check >"$local_check_output" 2>&1
-	)
+	); then
+		cat "$local_check_output" >&2
+		exit 1
+	fi
 	assert_file_contains "$tmpdir/local-source-project/flake.nix" 'robo-nix.url = "path:/nix/store/'
-	assert_file_contains "$local_check_output" "repaired flake.nix to use path:/nix/store/"
-	assert_file_contains "$local_check_output" "avoids copying large local checkout paths"
+	assert_file_contains "$local_check_output" "checked local-source-project"
+	assert_file_contains "$local_check_output" "status"
+	assert_file_contains "$local_check_output" "ok"
 }
 
 assert_interactive_project_init() {
