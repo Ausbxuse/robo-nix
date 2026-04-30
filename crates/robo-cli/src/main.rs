@@ -12,9 +12,8 @@ pub(crate) use command::{
     nix_command, quoted_value, run_bootstrap_with_progress,
 };
 pub(crate) use ui::{
-    command_row, command_row_err, error, field, field_err, hint, inline, label, ok,
-    output_with_spinner, section, section_err, status, warn, Config, LabelKind, UiProgress,
-    UiSpinner,
+    command_row_err, error, field, field_err, hint, inline, label, ok, output_with_spinner,
+    section, section_err, status, warn, Config, LabelKind, UiProgress, UiSpinner,
 };
 
 fn main() -> std::process::ExitCode {

@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
 use crate::{
-    command_row, error, field, hint, label, output_with_spinner, section, status, Config, LabelKind,
+    error, field, hint, label, output_with_spinner, section, status, Config, LabelKind,
 };
 
 use super::bootstrap::run_bootstrap;
@@ -56,14 +56,17 @@ pub(crate) fn run_project_activate(args: Vec<OsString>, config: Config) -> ExitC
         return code;
     }
 
+    let show_card = args.is_empty();
     let launch = normalize_shell_args(args);
+    if show_card {
+        print_activation_card(config);
+    }
 
     let mut command = command_for_runtime(config);
     command.env("ROBO_NIX_ACTIVATE", "1");
     if let Ok(current_exe) = env::current_exe() {
         command.env("ROBO_NIX_ROBO_BIN", current_exe);
     }
-    command.env_remove("ROBO_NIX_QUIET");
     for (name, value) in launch.env {
         command.env(name, value);
     }
@@ -106,19 +109,58 @@ fn print_captured(label: &str, bytes: &[u8]) {
     eprint!("{}", String::from_utf8_lossy(bytes));
 }
 
+fn print_activation_card(config: Config) {
+    let state = RuntimeState::read();
+    let system = nix_system_name();
+    let rows = [
+        format!("active    {}", state.env_name),
+        format!("python    {}    system {}", state.python_version, system),
+        format!("workspace {}", state.workspace),
+        "actions   uv sync    sync Python packages from uv.lock".to_string(),
+        "          exit       leave this runtime shell".to_string(),
+    ];
+    let width = rows.iter().map(|row| row.len()).max().unwrap_or(0) + 4;
+    let inner_width = width.saturating_sub(2);
+    let (top_left, horizontal, top_right, vertical, bottom_left, bottom_right) =
+        if config.color {
+            ("╭", "─", "╮", "│", "╰", "╯")
+        } else {
+            ("+", "-", "+", "|", "+", "+")
+        };
+
+    println!(
+        "{}{}{}",
+        label(config, top_left, LabelKind::Status),
+        label(config, &horizontal.repeat(inner_width), LabelKind::Status),
+        label(config, top_right, LabelKind::Status)
+    );
+    for row in rows {
+        println!(
+            "{} {:inner_width$} {}",
+            label(config, vertical, LabelKind::Status),
+            row,
+            label(config, vertical, LabelKind::Status),
+        );
+    }
+    println!(
+        "{}{}{}",
+        label(config, bottom_left, LabelKind::Status),
+        label(config, &horizontal.repeat(inner_width), LabelKind::Status),
+        label(config, bottom_right, LabelKind::Status),
+    );
+}
+
 pub(crate) fn run_project_status(config: Config) -> ExitCode {
     let state = RuntimeState::read();
-    print_runtime_state(config, "status", &state);
+    print_runtime_state(config, &state);
     ExitCode::SUCCESS
 }
 
 pub(crate) fn run_project_deactivate(config: Config) -> ExitCode {
     let state = RuntimeState::read();
     if state.active {
-        print_runtime_state(config, "deactivate", &state);
-        println!();
-        section(config, "next steps");
-        command_row(config, "exit");
+        section(config, "action");
+        action_row(config, "exit", "leave this runtime shell");
         println!(
             "  {}",
             label(
@@ -279,33 +321,61 @@ impl RuntimeState {
     }
 }
 
-fn print_runtime_state(config: Config, action: &str, state: &RuntimeState) {
-    println!(
-        "{} {}\n",
-        label(config, "robo:", LabelKind::Status),
-        action
-    );
+fn print_runtime_state(config: Config, state: &RuntimeState) {
     section(config, "runtime");
-    field(config, "active", if state.active { "yes" } else { "no" });
     field(config, "env", &state.env_name);
+    field(
+        config,
+        "state",
+        if state.active { "active" } else { "inactive" },
+    );
     field(config, "python", &state.python_version);
-    field(config, "workspace", &state.workspace);
     if let Some(shell) = &state.shell {
-        field(config, "shell", shell);
+        field(config, "shell", &shell_name(shell));
     }
+    field(config, "workspace", &state.workspace);
     if let Some(prefix) = &state.prompt_prefix {
         field(config, "prompt-prefix", prefix);
     }
 
     println!();
-    section(config, "status");
     if state.active {
-        println!("  {}", label(config, "activated", LabelKind::Ok));
+        section(config, "actions");
+        action_row(
+            config,
+            "uv sync",
+            "sync Python packages from uv.lock",
+        );
+        action_row(config, "exit", "leave this runtime shell");
     } else {
-        println!("  {}", label(config, "not activated", LabelKind::Warn));
-        println!();
-        section(config, "next steps");
-        command_row(config, "robo activate");
+        section(config, "action");
+        action_row(config, "robo activate", "enter the Nix runtime shell");
+    }
+}
+
+fn action_row(config: Config, command: &str, description: &str) {
+    println!(
+        "  {:<15} {}",
+        label(config, command, LabelKind::Command),
+        label(config, description, LabelKind::Hint)
+    );
+}
+
+fn shell_name(shell: &str) -> String {
+    Path::new(shell)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or(shell)
+        .to_string()
+}
+
+fn nix_system_name() -> &'static str {
+    match (env::consts::ARCH, env::consts::OS) {
+        ("x86_64", "linux") => "x86_64-linux",
+        ("aarch64", "linux") => "aarch64-linux",
+        ("x86_64", "macos") => "x86_64-darwin",
+        ("aarch64", "macos") => "aarch64-darwin",
+        _ => env::consts::OS,
     }
 }
 

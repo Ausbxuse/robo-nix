@@ -7,6 +7,8 @@ use std::process::Command;
 
 use crate::quoted_value;
 
+const LIBCUDA: &str = "libcuda.so.1";
+
 pub(crate) struct ProjectRuntime {
     pub(crate) schema_version: Option<String>,
     pub(crate) env_name: String,
@@ -213,6 +215,46 @@ fn find_cuda_release_version(text: &str) -> Option<String> {
 
 pub(crate) fn cuda_release_version_from_text(text: &str) -> Option<String> {
     find_cuda_release_version(text)
+}
+
+pub(crate) fn find_host_libcuda() -> Option<String> {
+    find_libcuda_from_env()
+        .or_else(find_libcuda_in_library_path)
+        .or_else(find_libcuda_with_ldconfig)
+}
+
+fn find_libcuda_with_ldconfig() -> Option<String> {
+    let output = Command::new("ldconfig").arg("-p").output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .find_map(|line| {
+            let line = line.trim();
+            if !line.starts_with(LIBCUDA) {
+                return None;
+            }
+            line.rsplit_once(" => ")
+                .map(|(_, path)| path.trim().to_string())
+                .filter(|path| Path::new(path).is_file())
+        })
+}
+
+fn find_libcuda_in_library_path() -> Option<String> {
+    env::var_os("LD_LIBRARY_PATH").and_then(|paths| {
+        env::split_paths(&paths)
+            .map(|dir| dir.join(LIBCUDA))
+            .find(|path| path.is_file())
+            .map(|path| path.display().to_string())
+    })
+}
+
+fn find_libcuda_from_env() -> Option<String> {
+    env::var("ROBO_NIX_LIBCUDA_PATH")
+        .ok()
+        .filter(|path| Path::new(path).is_file())
 }
 
 fn cuda_major_minor_version(text: &str) -> Option<String> {

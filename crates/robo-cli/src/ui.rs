@@ -108,10 +108,6 @@ pub(crate) fn field(config: Config, name: &str, value: &str) {
     println!("  {}={}", label(config, name, LabelKind::Hint), value);
 }
 
-pub(crate) fn command_row(config: Config, command: &str) {
-    println!("  {}", label(config, command, LabelKind::Command));
-}
-
 pub(crate) fn section_err(config: Config, heading: &str) {
     eprintln!("{}", label(config, heading, LabelKind::Status));
 }

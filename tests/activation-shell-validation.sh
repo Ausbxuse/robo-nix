@@ -97,6 +97,6 @@ active_status="$tmpdir/active-status.txt"
 		ROBO_NIX_PROMPT_PREFIX="<activation-shell-project> " \
 		"$robo" status >"$active_status"
 )
-assert_file_contains "$active_status" "active=yes"
-assert_file_contains "$active_status" "status"
-assert_file_contains "$active_status" "activated"
+assert_file_contains "$active_status" "state=active"
+assert_file_contains "$active_status" "uv sync"
+assert_file_contains "$active_status" "leave this runtime shell"

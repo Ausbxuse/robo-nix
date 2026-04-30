@@ -84,14 +84,20 @@
         pkgs.fontconfig
         pkgs.freetype
         pkgs.libGL
+        pkgs.libGLU
         pkgs.glib
         pkgs.xorg.libX11
         pkgs.xorg.libXau
         pkgs.xorg.libxcb
         pkgs.xorg.libXdmcp
         pkgs.xorg.libXext
+        pkgs.xorg.libXfixes
+        pkgs.xorg.libXrender
         pkgs.xorg.libXi
         pkgs.xorg.libXinerama
+        pkgs.xorg.libICE
+        pkgs.xorg.libSM
+        pkgs.xorg.libXt
         pkgs.libxkbcommon
         pkgs.xorg.libXrandr
         pkgs.xorg.libXtst
@@ -466,14 +472,14 @@
                   card_row() {
                     label_text="$1"
                     value_text="$(card_value "$2")"
-                    printf "%s%s%s  %s%-9s%s %s%-63s%s%s%s\n" \
+                    printf "%s%s%s  %s%-9s%s %s%-63s%s %s%s%s\n" \
                       "$c_status" "$box_mid" "$c_reset" \
                       "$c_hint" "$label_text" "$c_reset" \
                       "$c_value" "$value_text" "$c_reset" \
                       "$c_status" "$box_mid" "$c_reset"
                   }
                   card_runtime_row() {
-                    printf "%s%s%s  %s%-9s%s %s%-8s%s  %s%-6s%s %s%-42s%s%s%s\n" \
+                    printf "%s%s%s  %s%-9s%s %s%-8s%s  %s%-6s%s %s%-42s%s     %s%s%s\n" \
                       "$c_status" "$box_mid" "$c_reset" \
                       "$c_hint" "python" "$c_reset" \
                       "$c_value" "$ROBO_NIX_PYTHON_VERSION" "$c_reset" \

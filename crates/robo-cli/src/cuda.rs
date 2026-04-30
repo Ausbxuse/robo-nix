@@ -4,14 +4,6 @@ use std::process::{Command, ExitCode, Stdio};
 
 use crate::{error, hint, ok, status, Config};
 
-const HOST_CUDA_DRIVER_LIBS: &[&str] = &[
-    "/run/opengl-driver/lib/libcuda.so.1",
-    "/usr/lib/x86_64-linux-gnu/libcuda.so.1",
-    "/usr/lib/x86_64-linux-gnu/nvidia/current/libcuda.so.1",
-    "/usr/lib/x86_64-linux-gnu/nvidia/libcuda.so.1",
-    "/usr/lib/wsl/lib/libcuda.so.1",
-];
-
 pub(crate) fn check(config: Config) -> ExitCode {
     status(config, "checking CUDA host prerequisites");
     if env::consts::OS != "linux" {
@@ -46,10 +38,13 @@ pub(crate) fn check(config: Config) -> ExitCode {
     {
         Ok(status) if status.success() => {
             ok(config, "nvidia-smi is reachable");
-            if let Some(path) = host_cuda_driver_lib() {
+            if let Some(path) = crate::runtime::find_host_libcuda() {
                 ok(config, &format!("CUDA driver library visible at {path}"));
             } else {
-                error(config, "libcuda.so.1 was not found in common host driver locations");
+                error(
+                    config,
+                    "libcuda.so.1 was not visible through ROBO_NIX_LIBCUDA_PATH, LD_LIBRARY_PATH, or ldconfig",
+                );
                 hint(
                     config,
                     "Nix provides the CUDA build toolkit; libcuda.so.1 must come from the NVIDIA host driver.",
@@ -64,11 +59,4 @@ pub(crate) fn check(config: Config) -> ExitCode {
             ExitCode::from(1)
         }
     }
-}
-
-fn host_cuda_driver_lib() -> Option<&'static str> {
-    HOST_CUDA_DRIVER_LIBS
-        .iter()
-        .copied()
-        .find(|path| Path::new(path).is_file())
 }
