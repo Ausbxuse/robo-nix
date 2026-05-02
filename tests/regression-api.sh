@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2016
 
 set -euo pipefail
 
@@ -15,12 +16,37 @@ run_fast_mode() {
 	[ "$fast_mode" -eq 1 ]
 }
 
-eval_timeout="${ROBO_NIX_TEST_EVAL_TIMEOUT:-120s}"
+eval_timeout_seconds="${ROBO_NIX_TEST_EVAL_TIMEOUT_SECONDS:-120}"
+
+run_with_timeout() {
+	local seconds="$1"
+	shift
+	local pid
+	local watchdog
+	local status
+
+	"$@" &
+	pid="$!"
+	(
+		sleep "$seconds"
+		kill "$pid" 2>/dev/null || true
+	) &
+	watchdog="$!"
+
+	set +e
+	wait "$pid"
+	status="$?"
+	set -e
+
+	kill "$watchdog" 2>/dev/null || true
+	wait "$watchdog" 2>/dev/null || true
+	return "$status"
+}
 
 assert_expr() {
 	local expr="$1"
-	if ! timeout "$eval_timeout" nix eval --no-warn-dirty --impure --expr "$expr" >/dev/null; then
-		echo "nix eval failed or timed out after $eval_timeout" >&2
+	if ! run_with_timeout "$eval_timeout_seconds" nix eval --no-warn-dirty --impure --expr "$expr" >/dev/null; then
+		echo "nix eval failed or timed out after ${eval_timeout_seconds}s" >&2
 		return 1
 	fi
 }
@@ -217,7 +243,6 @@ assert_native_build_reasserts_tool_path() {
 
 assert_x11_gl_exports_matching_egl_vendor() {
 	local expr
-	# shellcheck disable=SC2016
 	expr='
     let
       flake = builtins.getFlake "'"git+file://${repo_root}"'";
@@ -250,7 +275,6 @@ assert_x11_gl_exports_matching_egl_vendor() {
 
 assert_qt6_exports_standard_cmake_prefixes() {
 	local expr
-	# shellcheck disable=SC2016
 	expr='
     let
       flake = builtins.getFlake "'"git+file://${repo_root}"'";

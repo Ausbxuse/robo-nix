@@ -8,13 +8,14 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
 tmpdir="$(mktemp_dir)"
 trap 'cleanup_dir "$tmpdir"' EXIT
 
-robo="$(nix build "path:${repo_root}#robo" --no-link --print-out-paths)/bin/robo"
+robo_nix_url="git+file://${repo_root}"
+robo="$(nix build --no-warn-dirty "${robo_nix_url}#robo" --no-link --print-out-paths)/bin/robo"
 
 project="$tmpdir/project"
 mkdir -p "$project"
 cat >"$project/flake.nix" <<EOF
 {
-  inputs.robo-nix.url = "path:${repo_root}";
+  inputs.robo-nix.url = "${robo_nix_url}";
   outputs = {robo-nix, ...}:
     robo-nix.lib.mkProjectFlakeFromManifest ./robo.nix;
 }

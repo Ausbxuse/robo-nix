@@ -44,8 +44,8 @@ jobs:
             experimental-features = nix-command flakes
             accept-flake-config = true
 
-      - name: Run Activation Shell Validation
-        run: bash tests/activation-shell-validation.sh
+      - name: Run Shell Validation
+        run: bash tests/shell-validation.sh
 
   container-smoke:
     name: Container Smoke (${{ matrix.image }})
