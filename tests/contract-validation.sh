@@ -9,14 +9,14 @@ tmpdir="$(mktemp_dir)"
 trap 'cleanup_dir "$tmpdir"' EXIT
 
 mkdir -p "$tmpdir/contract-project"
-nix run "path:${repo_root}#robo" -- init "$tmpdir/contract-project" \
+nix run "${repo_flake_url}#robo" -- init "$tmpdir/contract-project" \
 	--profile minimal \
 	--robo-nix-url "path:${repo_root}" >/dev/null
 
 (
 	cd "$tmpdir/contract-project"
-	nix run "path:${repo_root}#robo" -- contract --json >"$tmpdir/contract.json"
-	nix run "path:${repo_root}#robo" -- doctor --why --json >"$tmpdir/why.json"
+	nix run "${repo_flake_url}#robo" -- contract --json >"$tmpdir/contract.json"
+	nix run "${repo_flake_url}#robo" -- doctor --why --json >"$tmpdir/why.json"
 )
 
 assert_file_contains "$tmpdir/contract.json" '"envName": "contract-project"'

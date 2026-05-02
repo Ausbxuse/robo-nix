@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2034
 
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+repo_flake_url="${ROBO_NIX_TEST_REPO_FLAKE_URL:-git+file://${repo_root}}"
 
 mktemp_dir() {
 	local dir

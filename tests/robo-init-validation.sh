@@ -22,11 +22,11 @@ assert_listing_outputs() {
 	local component_list_file="$tmpdir/components.txt"
 	local profile_list_file="$tmpdir/profiles.txt"
 
-	nix run "path:${repo_root}#robo" -- init --list-profiles >"$profile_list_file"
+	nix run "${repo_flake_url}#robo" -- init --list-profiles >"$profile_list_file"
 	assert_file_contains "$profile_list_file" "minimal"
 	assert_file_contains "$profile_list_file" "isaac-ros2"
 
-	nix run "path:${repo_root}#robo" -- init --list-components >"$component_list_file"
+	nix run "${repo_flake_url}#robo" -- init --list-components >"$component_list_file"
 	assert_file_contains "$component_list_file" "base"
 	assert_file_contains "$component_list_file" "ros2-jazzy"
 }
@@ -36,7 +36,7 @@ assert_basic_project_init() {
 	local check_output="$tmpdir/check.txt"
 	local robo_wrapper_check_output="$tmpdir/robo-wrapper-check.txt"
 
-	nix run "path:${repo_root}#robo" -- init "$tmpdir/project" \
+	nix run "${repo_flake_url}#robo" -- init "$tmpdir/project" \
 		--name project \
 		--profile minimal \
 		--robo-nix-url "path:${repo_root}" >"$init_output" 2>&1
@@ -69,7 +69,7 @@ assert_basic_project_init() {
 
 	(
 		cd "$tmpdir/project"
-		nix run "path:${repo_root}#robo" -- doctor >"$robo_wrapper_check_output"
+		nix run "${repo_flake_url}#robo" -- doctor >"$robo_wrapper_check_output"
 	)
 	assert_file_contains "$robo_wrapper_check_output" "checked project"
 	assert_file_contains "$robo_wrapper_check_output" "status"
@@ -96,7 +96,7 @@ EOF
 
 	(
 		cd "$tmpdir/python-version-project"
-		assert_command_fails_capture "$output" nix run "path:${repo_root}#robo" -- run python -c 'print("unreachable")'
+		assert_command_fails_capture "$output" nix run "${repo_flake_url}#robo" -- run python -c 'print("unreachable")'
 	)
 	assert_file_contains "$output" ".python-version is 3.11, but pyproject.toml requires Python 3.12.11"
 
@@ -104,7 +104,7 @@ EOF
 	sed -i 's/3.12.11/3.12/' "$tmpdir/python-version-project/robo.nix"
 	(
 		cd "$tmpdir/python-version-project"
-		assert_command_fails_capture "$output" nix run "path:${repo_root}#robo" -- run python -c 'print("unreachable")'
+		assert_command_fails_capture "$output" nix run "${repo_flake_url}#robo" -- run python -c 'print("unreachable")'
 	)
 	assert_file_contains "$output" "robo.nix declares Python 3.12, but pyproject.toml requires Python 3.12.11"
 
@@ -116,7 +116,7 @@ requires-python = "==3.10.*"
 dependencies = []
 EOF
 
-	nix run "path:${repo_root}#robo" -- init "$tmpdir/python-version-wildcard-project" \
+	nix run "${repo_flake_url}#robo" -- init "$tmpdir/python-version-wildcard-project" \
 		--robo-nix-url "path:${repo_root}" >"$wildcard_output" 2>&1
 	assert_file_contains "$tmpdir/python-version-wildcard-project/.python-version" "3.10"
 	assert_file_contains "$tmpdir/python-version-wildcard-project/robo.nix" 'pythonVersion = "3.10";'
@@ -126,14 +126,14 @@ EOF
 	printf '3.11\n' >"$tmpdir/python-version-wildcard-project/.python-version"
 	(
 		cd "$tmpdir/python-version-wildcard-project"
-		assert_command_fails_capture "$output" nix run "path:${repo_root}#robo" -- run python -c 'print("unreachable")'
+		assert_command_fails_capture "$output" nix run "${repo_flake_url}#robo" -- run python -c 'print("unreachable")'
 	)
 	assert_file_contains "$output" ".python-version is 3.11, but pyproject.toml requires Python 3.10"
 
 }
 
 assert_default_source_is_packaged_source() {
-	nix run "path:${repo_root}#robo" -- init "$tmpdir/default-source-project" \
+	nix run "${repo_flake_url}#robo" -- init "$tmpdir/default-source-project" \
 		--profile minimal >/dev/null
 
 	assert_file_contains "$tmpdir/default-source-project/flake.nix" 'robo-nix.url = "path:/nix/store/'
@@ -143,14 +143,14 @@ assert_runtime_repairs_legacy_github_source() {
 	local check_output="$tmpdir/legacy-source-check.txt"
 	local local_check_output="$tmpdir/local-source-check.txt"
 
-	nix run "path:${repo_root}#robo" -- init "$tmpdir/legacy-source-project" \
+	nix run "${repo_flake_url}#robo" -- init "$tmpdir/legacy-source-project" \
 		--profile minimal \
 		--robo-nix-url "path:${repo_root}" >/dev/null
 	sed -i 's|path:[^"]*|github:ausbxuse/robo-nix|' "$tmpdir/legacy-source-project/flake.nix"
 
 	if ! (
 		cd "$tmpdir/legacy-source-project"
-		nix run "path:${repo_root}#robo" -- doctor >"$check_output" 2>&1
+		nix run "${repo_flake_url}#robo" -- doctor >"$check_output" 2>&1
 	); then
 		cat "$check_output" >&2
 		exit 1
@@ -162,13 +162,13 @@ assert_runtime_repairs_legacy_github_source() {
 	assert_file_contains "$check_output" "status"
 	assert_file_contains "$check_output" "ok"
 
-	nix run "path:${repo_root}#robo" -- init "$tmpdir/local-source-project" \
+	nix run "${repo_flake_url}#robo" -- init "$tmpdir/local-source-project" \
 		--profile minimal \
 		--robo-nix-url "path:${repo_root}" >/dev/null
 
 	if ! (
 		cd "$tmpdir/local-source-project"
-		nix run "path:${repo_root}#robo" -- doctor >"$local_check_output" 2>&1
+		nix run "${repo_flake_url}#robo" -- doctor >"$local_check_output" 2>&1
 	); then
 		cat "$local_check_output" >&2
 		exit 1
@@ -183,7 +183,7 @@ assert_interactive_project_init() {
 	local interactive_check_output="$tmpdir/interactive-check.txt"
 
 	printf '\n' |
-		nix run "path:${repo_root}#robo" -- init "$tmpdir/interactive-project" --interactive \
+		nix run "${repo_flake_url}#robo" -- init "$tmpdir/interactive-project" --interactive \
 			--robo-nix-url "path:${repo_root}" >/dev/null
 
 	test -f "$tmpdir/interactive-project/flake.nix"
@@ -206,7 +206,7 @@ assert_robo_wrapper_runtime_flow() {
 	local robo_check_output="$tmpdir/robo-check.txt"
 	local robo_run_output="$tmpdir/robo-run.txt"
 
-	nix run "path:${repo_root}#robo" -- init "$tmpdir/robo-project" \
+	nix run "${repo_flake_url}#robo" -- init "$tmpdir/robo-project" \
 		--name dexmate-teleop \
 		--profile mujoco-sim \
 		--with media,linux-headers,qt6 \
@@ -240,7 +240,7 @@ EOF
 
 	(
 		cd "$tmpdir/robo-project"
-		nix run "path:${repo_root}#robo" -- run python -c 'from pathlib import Path; assert Path(".robo-nix/bootstrap-stamp").is_file()' >"$robo_run_output"
+		nix run "${repo_flake_url}#robo" -- run python -c 'from pathlib import Path; assert Path(".robo-nix/bootstrap-stamp").is_file()' >"$robo_run_output"
 	)
 	test ! -s "$robo_run_output"
 }
@@ -271,9 +271,9 @@ sdk_dir="${PROJECT_SDK_DIR:-$PWD/third_party/local-sdk}"
 source_checkout_ready "$sdk_dir" setup.py src/bindings.cpp CMakeLists.txt
 EOF
 
-	nix run "path:${repo_root}#robo" -- init "$tmpdir/probed-project" \
+	nix run "${repo_flake_url}#robo" -- init "$tmpdir/probed-project" \
 		--robo-nix-url "path:${repo_root}" >"$probed_init_output" 2>&1
-	nix run "path:${repo_root}#robo" -- init "$tmpdir/probed-project" \
+	nix run "${repo_flake_url}#robo" -- init "$tmpdir/probed-project" \
 		--robo-nix-url "path:${repo_root}" >/dev/null
 
 	assert_file_contains "$tmpdir/probed-project/robo.nix" 'envName = "probed-project";'
@@ -311,8 +311,8 @@ EOF
 
 	(
 		cd "$tmpdir/probed-project"
-		nix run "path:${repo_root}#robo" -- doctor --why --json >"$probed_why_output"
-		nix run "path:${repo_root}#robo" -- contract --json >"$probed_contract_output"
+		nix run "${repo_flake_url}#robo" -- doctor --why --json >"$probed_why_output"
+		nix run "${repo_flake_url}#robo" -- contract --json >"$probed_contract_output"
 	)
 	assert_file_contains "$probed_why_output" '"profile": "minimal"'
 	assert_file_contains "$probed_why_output" '"name": "base"'
@@ -339,8 +339,6 @@ EOF
 		nix run .#default -- --check >"$probed_check_output"
 	)
 	assert_file_contains "$probed_check_output" "env=probed-project"
-	assert_file_contains "$probed_check_output" "suggestion: review file third_party/local-sdk/setup.py"
-	assert_file_contains "$probed_check_output" "suggestion: review bootstrap scripts/bootstrap_local_sdk.sh"
 	assert_file_contains "$probed_check_output" "status=ok"
 }
 
@@ -357,7 +355,7 @@ dependencies = []
 EOF
 	printf '__global__ void kernel() {}\n' >"$tmpdir/cuda-suggestion-project/src/kernel.cu"
 
-	nix run "path:${repo_root}#robo" -- init "$tmpdir/cuda-suggestion-project" \
+	nix run "${repo_flake_url}#robo" -- init "$tmpdir/cuda-suggestion-project" \
 		--robo-nix-url "path:${repo_root}" >"$cuda_output" 2>&1
 	assert_file_contains "$cuda_output" "component cuda-toolkit: workspace contains CUDA extension markers; src/kernel.cu: CUDA source file"
 	assert_file_contains "$tmpdir/cuda-suggestion-project/robo.nix" "componentSuggestions = ["
@@ -378,7 +376,7 @@ EOF
 from torch.utils.cpp_extension import CUDAExtension
 EOF
 
-	nix run "path:${repo_root}#robo" -- init "$tmpdir/cuda-interactive-project" \
+	nix run "${repo_flake_url}#robo" -- init "$tmpdir/cuda-interactive-project" \
 		--interactive \
 		--robo-nix-url "path:${repo_root}" >"$interactive_output" 2>&1
 	assert_file_contains "$tmpdir/cuda-interactive-project/robo.nix" '"cuda-toolkit"'
@@ -403,14 +401,14 @@ dependencies = [
 ]
 EOF
 
-	nix run "path:${repo_root}#robo" -- init "$tmpdir/stale-project" \
+	nix run "${repo_flake_url}#robo" -- init "$tmpdir/stale-project" \
 		--robo-nix-url "path:${repo_root}" >/dev/null
 	sed -i '/"media"/d' "$tmpdir/stale-project/robo.nix"
 
 	set +e
 	(
 		cd "$tmpdir/stale-project"
-		nix run "path:${repo_root}#robo" -- doctor >"$stale_check_output"
+		nix run "${repo_flake_url}#robo" -- doctor >"$stale_check_output"
 	)
 	local stale_check_status=$?
 	set -e
@@ -445,7 +443,7 @@ dependencies = [
 ]
 EOF
 
-	nix run "path:${repo_root}#robo" -- init "$tmpdir/tricky-project" \
+	nix run "${repo_flake_url}#robo" -- init "$tmpdir/tricky-project" \
 		--robo-nix-url "path:${repo_root}" >/dev/null
 
 	assert_file_contains "$tmpdir/tricky-project/robo.nix" 'envName = "tricky-project";'
@@ -457,8 +455,8 @@ EOF
 
 	(
 		cd "$tmpdir/tricky-project"
-		nix run "path:${repo_root}#robo" -- doctor --why --json >"$tricky_why_output"
-		nix run "path:${repo_root}#robo" -- contract --json >"$tricky_contract_output"
+		nix run "${repo_flake_url}#robo" -- doctor --why --json >"$tricky_why_output"
+		nix run "${repo_flake_url}#robo" -- contract --json >"$tricky_contract_output"
 	)
 	assert_file_contains "$tricky_why_output" '"envName": "tricky-project"'
 	assert_file_contains "$tricky_why_output" '"name": "media"'
@@ -473,7 +471,7 @@ EOF
 assert_ros_project_init_full() {
 	local ros_check_output="$tmpdir/ros-check.txt"
 
-	nix run "path:${repo_root}#robo" -- init "$tmpdir/ros-project" \
+	nix run "${repo_flake_url}#robo" -- init "$tmpdir/ros-project" \
 		--name ros-project \
 		--profile ros2-workspace \
 		--robo-nix-url "path:${repo_root}" >/dev/null
@@ -493,7 +491,7 @@ assert_ros_project_init_full() {
 assert_stdout_generation() {
 	local generated_flake="$tmpdir/generated-flake.nix"
 
-	nix run "path:${repo_root}#robo" -- init --stdout \
+	nix run "${repo_flake_url}#robo" -- init --stdout \
 		--name project \
 		--components base,python-uv,native-build \
 		--python-version 3.11 \

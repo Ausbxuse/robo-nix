@@ -11,7 +11,7 @@ trap 'cleanup_dir "$tmpdir"' EXIT
 output_file="$tmpdir/repo-profile.txt"
 
 run_profile() {
-	nix run "path:${repo_root}#repo-profile" >"$output_file" 2>&1
+	nix run "${repo_flake_url}#repo-profile" >"$output_file" 2>&1
 }
 
 if ! run_profile; then

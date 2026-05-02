@@ -124,7 +124,10 @@ in rec {
 
     repo-profile = pkgs.writeShellApplication {
       name = "repo-profile";
-      runtimeInputs = [pkgs.nix];
+      runtimeInputs = [
+        pkgs.git
+        pkgs.nix
+      ];
       excludeShellChecks = ["SC2034"];
       text = ''
         set -euo pipefail

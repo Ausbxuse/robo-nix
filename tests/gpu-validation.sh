@@ -22,10 +22,10 @@ trap 'cleanup_dir "$tmpdir"' EXIT
 gpu_config_file="$tmpdir/gpu-config.txt"
 
 nvidia-smi >/dev/null
-nix run "path:${repo_root}#cuda-check" >/dev/null
-nix run "path:${repo_root}#gpu-learning" -- --print-config >"$gpu_config_file"
+nix run "${repo_flake_url}#cuda-check" >/dev/null
+nix run "${repo_flake_url}#gpu-learning" -- --print-config >"$gpu_config_file"
 grep -F "component=cuda-toolkit" "$gpu_config_file" >/dev/null
 grep -F "python=3.11" "$gpu_config_file" >/dev/null
-nix run "path:${repo_root}#gpu-learning" -- --dry-run >/dev/null
+nix run "${repo_flake_url}#gpu-learning" -- --dry-run >/dev/null
 # shellcheck disable=SC2016
-nix develop "path:${repo_root}#gpu-learning" --command bash -lc 'test -n "${CUDA_HOME:-}" && test -n "${CUDA_PATH:-}" && test -n "${LIBRARY_PATH:-}" && test -e "$CUDA_PATH/lib/libcudart.so"'
+nix develop "${repo_flake_url}#gpu-learning" --command bash -lc 'test -n "${CUDA_HOME:-}" && test -n "${CUDA_PATH:-}" && test -n "${LIBRARY_PATH:-}" && test -e "$CUDA_PATH/lib/libcudart.so"'
