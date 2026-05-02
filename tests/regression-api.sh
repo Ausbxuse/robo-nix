@@ -460,7 +460,8 @@ assert_unknown_component_is_rejected() {
 }
 EOF
 
-	assert_command_fails nix eval "$tmpdir#packages.x86_64-linux.default"
+	assert_command_fails_capture "$tmpdir/missing-component.txt" \
+		nix eval "$tmpdir#packages.x86_64-linux.default"
 
 	trap - RETURN
 	cleanup_dir "$tmpdir"

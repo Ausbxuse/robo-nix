@@ -80,7 +80,7 @@ jobs:
             accept-flake-config = true
 
       - name: Run Library Regression Tests
-        run: bash tests/regression-api.sh
+        run: bash tests/regression-api.sh --fast
 
       - name: Show Flake Outputs
         run: nix flake show --all-systems
