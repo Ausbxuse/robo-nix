@@ -16,6 +16,14 @@
     check = common.mkComponentCheck "x11-gl" [];
   };
 
+  matplotlib-qt = _: {
+    shellInit = common.exportDefaults {
+      MPLBACKEND = "QtAgg";
+    };
+    supportedSystems = common.linuxSystems;
+    check = common.mkComponentCheck "matplotlib-qt" [];
+  };
+
   qt6 = {pkgs, ...}: let
     qtCmakePrefix = "${pkgs.qt6.qtbase.dev}:${pkgs.qt6.qt5compat.dev}";
   in {

@@ -40,6 +40,9 @@ in rec {
       profiles = profileMetadata;
       inherit runtimeInference;
     });
+    buildNpmPackage = pkgs.buildNpmPackage.override {
+      nodejs = pkgs.nodejs_20;
+    };
     roboBinary = pkgs.rustPlatform.buildRustPackage {
       pname = "robo";
       version = "0.1.0";
@@ -47,6 +50,19 @@ in rec {
       cargoLock.lockFile = ../Cargo.lock;
       preferLocalBuild = true;
       allowSubstitutes = false;
+    };
+    vitepressTool = buildNpmPackage {
+      pname = "robo-nix-docs-tool";
+      version = "0.1.0";
+      src = repoSource + "/docs";
+      npmDepsHash = "sha256-T/jvtsEg7fHkGhoJHNhj0DAawFYhjMfBzcKFcjc0s2o=";
+      dontNpmBuild = true;
+      installPhase = ''
+        runHook preInstall
+        mkdir -p "$out"
+        cp -R node_modules "$out/"
+        runHook postInstall
+      '';
     };
     roboCli =
       (pkgs.writeShellApplication {
@@ -84,15 +100,77 @@ in rec {
             -path ./target -prune -o \
             -type f -name '*.nix' -print0
         }
+        find_shell_files() {
+          find tests -type f -name '*.sh' -print0
+          if [ -d scripts ]; then
+            find scripts -type f -name '*.sh' -print0
+          fi
+        }
         if [ "''${1:-}" = "--check" ]; then
           shift
           find_nix_files | xargs -0 --no-run-if-empty alejandra --check
-          find tests -type f -name '*.sh' -print0 | xargs -0 --no-run-if-empty shfmt -d
+          find_shell_files | xargs -0 --no-run-if-empty shfmt -d
           exit 0
         fi
 
         find_nix_files | xargs -0 --no-run-if-empty alejandra
-        find tests -type f -name '*.sh' -print0 | xargs -0 --no-run-if-empty shfmt -w
+        find_shell_files | xargs -0 --no-run-if-empty shfmt -w
+      '';
+    };
+
+    docs = pkgs.stdenvNoCC.mkDerivation {
+      pname = "robo-nix-docs";
+      version = "0.1.0";
+      src = repoSource;
+      nativeBuildInputs = [
+        pkgs.nodejs_20
+        vitepressTool
+      ];
+      buildPhase = ''
+        runHook preBuild
+        cd docs
+        CI=1 ${vitepressTool}/node_modules/.bin/vitepress build .
+        runHook postBuild
+      '';
+      installPhase = ''
+        runHook preInstall
+        mkdir -p "$out"
+        cp -R .vitepress/dist/. "$out/"
+        runHook postInstall
+      '';
+    };
+
+    docs-serve = pkgs.writeShellApplication {
+      name = "docs-serve";
+      runtimeInputs = [
+        pkgs.nodejs_20
+        vitepressTool
+      ];
+      text = ''
+        set -euo pipefail
+        ${repoTargetPrelude}
+        cd docs
+
+        created_node_modules=0
+        if [ ! -e node_modules ]; then
+          ln -s ${vitepressTool}/node_modules node_modules
+          created_node_modules=1
+        fi
+        vitepress_pid=
+        cleanup() {
+          if [ -n "$vitepress_pid" ]; then
+            kill "$vitepress_pid" 2>/dev/null || true
+            wait "$vitepress_pid" 2>/dev/null || true
+          fi
+          if [ "$created_node_modules" = 1 ]; then
+            rm -f node_modules
+          fi
+        }
+        trap cleanup EXIT INT TERM
+
+        ${vitepressTool}/node_modules/.bin/vitepress dev . --host 127.0.0.1 "$@" &
+        vitepress_pid=$!
+        wait "$vitepress_pid"
       '';
     };
 
@@ -114,12 +192,18 @@ in rec {
             -path ./target -prune -o \
             -type f -name '*.nix' -print0
         }
+        find_shell_files() {
+          find tests -type f -name '*.sh' -print0
+          if [ -d scripts ]; then
+            find scripts -type f -name '*.sh' -print0
+          fi
+        }
         find_nix_files | xargs -0 --no-run-if-empty deadnix --fail
         while IFS= read -r -d "" file; do
           statix check "$file"
         done < <(find_nix_files)
-        find tests -type f -name '*.sh' -print0 | xargs -0 --no-run-if-empty shellcheck -x
-        find tests -type f -name '*.sh' -print0 | xargs -0 --no-run-if-empty shfmt -d
+        find_shell_files | xargs -0 --no-run-if-empty shellcheck -x
+        find_shell_files | xargs -0 --no-run-if-empty shfmt -d
       '';
     };
 
@@ -135,7 +219,7 @@ in rec {
         exec 2>&1
 
         ${repoTargetPrelude}
-        target="path:$target_dir"
+        target="git+file://$target_dir"
         TIMEFMT='%J %E %MKB'
 
         echo "profiling robo-nix at $target"
@@ -204,6 +288,9 @@ in rec {
       } ''
         cd ${repoSource}
         find tests -type f -name '*.sh' -print0 | xargs -0 --no-run-if-empty shellcheck -x
+        if [ -d scripts ]; then
+          find scripts -type f -name '*.sh' -print0 | xargs -0 --no-run-if-empty shellcheck -x
+        fi
         touch "$out"
       '';
 
@@ -211,6 +298,8 @@ in rec {
       test -x ${repoPackages.${pkgs.system}.repo-profile}/bin/repo-profile
       touch "$out"
     '';
+
+    docs-build = repoPackages.${pkgs.system}.docs;
 
     gpu-required-cuda-check-contract = pkgs.runCommand "robo-nix-gpu-required-cuda-check-contract" {} ''
       test -x ${repoPackages.${pkgs.system}.cuda-check}/bin/cuda-check

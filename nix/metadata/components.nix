@@ -79,6 +79,16 @@
     ];
   };
 
+  matplotlib-qt = {
+    category = "ui";
+    description = "Matplotlib QtAgg backend selection for projects that use Qt Python bindings.";
+    scaffoldDirectories = [];
+    supportedSystems = [
+      "x86_64-linux"
+      "aarch64-linux"
+    ];
+  };
+
   ros2-jazzy = {
     category = "ros";
     description = "ROS 2 Jazzy underlay with colcon and CycloneDDS defaults.";

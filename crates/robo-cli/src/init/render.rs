@@ -1,16 +1,22 @@
 use std::fs;
+use std::io::IsTerminal;
 use std::path::Path;
 use std::process::{Command, ExitCode, Stdio};
+use std::thread;
+use std::time::{Duration, Instant};
 
-use crate::{Config, combined_output, error, hint, output_with_spinner};
+use crate::{Config, UiSpinner, combined_output, error, hint, status};
 
 use super::manifest::Manifest;
 use super::spec::ProjectSpec;
 
 enum LockStatus {
     Updated,
+    Skipped,
     Failed(String),
 }
+
+const FLAKE_LOCK_TIMEOUT: Duration = Duration::from_secs(30);
 
 pub(super) fn write_project(
     manifest: &Manifest,
@@ -90,7 +96,7 @@ pub(super) fn write_project(
     if gitignore_status != "kept" {
         register_git(target, &[".gitignore"]);
     }
-    let lock_status = update_flake_lock(target, config);
+    let lock_status = update_flake_lock(target, source_url, config);
     if matches!(lock_status, LockStatus::Updated) {
         register_git(target, &["flake.lock"]);
     }
@@ -173,9 +179,21 @@ fn register_git(target: &Path, paths: &[&str]) {
     }
 }
 
-fn update_flake_lock(target: &Path, config: Config) -> LockStatus {
+fn update_flake_lock(target: &Path, source_url: &str, config: Config) -> LockStatus {
+    if is_local_source_url(source_url) {
+        return LockStatus::Skipped;
+    }
+
     let mut command = Command::new("nix");
     command
+        .args([
+            "--extra-experimental-features",
+            "nix-command",
+            "--extra-experimental-features",
+            "flakes",
+            "--accept-flake-config",
+            "--no-warn-dirty",
+        ])
         .arg("flake")
         .arg("lock")
         .arg("--update-input")
@@ -184,7 +202,7 @@ fn update_flake_lock(target: &Path, config: Config) -> LockStatus {
         .stdout(Stdio::null())
         .stderr(Stdio::piped());
 
-    match output_with_spinner(config, &mut command, "updating flake lock") {
+    match output_with_timeout(config, &mut command, "updating flake lock", FLAKE_LOCK_TIMEOUT) {
         Ok(output) if output.status.success() => LockStatus::Updated,
         Ok(output) => {
             let detail = combined_output(&output);
@@ -199,6 +217,43 @@ fn update_flake_lock(target: &Path, config: Config) -> LockStatus {
             LockStatus::Failed(message)
         }
         Err(err) => LockStatus::Failed(format!("failed to run nix flake lock: {err}")),
+    }
+}
+
+fn is_local_source_url(source_url: &str) -> bool {
+    source_url.starts_with("path:") || source_url.starts_with("git+file:")
+}
+
+fn output_with_timeout(
+    config: Config,
+    command: &mut Command,
+    message: &str,
+    timeout: Duration,
+) -> std::io::Result<std::process::Output> {
+    let mut spinner = if config.debug || !std::io::stderr().is_terminal() {
+        status(config, message);
+        None
+    } else {
+        Some(UiSpinner::new(config, message))
+    };
+
+    let mut child = command.spawn()?;
+    let started_at = Instant::now();
+    loop {
+        if child.try_wait()?.is_some() {
+            drop(spinner.take());
+            return child.wait_with_output();
+        }
+        if started_at.elapsed() >= timeout {
+            let _ = child.kill();
+            let _ = child.wait_with_output();
+            drop(spinner.take());
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                format!("nix flake lock timed out after {}s", timeout.as_secs()),
+            ));
+        }
+        thread::sleep(Duration::from_millis(100));
     }
 }
 
@@ -255,12 +310,13 @@ fn print_summary(
     print_file_change(config, gitignore_status, &target.join(".gitignore"));
     match lock_status {
         LockStatus::Updated => print_file_change(config, "updated", &target.join("flake.lock")),
+        LockStatus::Skipped => print_file_change(config, "skipped", &target.join("flake.lock")),
         LockStatus::Failed(message) => {
             print_file_change(config, "skipped", &target.join("flake.lock"));
             hint(
                 config,
                 &format!(
-                    "run `(cd {} && nix flake lock --update-input robo-nix)` when Nix is available; {message}",
+                    "run `(cd {} && nix flake lock --update-input robo-nix)` when network/cache access is healthy; {message}",
                     shell_quote(target)
                 ),
             );

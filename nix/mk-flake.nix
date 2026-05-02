@@ -123,6 +123,7 @@
         pkgs.wayland
         pkgs.libxml2
         pkgs.zlib
+        pkgs.zstd
       ];
       runtimeLibPath = lib.makeLibraryPath runtimeLibs;
 

@@ -150,6 +150,17 @@ fn probe_dependencies(text: &str, manifest: &Manifest, probe: &mut ProbeResult) 
             }
         }
     }
+    for rule in &manifest.runtime_inference.compound_dependency_rules {
+        if rule
+            .dependencies_all
+            .iter()
+            .all(|group| has_dep(&deps, group))
+        {
+            for component in &rule.components {
+                probe.add_component(component, &rule.note);
+            }
+        }
+    }
 }
 
 fn probe_workspace(target: &Path, manifest: &Manifest, probe: &mut ProbeResult) {

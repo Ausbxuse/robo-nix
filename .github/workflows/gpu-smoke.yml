@@ -24,8 +24,8 @@ jobs:
             experimental-features = nix-command flakes
             accept-flake-config = true
 
-      - name: Run CUDA Doctor
-        run: nix run .#cuda-doctor
+      - name: Run CUDA Check
+        run: nix run .#cuda-check
 
       - name: Run GPU Validation
         run: bash tests/gpu-validation.sh

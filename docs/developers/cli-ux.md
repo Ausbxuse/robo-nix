@@ -1,0 +1,98 @@
+# CLI UX Contract
+
+`robo` output should feel calm, direct, and useful to people who want to work on robot learning, not learn Nix first.
+
+The style is one clear status line, short lowercase sections, sparse color, and enough evidence to debug without turning normal output into a log dump.
+
+## Shape
+
+Use one top-level status line with a themed prefix:
+
+```text
+robo: initialized simple
+```
+
+After that, use plain lowercase section headings without trailing colons:
+
+```text
+project
+  directory=.
+  runtime=simple
+
+inferred
+  ✓ python 3.10                 pyproject.toml requires-python
+
+generated
+  wrote   ./flake.nix
+  kept    ./pyproject.toml
+
+next steps
+  robo doctor
+  robo shell
+  uv sync
+```
+
+Do not mix heading styles such as `Project:`, `ok: Generated:`, and `robo: next steps:` in the same summary.
+
+## Shell Workflow
+
+Shell should enter the user's current interactive shell when possible. The default `robo shell` path must work without shell setup by launching a runtime shell.
+
+`robo up --shell` should prepare the project and then enter that same shell path so first-time setup can be one command.
+
+`uv sync` should be explicit:
+
+- interactive `robo up` may ask
+- automation should opt in with `robo up --sync`
+- ordinary `robo shell` should not install packages
+
+`robo up` may cache realized runtime exports under `.robo-nix/`. The cache is an implementation detail for speed; `robo shell` and `robo run` should reuse it when runtime files still match and rebuild it clearly when the project contract changes.
+
+## Color
+
+Color should guide scanning, not decorate every word.
+
+- `robo:` and section headings: cyan/status color
+- success markers such as `✓`: green
+- warning markers such as `!`: yellow
+- field labels and unchanged actions such as `kept`: dim
+- generated actions: color the action word only, not the path
+- quoted or backticked commands in human text: command color
+- paths and bare commands: leave uncolored
+
+Captured output must remain stable and grep-friendly. JSON output must remain raw machine-readable JSON with no labels or colors.
+
+## Long Work
+
+Use a progress bar when a command has known phases. Use a spinner for one long-running silent command.
+
+In non-interactive logs or `--debug` mode, print normal status lines instead of animated progress. Do not animate commands that already stream useful subprocess output.
+
+Do not leave a spinner active while prompting for input. A hidden prompt looks like a hang.
+
+## Inference Severity
+
+Separate confident inference from review-needed evidence:
+
+```text
+inferred
+  ✓ Isaac Sim runtime            CUDA and graphics support
+
+attention
+  ! review component cuda-toolkit: workspace contains CUDA extension markers
+```
+
+Use `inferred` for runtime choices `robo` applied. Use `attention` for weaker signals, skipped bootstrap scripts, missing project-owned paths, or cases where the runtime may be incomplete unless the user reviews the evidence.
+
+## Next Steps
+
+Next steps should be directly copyable shell commands:
+
+```text
+next steps
+  robo doctor
+  robo shell
+  uv sync
+```
+
+Do not include speculative project commands such as `pytest`, dependency groups, extras, or source-specific install modes in generic init output.

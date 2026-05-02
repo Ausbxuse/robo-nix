@@ -130,8 +130,8 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::super::manifest::{
-        Component, CudaMarkerScan, DependencyRule, Manifest, Profile, RuntimeInference,
-        ScriptDiscovery, ScriptRule,
+        Component, CompoundDependencyRule, CudaMarkerScan, DependencyRule, Manifest, Profile,
+        RuntimeInference, ScriptDiscovery, ScriptRule,
     };
     use super::*;
 
@@ -225,6 +225,7 @@ dependencies = ["opencv-python"]
                     components: vec!["graphics".to_string()],
                     note: "OpenCV wheels commonly need graphics runtime libraries".to_string(),
                 }],
+                compound_dependency_rules: Vec::<CompoundDependencyRule>::new(),
                 workspace_directory_rules: Vec::new(),
                 script_discovery: ScriptDiscovery {
                     roots: Vec::new(),

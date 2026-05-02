@@ -37,6 +37,7 @@ pub(super) struct Profile {
 pub(super) struct RuntimeInference {
     pub(super) default_profile: String,
     pub(super) dependency_rules: Vec<DependencyRule>,
+    pub(super) compound_dependency_rules: Vec<CompoundDependencyRule>,
     pub(super) workspace_directory_rules: Vec<WorkspaceDirectoryRule>,
     pub(super) script_discovery: ScriptDiscovery,
     pub(super) script_rules: Vec<ScriptRule>,
@@ -47,6 +48,14 @@ pub(super) struct RuntimeInference {
 #[serde(rename_all = "camelCase")]
 pub(super) struct DependencyRule {
     pub(super) dependencies: Vec<String>,
+    pub(super) components: Vec<String>,
+    pub(super) note: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct CompoundDependencyRule {
+    pub(super) dependencies_all: Vec<Vec<String>>,
     pub(super) components: Vec<String>,
     pub(super) note: String,
 }
@@ -159,6 +168,15 @@ pub(super) fn validate(manifest: &Manifest, spec: &ProjectSpec) -> Result<(), St
             if !manifest.components.contains_key(component) {
                 return Err(format!(
                     "runtime inference rule references unknown component: {component}"
+                ));
+            }
+        }
+    }
+    for rule in &manifest.runtime_inference.compound_dependency_rules {
+        for component in &rule.components {
+            if !manifest.components.contains_key(component) {
+                return Err(format!(
+                    "compound runtime inference rule references unknown component: {component}"
                 ));
             }
         }

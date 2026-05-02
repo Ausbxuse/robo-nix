@@ -24,6 +24,6 @@ if ! run_profile; then
 	fi
 fi
 
-grep -F "profiling robo-nix at path:" "$output_file" >/dev/null
+grep -F "profiling robo-nix at git+file://" "$output_file" >/dev/null
 grep -F "#apps.x86_64-linux.default.program" "$output_file" >/dev/null
-grep -F "nix flake show path:" "$output_file" >/dev/null
+grep -F "nix flake show git+file://" "$output_file" >/dev/null

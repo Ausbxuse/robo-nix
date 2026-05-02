@@ -42,7 +42,6 @@ assert_basic_project_init() {
 		--robo-nix-url "path:${repo_root}" >"$init_output" 2>&1
 
 	assert_file_contains "$tmpdir/project/flake.nix" 'robo-nix.url = "path:'
-	assert_file_contains "$tmpdir/project/flake.lock" '"robo-nix"'
 	assert_file_contains "$tmpdir/project/flake.nix" "mkProjectFlakeFromManifest"
 	assert_file_contains "$tmpdir/project/robo.nix" '"base"'
 	assert_file_contains "$tmpdir/project/robo.nix" '"python-uv"'
@@ -51,7 +50,7 @@ assert_basic_project_init() {
 	assert_file_contains "$tmpdir/project/pyproject.toml" 'requires-python = ">=3.11"'
 	assert_file_contains "$tmpdir/project/.gitignore" ".robo-nix/"
 	assert_file_contains "$init_output" "wrote   $tmpdir/project/.gitignore"
-	assert_file_contains "$init_output" "updated $tmpdir/project/flake.lock"
+	assert_file_contains "$init_output" "skipped $tmpdir/project/flake.lock"
 	assert_file_contains "$init_output" "cd '$tmpdir/project'"
 	assert_file_contains "$init_output" "robo doctor"
 
@@ -262,6 +261,7 @@ dependencies = [
   "opencv-python",
   "av",
   "isaacsim[all,extscache]==4.5.0",
+  "matplotlib",
   "pyside6",
 ]
 EOF
@@ -283,6 +283,7 @@ EOF
 	assert_file_contains "$tmpdir/probed-project/robo.nix" '"media"'
 	assert_file_contains "$tmpdir/probed-project/robo.nix" '"cuda-toolkit"'
 	assert_file_contains "$tmpdir/probed-project/robo.nix" '"isaac-sim"'
+	assert_file_contains "$tmpdir/probed-project/robo.nix" '"matplotlib-qt"'
 	assert_file_contains "$tmpdir/probed-project/robo.nix" '"qt6"'
 	assert_file_contains "$tmpdir/probed-project/robo.nix" 'provenance = {'
 	assert_file_contains "$tmpdir/probed-project/robo.nix" 'componentReasons = ['

@@ -1,42 +1,37 @@
 # robo-nix
 
-`robo-nix` is a small runtime bridge for uv-managed robotics projects.
+`robo-nix` is a runtime bridge for uv-managed robotics projects.
 
 - `uv` owns Python: `.python-version`, `.venv`, `pyproject.toml`, `uv.lock`.
 - Nix owns native runtime: CUDA, graphics, ROS, simulators, compilers, shared libraries.
 - `robo` owns workflow: `up`, `doctor`, `shell`, `status`, `run`.
 
-The goal is that a robot-learning project can keep normal Python packaging while still getting the native libraries that Python metadata cannot express.
+The goal is simple: keep Python packaging normal while making the native robotics runtime reproducible, explicit, and easier to debug.
 
 ## Quick Start
 
 Install on a fresh Linux, macOS, or WSL host:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ausbxuse/robo-nix/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/ausbxuse/robo-nix/main/scripts/install.sh | sh
 ```
 
 The installer uses an existing `nix` when available. If Nix is missing, it installs Determinate Nix, then installs `robo` into the user's Nix profile.
 
-Current alpha usage without installing `robo` first:
-
-```bash
-nix run github:ausbxuse/robo-nix#robo -- up --yes
-nix run github:ausbxuse/robo-nix#robo -- run pytest tests
-```
-
-The intended installed flow is:
+Start a project:
 
 ```bash
 robo up robot-learning --yes
 cd robot-learning
-robo run pytest tests
+robo up --shell
+uv sync
+robo run python -m pytest
 robo status
 ```
 
 Use `robo up --shell` when you want setup to drop directly into the runtime shell. Add `--sync` when you also want `robo up` to run `uv sync`; otherwise Python package installation stays an explicit project step. `robo up` caches the realized shell environment in `.robo-nix/`, so later `robo shell` and `robo run ...` calls can start without repeating the full Nix shell evaluation unless runtime files change.
 
-`robo init` writes generated Nix plumbing plus a small `robo.nix`. Existing `pyproject.toml` and `uv.lock` stay project-owned.
+`robo up` creates missing runtime files when needed. `robo init` is still available when you only want to generate the project files. Existing `pyproject.toml` and `uv.lock` stay project-owned.
 
 `robo status` shows whether the current shell is inside a runtime shell. To leave a runtime shell, run `exit`; `robo deactivate` prints that clean exit path when users need a reminder.
 
@@ -64,7 +59,7 @@ nix/metadata/          component docs, starter profiles, and inference rules
 nix/mk-flake.nix       flake generator
 nix/repo-support.nix   repo checks and package wrappers
 tests/fixtures/        downstream flake fixtures
-docs/                  short concept docs
+docs/                  VitePress documentation source
 ```
 
 ## Runtime Model
@@ -75,14 +70,32 @@ docs/                  short concept docs
 
 ## Docs
 
-- [Architecture](./docs/architecture.md)
-- [CLI UX](./docs/cli-ux.md)
-- [Python](./docs/python.md)
-- [CUDA](./docs/cuda.md)
-- [Graphics](./docs/graphics.md)
-- [ROS](./docs/ros.md)
-- [Diagnostics](./docs/diagnostics.md)
-- [Roadmap](./docs/roadmap.md)
+Build the VitePress documentation site:
+
+```bash
+nix build .#docs
+```
+
+Preview it locally:
+
+```bash
+nix run .#docs-serve
+```
+
+- [User guide](./docs/users/getting-started.md)
+- [Why robo-nix](./docs/blog.md)
+- [User workflow](./docs/users/workflow.md)
+- [Python boundary](./docs/users/python.md)
+- [Diagnostics](./docs/users/diagnostics.md)
+- [CUDA](./docs/users/cuda.md)
+- [Graphics](./docs/users/graphics.md)
+- [ROS](./docs/users/ros.md)
+- [Developer overview](./docs/developers/overview.md)
+- [Architecture](./docs/developers/architecture.md)
+- [CLI UX contract](./docs/developers/cli-ux.md)
+- [Runtime capability model](./docs/developers/runtime-capability-model.md)
+- [Repository workflow](./docs/developers/repository.md)
+- [Roadmap](./docs/developers/roadmap.md)
 
 ## License
 

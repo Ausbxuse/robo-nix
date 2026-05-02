@@ -103,9 +103,10 @@ assert_runtime_inference_contract() {
       flake = builtins.getFlake "'"git+file://${repo_root}"'";
       inference = flake.lib.runtimeInference;
       ruleComponents = builtins.concatMap (rule: rule.components) inference.dependencyRules;
+      compoundRuleComponents = builtins.concatMap (rule: rule.components) inference.compoundDependencyRules;
       workspaceRuleComponents = builtins.concatMap (rule: rule.components) inference.workspaceDirectoryRules;
       scriptRuleComponents = builtins.concatMap (rule: rule.components) inference.scriptRules;
-      inferredComponents = ruleComponents ++ workspaceRuleComponents ++ scriptRuleComponents;
+      inferredComponents = ruleComponents ++ compoundRuleComponents ++ workspaceRuleComponents ++ scriptRuleComponents;
       knownComponent = name: builtins.hasAttr name flake.lib.componentMetadata;
     in
       assert inference.defaultProfile == "minimal";
@@ -114,6 +115,7 @@ assert_runtime_inference_contract() {
       assert builtins.any (rule: builtins.elem "opencv-python" rule.dependencies && builtins.elem "media" rule.components) inference.dependencyRules;
       assert builtins.any (rule: builtins.elem "torchcodec" rule.dependencies && builtins.elem "media" rule.components) inference.dependencyRules;
       assert builtins.any (rule: builtins.elem "pyqt6" rule.dependencies && builtins.elem "qt6" rule.components && builtins.elem "x11-gl" rule.components) inference.dependencyRules;
+      assert builtins.any (rule: builtins.elem [ "matplotlib" ] rule.dependenciesAll && builtins.elem [ "pyside6" "pyqt6" "pyqt5" ] rule.dependenciesAll && builtins.elem "matplotlib-qt" rule.components) inference.compoundDependencyRules;
       assert builtins.any (rule: builtins.elem "cuda-python" rule.dependencies && builtins.elem "cuda-toolkit" rule.components) inference.dependencyRules;
       assert builtins.any (rule: builtins.elem "cupy-cuda12x" rule.dependencies && builtins.elem "cuda-toolkit" rule.components) inference.dependencyRules;
       assert builtins.any (rule: builtins.elem "isaacsim" rule.dependencies && builtins.elem "isaac-sim" rule.components && builtins.elem "cuda-toolkit" rule.components && builtins.elem "x11-gl" rule.components) inference.dependencyRules;
@@ -304,6 +306,35 @@ assert_qt6_exports_standard_cmake_prefixes() {
       assert flake.inputs.nixpkgs.lib.hasInfix "QT_PLUGIN_PATH" shellInit;
       assert flake.inputs.nixpkgs.lib.hasInfix qtbaseDev shellInit;
       assert flake.inputs.nixpkgs.lib.hasInfix qt5compatDev shellInit;
+      true
+  '
+	assert_expr "$expr"
+}
+
+assert_matplotlib_qt_selects_qtagg_backend() {
+	local expr
+	expr='
+    let
+      flake = builtins.getFlake "'"git+file://${repo_root}"'";
+      pkgs = import flake.inputs.nixpkgs {
+        system = "x86_64-linux";
+      };
+      ctx = {
+        componentCatalog = flake.lib.components;
+        envName = "graphics";
+        envSpec = {};
+        lib = flake.inputs.nixpkgs.lib;
+        inherit pkgs;
+        pkgsRos = pkgs;
+        runtimeLibPath = "";
+        runtimeLibs = [];
+        system = "x86_64-linux";
+      };
+      component = flake.lib.components."matplotlib-qt" ctx;
+      shellInit = builtins.unsafeDiscardStringContext component.shellInit;
+    in
+      assert flake.inputs.nixpkgs.lib.hasInfix "MPLBACKEND" shellInit;
+      assert flake.inputs.nixpkgs.lib.hasInfix "QtAgg" shellInit;
       true
   '
 	assert_expr "$expr"
@@ -666,6 +697,7 @@ assert_python_uv_exports_native_build_prefixes
 assert_native_build_reasserts_tool_path
 assert_x11_gl_exports_matching_egl_vendor
 assert_qt6_exports_standard_cmake_prefixes
+assert_matplotlib_qt_selects_qtagg_backend
 assert_manifest_helpers_contract
 assert_normalize_defaults
 assert_normalize_dedupes

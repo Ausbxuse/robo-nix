@@ -131,6 +131,21 @@
     }
   ];
 
+  compoundDependencyRules = [
+    {
+      dependenciesAll = [
+        ["matplotlib"]
+        [
+          "pyside6"
+          "pyqt6"
+          "pyqt5"
+        ]
+      ];
+      components = ["matplotlib-qt"];
+      note = "pyproject.toml uses Matplotlib with Qt bindings";
+    }
+  ];
+
   workspaceDirectoryRules = [
     {
       root = "third_party";

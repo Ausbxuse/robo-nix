@@ -144,11 +144,12 @@ pub(crate) fn run_project_up(
             return code;
         }
     };
+    progress.finish();
+
     let sync = sync || (!yes && confirm_up_sync(config));
     if !sync {
         write_shell_env_cache_if_possible(&env, config);
     }
-    progress.finish();
 
     if sync {
         status(config, "up: syncing Python packages");

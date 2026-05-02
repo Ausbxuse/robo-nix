@@ -9,9 +9,9 @@ These files are the data-driven extension point for `robo-nix`.
 Prefer metadata changes when adding support for a new package or common workspace shape. Rust should stay generic: read the project, apply these rules, and explain the result.
 
 The target design is capability-based rather than component-first. See
-`docs/runtime-capability-model.md`. New coverage should move toward rules that
-infer runtime requirements, plus component metadata that declares which
-requirements each component provides.
+`docs/developers/runtime-capability-model.md`. New coverage should move toward
+rules that infer runtime requirements, plus component metadata that declares
+which requirements each component provides.
 
 When adding a current component-first inference rule:
 

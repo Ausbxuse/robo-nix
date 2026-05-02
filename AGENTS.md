@@ -60,7 +60,7 @@ Keep `robo init` deliberately boring:
 
 CLI output consistency is part of the product contract:
 
-- Follow the CLI output design in [docs/cli-ux.md](./docs/cli-ux.md:1).
+- Follow the CLI output design in [docs/developers/cli-ux.md](./docs/developers/cli-ux.md:1).
 - Do not print user-facing status lines with raw `println!("g; s: ...")`, `println!("robo: ...")`, or similar ad hoc prefixes.
 - Route human CLI output through the existing themed label helpers, or add a small local wrapper that calls those helpers.
 - Keep captured output stable and grep-friendly while coloring only labels/prefixes in terminals.
@@ -130,26 +130,30 @@ Keep edit loops cheap:
 - Treat Isaac, datagen, GPU validation, full repository checks, and broad compilation as integration checks. Run them only after cheaper preflight checks say the host and runtime are capable of passing.
 - Keep generated project files out of manual edit loops. Change source metadata or init logic, then let `robo init . --force` regenerate `flake.nix`, `robo.nix`, and bootstrap wiring.
 - In nested playgrounds, check top-level and playground status separately with `git status --short` and `git -C <playground> status --short` before summarizing diffs.
+- When a build hangs or repeated attempts diverge, write the working facts, failed attempts, and next narrow reproducer into a gitignored note under `.failure-modes/` before trying another broad variant.
+- Before debugging a repeated-looking issue, read relevant notes under `.failure-modes/`, then summarize durable lessons back into `AGENTS.md` so future agents do not rediscover the same failure mode.
+- For VitePress/Nix docs work specifically, check `.failure-modes/vitepress-nix.md` first. The root cause of the earlier hang was VitePress's interactive progress renderer spinning inside the Nix builder; the Nix build must set `CI=1`.
+- For `robo up --shell` stalls around `shell: applying runtime exports`, check `.failure-modes/up-shell-hidden-sync-prompt.md` first. The previous root cause was an interactive `uv sync` prompt hidden behind an active spinner, not slow export materialization.
+- For init or test slowness around `nix flake lock --update-input robo-nix`, check `.failure-modes/flake-lock-refresh.md` first. Local `path:` and `git+file:` robo-nix sources should skip eager lock refresh; non-local refresh should be bounded and reported as skipped on network/cache failure.
 
 ## Product North Star
 
 The intended beginner experience is:
 
 ```bash
-robo init robot-learning
+robo up robot-learning --yes
 cd robot-learning
-robo check
-robo activate
+robo up --shell
 uv sync
 ```
 
-The current alpha exposes `robo` through Nix while distribution is still being designed:
+The installed workflow should keep Nix in the background:
 
 ```bash
-nix run github:ausbxuse/robo-nix#robo -- init .
-nix run .#default -- --check
-nix develop
-uv sync
+robo up
+robo doctor
+robo shell
+robo run <command>
 ```
 
 ## High-Priority TODO
@@ -157,7 +161,7 @@ uv sync
 1. Grow the Rust `robo` CLI into the primary UX.
    It should wrap Nix commands, hide `--extra-experimental-features`, detect missing Nix/flakes support, and print plain-language fixes.
 
-2. Make `check` the main product surface.
+2. Make `doctor` the main diagnostics surface.
    It should validate host prerequisites, Nix/flakes availability, workspace layout, supported platform, uv state, native runtime libraries, GPU/CUDA expectations, and likely missing runtime dependencies.
 
 3. Keep Python ownership in uv.
@@ -167,10 +171,10 @@ uv sync
    Catch and explain common robotics failures such as missing `libstdc++.so.6`, `libGL.so.1`, FFmpeg libraries, CUDA driver/runtime mismatch, and native extension build failures.
 
 5. Keep templates non-product until explicit maintainer approval.
-   Use `robo init` as the alpha onboarding path. Placeholder template files may exist to define layout, but do not expose them as a public workflow until real usage proves them.
+   Use `robo up` / `robo init` as the onboarding path. Placeholder template files may exist to define layout, but do not expose them as a public workflow until real usage proves them.
 
-6. Split docs into beginner and advanced paths.
-   Beginner docs should assume zero Nix background. Advanced docs can explain flakes, components, and maintainer workflows.
+6. Keep docs split by audience.
+   User docs live under [docs/users](./docs/users/getting-started.md:1) and should assume zero Nix background. Developer docs live under [docs/developers](./docs/developers/overview.md:1) and can explain flakes, components, metadata, and maintainer workflows.
 
 7. Keep verification strict for AI-assisted changes.
    Follow the AI-usage contract in [CONTRIBUTING.md](./CONTRIBUTING.md:1).
@@ -199,9 +203,11 @@ nix flake check
 - Do not preserve backward compatibility before a behavior is specified in docs. Pre-spec compatibility creates hidden surface area.
 - Templates are currently withheld pending manual approval. Do not publish one casually.
 - Generated projects should point at the packaged `robo-nix` source by default. Do not rely on `/usr/share`, GitHub queries, or an ambient local checkout for installed CLI behavior.
+- Repo-root `Cargo.toml` / `Cargo.lock` are intentional because Rust is the main CLI workspace. Docs-only Node tooling belongs under `docs/package.json` and `docs/package-lock.json`. Do not reintroduce root `package.json`, root `pyproject.toml`, or root `.python-version` unless the repo gains a real root Node or Python product surface.
+- The installer lives at [scripts/install.sh](./scripts/install.sh:1); keep README and docs curl commands pointed at `main/scripts/install.sh`.
 - Project-specific robot/source policy should stay in downstream projects unless it becomes broadly reusable.
 - The product north star is filling the native runtime gap implied by `pyproject.toml` and `uv.lock`.
-- Runtime inference rules live in [nix/metadata/runtime-inference.nix](./nix/metadata/runtime-inference.nix:1); known failure modes are documented in [docs/diagnostics.md](./docs/diagnostics.md:1).
+- Runtime inference rules live in [nix/metadata/runtime-inference.nix](./nix/metadata/runtime-inference.nix:1); known failure modes are documented in [docs/users/diagnostics.md](./docs/users/diagnostics.md:1).
 - Keep names user-facing and natural. `robo` is the CLI name; avoid reintroducing `rob` or `project-init` as public surfaces.
 - Keep tests fast for development. Prefer the focused edit-loop checks in `tests/dev-check.sh`, and reserve full validation for broader changes or CI.
 - Recent local profiling baseline on this host was roughly:

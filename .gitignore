@@ -1,10 +1,14 @@
 .codex
 .direnv/
+node_modules/
 target/
 .DS_Store
 *.swp
 result
 result-*
-blog.md
+/blog.md
 playgrounds/
 .robo-nix/
+docs/.vitepress/dist/
+docs/.vitepress/cache/
+.failure-modes/

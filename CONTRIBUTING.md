@@ -79,8 +79,9 @@ Do not add every project-specific environment combination to the central preset 
 If behavior changes, update the relevant docs:
 
 - [README.md](./README.md:1)
-- [docs/architecture.md](./docs/architecture.md:1)
-- [docs/diagnostics.md](./docs/diagnostics.md:1)
-- [docs/roadmap.md](./docs/roadmap.md:1)
+- [docs/users/getting-started.md](./docs/users/getting-started.md:1)
+- [docs/users/diagnostics.md](./docs/users/diagnostics.md:1)
+- [docs/developers/architecture.md](./docs/developers/architecture.md:1)
+- [docs/developers/roadmap.md](./docs/developers/roadmap.md:1)
 
 Documentation should describe verified behavior, not intended behavior.

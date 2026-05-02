@@ -43,6 +43,7 @@ install_robo() {
 	info "installing robo from $robo_nix_flake"
 	nix --extra-experimental-features nix-command \
 		--extra-experimental-features flakes \
+		--accept-flake-config \
 		profile install "$robo_nix_flake#robo"
 }
 
