@@ -36,7 +36,9 @@ Do not mix heading styles such as `Project:`, `ok: Generated:`, and `robo: next 
 
 Generated shell summaries, including shell output from `nix develop`, should follow the same section and `key=value` shape. Do not print ad hoc labels such as `runtime:`, `python:`, or `python packages:`.
 
-Shell should enter the user's current interactive shell when possible. The default `robo shell` path must keep working without shell setup by launching a runtime shell. The optional `eval "$(robo hook)"` path may install shell-specific functions for in-place shell entry, prompt prefixing, and `robo deactivate`.
+Shell should enter the user's current interactive shell when possible. The default `robo shell` path must keep working without shell setup by launching a runtime shell. `robo up --shell` should prepare the project and then enter that same shell path so first-time setup can be one command. `uv sync` should be explicit: interactive `robo up` may ask, but automation should opt in with `robo up --sync`. The optional `eval "$(robo hook)"` path may install shell-specific functions for in-place shell entry, prompt prefixing, and `robo deactivate`.
+
+`robo up` may cache the realized runtime exports under `.robo-nix/`. The cache is an implementation detail for speed: `robo shell` and `robo run` should reuse it when the runtime files still match, and rebuild it clearly when the project contract changes.
 
 Prompt mutation is shell-owned. `robo hook` may update the prompt for shells it explicitly supports, and the runtime exports `ROBO_NIX_PROMPT_PREFIX` for shell integrations. Without the hook, `robo status` is the canonical way to see whether the current shell is active. `robo deactivate` should deactivate in-place only when installed as a hook function; the binary path should print the clean `exit` action when inside a runtime shell.
 

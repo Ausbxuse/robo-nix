@@ -43,7 +43,7 @@ enum CliCommand {
     #[command(about = "Initialize robo-nix runtime files")]
     Init(init::InitArgs),
 
-    #[command(about = "Prepare the project runtime and sync Python packages")]
+    #[command(about = "Prepare the project runtime")]
     Up(UpArgs),
 
     #[command(about = "Open the project runtime shell")]
@@ -115,8 +115,11 @@ struct UpArgs {
     #[arg(long, help = "Initialize missing runtime files without prompting")]
     yes: bool,
 
-    #[arg(long, help = "Prepare the native runtime but skip uv sync")]
-    no_sync: bool,
+    #[arg(long, help = "Run uv sync after the native runtime is prepared")]
+    sync: bool,
+
+    #[arg(long, help = "Open an interactive runtime shell after setup succeeds")]
+    shell: bool,
 }
 
 #[derive(Args)]
@@ -150,7 +153,9 @@ pub(crate) fn run() -> ExitCode {
 
     match cli.command {
         Some(CliCommand::Init(args)) => init::run(args, config),
-        Some(CliCommand::Up(args)) => run_project_up(args.target, args.yes, args.no_sync, config),
+        Some(CliCommand::Up(args)) => {
+            run_project_up(args.target, args.yes, args.sync, args.shell, config)
+        }
         Some(CliCommand::Shell(args)) => run_project_shell(args.args, config),
         Some(CliCommand::Status) => run_project_status(config),
         Some(CliCommand::Deactivate) => run_project_deactivate(config),
@@ -190,7 +195,7 @@ fn print_help(config: Config) -> ExitCode {
     help_row(
         config,
         "robo up",
-        "prepare this project and sync Python packages",
+        "prepare this project's native runtime",
     );
     help_row(
         config,

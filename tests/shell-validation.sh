@@ -88,6 +88,20 @@ for shell_name in sh bash zsh fish nu; do
 	assert_file_contains "$output" "prompt-prefix=<shell-shell-project> "
 done
 
+up_shell="$(make_fake_shell up-shell)"
+up_shell_output="$tmpdir/up-shell.txt"
+(
+	cd "$project"
+	ROBO_NIX_SHELL="$up_shell" EXPECTED_SHELL="$up_shell" \
+		"$robo" up --shell >"$up_shell_output"
+	test -s .robo-nix/shell-env
+	test -s .robo-nix/shell-env.key
+)
+assert_file_contains "$up_shell_output" "runtime=prepared"
+assert_file_contains "$up_shell_output" "python=not synced"
+assert_file_contains "$up_shell_output" "active=1"
+assert_file_contains "$up_shell_output" "env=shell-shell-project"
+
 active_status="$tmpdir/active-status.txt"
 (
 	cd "$project"

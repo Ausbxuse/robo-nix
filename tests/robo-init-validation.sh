@@ -132,33 +132,33 @@ EOF
 
 }
 
-assert_default_source_is_packaged_source() {
+assert_default_source_is_shareable_github_source() {
 	nix run "${repo_flake_url}#robo" -- init "$tmpdir/default-source-project" \
 		--profile minimal >/dev/null
 
-	assert_file_contains "$tmpdir/default-source-project/flake.nix" 'robo-nix.url = "path:/nix/store/'
+	assert_file_contains "$tmpdir/default-source-project/flake.nix" 'robo-nix.url = "github:ausbxuse/robo-nix"'
 }
 
-assert_runtime_repairs_legacy_github_source() {
-	local check_output="$tmpdir/legacy-source-check.txt"
+assert_runtime_repairs_nonshareable_store_source() {
+	local check_output="$tmpdir/store-source-check.txt"
 	local local_check_output="$tmpdir/local-source-check.txt"
 
-	nix run "${repo_flake_url}#robo" -- init "$tmpdir/legacy-source-project" \
+	nix run "${repo_flake_url}#robo" -- init "$tmpdir/store-source-project" \
 		--profile minimal \
 		--robo-nix-url "path:${repo_root}" >/dev/null
-	sed -i 's|path:[^"]*|github:ausbxuse/robo-nix|' "$tmpdir/legacy-source-project/flake.nix"
+	sed -i 's|path:[^"]*|path:/nix/store/example-robo-nix-source|' "$tmpdir/store-source-project/flake.nix"
 
 	if ! (
-		cd "$tmpdir/legacy-source-project"
+		cd "$tmpdir/store-source-project"
 		nix run "${repo_flake_url}#robo" -- doctor >"$check_output" 2>&1
 	); then
 		cat "$check_output" >&2
 		exit 1
 	fi
-	assert_file_contains "$tmpdir/legacy-source-project/flake.nix" 'robo-nix.url = "path:/nix/store/'
-	assert_file_contains "$check_output" "repaired flake.nix to use path:/nix/store/"
-	assert_file_contains "$check_output" "avoids copying large local checkout paths"
-	assert_file_contains "$check_output" "checked legacy-source-project"
+	assert_file_contains "$tmpdir/store-source-project/flake.nix" 'robo-nix.url = "github:ausbxuse/robo-nix"'
+	assert_file_contains "$check_output" "repaired flake.nix to use github:ausbxuse/robo-nix"
+	assert_file_contains "$check_output" "keep generated projects shareable across hosts"
+	assert_file_contains "$check_output" "checked store-source-project"
 	assert_file_contains "$check_output" "status"
 	assert_file_contains "$check_output" "ok"
 
@@ -173,7 +173,7 @@ assert_runtime_repairs_legacy_github_source() {
 		cat "$local_check_output" >&2
 		exit 1
 	fi
-	assert_file_contains "$tmpdir/local-source-project/flake.nix" 'robo-nix.url = "path:/nix/store/'
+	assert_file_contains "$tmpdir/local-source-project/flake.nix" "robo-nix.url = \"path:${repo_root}\""
 	assert_file_contains "$local_check_output" "checked local-source-project"
 	assert_file_contains "$local_check_output" "status"
 	assert_file_contains "$local_check_output" "ok"
@@ -502,8 +502,8 @@ assert_stdout_generation() {
 }
 
 assert_listing_outputs
-assert_default_source_is_packaged_source
-assert_runtime_repairs_legacy_github_source
+assert_default_source_is_shareable_github_source
+assert_runtime_repairs_nonshareable_store_source
 assert_basic_project_init
 assert_python_version_preflight
 assert_interactive_project_init

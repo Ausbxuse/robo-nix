@@ -52,7 +52,7 @@ pub(super) fn finish_plan(
         .robo_nix_url
         .clone()
         .or_else(|| env::var("ROBO_NIX_DEFAULT_SOURCE_URL").ok())
-        .unwrap_or_else(|| "path:.".to_string());
+        .unwrap_or_else(|| "github:ausbxuse/robo-nix".to_string());
     let flake = render_flake(&source_url);
     let project = render_project(&draft.spec);
 

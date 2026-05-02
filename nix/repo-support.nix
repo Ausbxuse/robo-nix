@@ -27,7 +27,7 @@
       f system (import nixpkgs {inherit system;}));
 in rec {
   repoPackages = forEachSystem (_: pkgs: let
-    defaultSourceUrl = "path:${repoSource}";
+    defaultSourceUrl = "github:ausbxuse/robo-nix";
     repoTargetPrelude = ''
       target_dir="''${ROBO_NIX_REPO_ROOT:-$PWD}"
       if [ ! -f "$target_dir/flake.nix" ]; then

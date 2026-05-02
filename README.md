@@ -10,7 +10,15 @@ The goal is that a robot-learning project can keep normal Python packaging while
 
 ## Quick Start
 
-Current alpha usage:
+Install on a fresh Linux, macOS, or WSL host:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ausbxuse/robo-nix/main/install.sh | sh
+```
+
+The installer uses an existing `nix` when available. If Nix is missing, it installs Determinate Nix, then installs `robo` into the user's Nix profile.
+
+Current alpha usage without installing `robo` first:
 
 ```bash
 nix run github:ausbxuse/robo-nix#robo -- up --yes
@@ -25,6 +33,8 @@ cd robot-learning
 robo run pytest tests
 robo status
 ```
+
+Use `robo up --shell` when you want setup to drop directly into the runtime shell. Add `--sync` when you also want `robo up` to run `uv sync`; otherwise Python package installation stays an explicit project step. `robo up` caches the realized shell environment in `.robo-nix/`, so later `robo shell` and `robo run ...` calls can start without repeating the full Nix shell evaluation unless runtime files change.
 
 `robo init` writes generated Nix plumbing plus a small `robo.nix`. Existing `pyproject.toml` and `uv.lock` stay project-owned.
 
@@ -41,7 +51,7 @@ The hook supports bash and zsh in-place shell entry. Fish currently keeps the st
 
 ## Product Boundary
 
-`robo up` prepares the native runtime and can run `uv sync`, but it does not choose project-specific Python extras, dependency groups, indexes, or source pins. Those stay in `pyproject.toml`, `uv.lock`, and project docs.
+`robo up` prepares the native runtime. `robo up --sync` can run `uv sync`, but it does not choose project-specific Python extras, dependency groups, indexes, or source pins. Those stay in `pyproject.toml`, `uv.lock`, and project docs.
 
 `robo doctor --deep` reports observed host facts for CUDA and graphics. It does not scan arbitrary driver directories or guess host-specific library paths during shell setup.
 

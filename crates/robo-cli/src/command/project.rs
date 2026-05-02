@@ -1,6 +1,8 @@
+use std::collections::{hash_map::DefaultHasher, HashMap};
 use std::env;
 use std::ffi::OsString;
 use std::fs;
+use std::hash::{Hash, Hasher};
 use std::io::{self, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
@@ -16,7 +18,7 @@ use super::bootstrap::run_bootstrap;
 use super::cuda_compat::ensure_runtime_cuda_compat;
 use super::nix::{
     check_command, command_for_runtime, exit_code, hint_native_cuda_link_failure, nix_command,
-    run_status, run_status_after_marker,
+    run_status,
 };
 use super::python::ensure_python_version_files;
 
@@ -80,7 +82,8 @@ pub(crate) fn run_project_app(mode: Option<&str>, args: Vec<OsString>, config: C
 pub(crate) fn run_project_up(
     target: PathBuf,
     yes: bool,
-    no_sync: bool,
+    sync: bool,
+    open_shell: bool,
     config: Config,
 ) -> ExitCode {
     if !target.exists() {
@@ -124,27 +127,63 @@ pub(crate) fn run_project_up(
     if let Err(code) = prepare_uv_runtime(config, "up", false) {
         return code;
     }
+    let mut progress = ShellProgress::new(config, "up: caching runtime shell");
+    let shell_script = match load_shell_env_script(config, Some(&progress)) {
+        Ok(script) => script,
+        Err(code) => {
+            progress.finish();
+            return code;
+        }
+    };
+    let mut env = match materialize_shell_env(&shell_script, config, Some(&progress)) {
+        Ok(env) => env,
+        Err(code) => {
+            progress.finish();
+            return code;
+        }
+    };
+    let sync = sync || (!yes && confirm_up_sync(config));
+    if !sync {
+        write_shell_env_cache_if_possible(&env, config);
+    }
+    progress.finish();
 
-    if !no_sync {
+    if sync {
         status(config, "up: syncing Python packages");
-        let mut command = command_for_runtime(config);
-        command.arg("develop").arg("-c").arg("uv").arg("sync");
+        let mut command = Command::new("uv");
+        command.arg("sync");
+        apply_env(&mut command, &env);
         let code = run_status(&mut command, config);
         if code != ExitCode::SUCCESS {
             return code;
         }
+
+        let mut progress = ShellProgress::new(config, "up: updating runtime shell cache");
+        env = match materialize_shell_env(&shell_script, config, Some(&progress)) {
+            Ok(env) => env,
+            Err(code) => {
+                progress.finish();
+                return code;
+            }
+        };
+        write_shell_env_cache_if_possible(&env, config);
+        progress.finish();
     }
 
     section(config, "ready");
     field(config, "runtime", "prepared");
-    if no_sync {
-        field(config, "python", "not synced (--no-sync)");
-    } else {
+    if sync {
         field(config, "python", "synced");
+    } else {
+        field(config, "python", "not synced");
     }
     section(config, "run");
     action_row(config, "robo run <command>", "run a command in the runtime");
     action_row(config, "robo shell", "open an interactive runtime shell");
+    action_row(config, "uv sync", "sync Python packages when ready");
+    if open_shell {
+        return run_project_shell(vec![], config);
+    }
     ExitCode::SUCCESS
 }
 
@@ -200,6 +239,26 @@ fn confirm_up_init(config: Config) -> bool {
     matches!(answer.trim().to_ascii_lowercase().as_str(), "" | "y" | "yes")
 }
 
+fn confirm_up_sync(config: Config) -> bool {
+    if !io::stdin().is_terminal() {
+        return false;
+    }
+    print!(
+        "{} ",
+        label(
+            config,
+            "Run uv sync now? This may install or build project Python packages. [y/N]",
+            LabelKind::Hint,
+        )
+    );
+    let _ = io::stdout().flush();
+    let mut answer = String::new();
+    if io::stdin().read_line(&mut answer).is_err() {
+        return false;
+    }
+    matches!(answer.trim().to_ascii_lowercase().as_str(), "y" | "yes")
+}
+
 pub(crate) fn run_project_shell(args: Vec<OsString>, config: Config) -> ExitCode {
     let state = RuntimeState::read();
     if state.active {
@@ -221,8 +280,8 @@ pub(crate) fn run_project_shell(args: Vec<OsString>, config: Config) -> ExitCode
         );
         return ExitCode::from(1);
     }
-    let mut progress = ShellProgress::new(config, "shell: evaluating and realizing dev shell");
-    let env = match load_shell_env(config, Some(&progress)) {
+    let mut progress = ShellProgress::new(config, "shell: loading cached runtime shell");
+    let env = match load_cached_or_refresh_shell_env(config, Some(&progress)) {
         Ok(env) => env,
         Err(code) => {
             progress.finish();
@@ -433,7 +492,7 @@ pub(crate) fn run_internal_shell_env(config: Config) -> ExitCode {
         return code;
     }
 
-    let env = match load_shell_env(config, Some(&progress)) {
+    let env = match load_cached_or_refresh_shell_env(config, Some(&progress)) {
         Ok(env) => env,
         Err(code) => {
             progress.finish();
@@ -449,6 +508,14 @@ fn load_shell_env(
     config: Config,
     progress: Option<&ShellProgress>,
 ) -> Result<Vec<(String, String)>, ExitCode> {
+    let script = load_shell_env_script(config, progress)?;
+    materialize_shell_env(&script, config, progress)
+}
+
+fn load_shell_env_script(
+    config: Config,
+    progress: Option<&ShellProgress>,
+) -> Result<Vec<u8>, ExitCode> {
     let mut command = command_for_runtime(config);
     command.arg("print-dev-env").arg(".#default");
     if let Some(progress) = progress {
@@ -477,10 +544,18 @@ fn load_shell_env(
         return Err(exit_code(output.status.code()));
     }
 
+    Ok(output.stdout)
+}
+
+fn materialize_shell_env(
+    script: &[u8],
+    config: Config,
+    progress: Option<&ShellProgress>,
+) -> Result<Vec<(String, String)>, ExitCode> {
     if let Some(progress) = progress {
         progress.set("shell: capturing shell environment");
     }
-    let mut env = match shell_env_exports(&output.stdout) {
+    let mut env = match shell_env_exports(script) {
         Ok(env) => env,
         Err(message) => {
             error(config, &message);
@@ -492,6 +567,46 @@ fn load_shell_env(
     }
     append_shell_state(&mut env);
     Ok(env)
+}
+
+fn load_cached_or_refresh_shell_env(
+    config: Config,
+    progress: Option<&ShellProgress>,
+) -> Result<Vec<(String, String)>, ExitCode> {
+    match read_shell_env_cache() {
+        Ok(Some(env)) => {
+            if let Some(progress) = progress {
+                progress.set("shell: using cached runtime shell");
+            } else {
+                status(config, "shell: using cached runtime shell");
+            }
+            Ok(env)
+        }
+        Ok(None) => refresh_shell_env_cache(config, progress),
+        Err(message) => {
+            if config.debug {
+                hint(config, &format!("ignoring stale shell cache: {message}"));
+            }
+            refresh_shell_env_cache(config, progress)
+        }
+    }
+}
+
+fn refresh_shell_env_cache(
+    config: Config,
+    progress: Option<&ShellProgress>,
+) -> Result<Vec<(String, String)>, ExitCode> {
+    let env = load_shell_env(config, progress)?;
+    write_shell_env_cache_if_possible(&env, config);
+    Ok(env)
+}
+
+fn write_shell_env_cache_if_possible(env: &[(String, String)], config: Config) {
+    if let Err(message) = write_shell_env_cache(env) {
+        if config.debug {
+            hint(config, &format!("failed to write shell cache: {message}"));
+        }
+    }
 }
 
 struct ShellProgress {
@@ -546,13 +661,17 @@ fn run_shell(
             return ExitCode::from(1);
         }
     };
-    for (name, value) in env {
-        command.env(name, value);
-    }
+    apply_env(&mut command, &env);
     for (name, value) in launch.env {
         command.env(name, value);
     }
     exec_command(command)
+}
+
+fn apply_env(command: &mut Command, env: &[(String, String)]) {
+    for (name, value) in env {
+        command.env(name, value);
+    }
 }
 
 fn command_from_launch_args(args: Vec<OsString>) -> Result<Command, String> {
@@ -646,7 +765,154 @@ fn set_shell_env(envs: &mut Vec<(String, String)>, name: &str, value: String) {
     }
 }
 
+fn shell_env_cache_dir() -> PathBuf {
+    PathBuf::from(".robo-nix")
+}
+
+fn shell_env_cache_path() -> PathBuf {
+    shell_env_cache_dir().join("shell-env")
+}
+
+fn shell_env_cache_key_path() -> PathBuf {
+    shell_env_cache_dir().join("shell-env.key")
+}
+
+fn read_shell_env_cache() -> Result<Option<Vec<(String, String)>>, String> {
+    let key_path = shell_env_cache_key_path();
+    let env_path = shell_env_cache_path();
+    if !key_path.exists() || !env_path.exists() {
+        return Ok(None);
+    }
+
+    let expected = shell_env_cache_key();
+    let actual = fs::read_to_string(&key_path)
+        .map_err(|err| format!("failed to read {}: {err}", key_path.display()))?;
+    if actual.trim() != expected {
+        return Ok(None);
+    }
+
+    let bytes = fs::read(&env_path)
+        .map_err(|err| format!("failed to read {}: {err}", env_path.display()))?;
+    parse_cached_shell_env(&bytes).map(Some)
+}
+
+fn write_shell_env_cache(env: &[(String, String)]) -> Result<(), String> {
+    let dir = shell_env_cache_dir();
+    fs::create_dir_all(&dir).map_err(|err| format!("failed to create {}: {err}", dir.display()))?;
+    fs::write(shell_env_cache_path(), serialize_shell_env(env))
+        .map_err(|err| format!("failed to write shell env cache: {err}"))?;
+    fs::write(shell_env_cache_key_path(), format!("{}\n", shell_env_cache_key()))
+        .map_err(|err| format!("failed to write shell env cache key: {err}"))?;
+    Ok(())
+}
+
+fn serialize_shell_env(env: &[(String, String)]) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    for (name, value) in env {
+        bytes.extend_from_slice(name.as_bytes());
+        bytes.push(0);
+        bytes.extend_from_slice(value.as_bytes());
+        bytes.push(0);
+    }
+    bytes
+}
+
+fn parse_cached_shell_env(bytes: &[u8]) -> Result<Vec<(String, String)>, String> {
+    let chunks: Vec<_> = bytes.split(|byte| *byte == 0).collect();
+    let mut entries = chunks.as_slice();
+    if entries.last().is_some_and(|entry| entry.is_empty()) {
+        entries = &entries[..entries.len() - 1];
+    }
+    if entries.len() % 2 != 0 {
+        return Err("shell env cache is truncated".to_string());
+    }
+
+    entries
+        .chunks(2)
+        .map(|pair| {
+            let name = String::from_utf8(pair[0].to_vec())
+                .map_err(|_| "shell env cache contains an invalid variable name".to_string())?;
+            let value = String::from_utf8(pair[1].to_vec())
+                .map_err(|_| "shell env cache contains an invalid variable value".to_string())?;
+            Ok((name, value))
+        })
+        .collect()
+}
+
+fn shell_env_cache_key() -> String {
+    let mut hasher = DefaultHasher::new();
+    nix_system_name().hash(&mut hasher);
+    env::current_exe()
+        .ok()
+        .map(|path| path.display().to_string())
+        .hash(&mut hasher);
+    env::var("ROBO_NIX_DEFAULT_SOURCE_URL").ok().hash(&mut hasher);
+    for name in [
+        "ROBO_NIX_WORKSPACE",
+        "ROBO_NIX_LIBCUDA_PATH",
+        "ROBO_NIX_CUDA_ROOT",
+        "UV_PROJECT_ENVIRONMENT",
+    ] {
+        name.hash(&mut hasher);
+        env::var(name).ok().hash(&mut hasher);
+    }
+
+    for path in [
+        "flake.nix",
+        "flake.lock",
+        "robo.nix",
+        ".python-version",
+        "pyproject.toml",
+        "uv.lock",
+    ] {
+        path.hash(&mut hasher);
+        match fs::read(path) {
+            Ok(bytes) => bytes.hash(&mut hasher),
+            Err(_) => 0_u8.hash(&mut hasher),
+        }
+    }
+    hash_venv_cmake_prefixes(&mut hasher);
+
+    format!("{:016x}", hasher.finish())
+}
+
+fn hash_venv_cmake_prefixes<H: Hasher>(hasher: &mut H) {
+    let pyvenv = Path::new(".venv/pyvenv.cfg");
+    pyvenv.hash(hasher);
+    match fs::read(pyvenv) {
+        Ok(bytes) => bytes.hash(hasher),
+        Err(_) => 0_u8.hash(hasher),
+    }
+
+    let mut prefixes = Vec::new();
+    let Ok(python_dirs) = fs::read_dir(".venv/lib") else {
+        prefixes.hash(hasher);
+        return;
+    };
+    for python_dir in python_dirs.flatten() {
+        let site_packages = python_dir.path().join("site-packages");
+        if !site_packages.is_dir() {
+            continue;
+        }
+        if site_packages.join("share/cmake").is_dir() {
+            prefixes.push(site_packages.display().to_string());
+        }
+        let Ok(entries) = fs::read_dir(&site_packages) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.join("share/cmake").is_dir() {
+                prefixes.push(path.display().to_string());
+            }
+        }
+    }
+    prefixes.sort();
+    prefixes.hash(hasher);
+}
+
 fn shell_env_exports(script: &[u8]) -> Result<Vec<(String, String)>, String> {
+    let baseline: HashMap<_, _> = env::vars().collect();
     let mut command = Command::new("bash");
     command
         .arg("-c")
@@ -677,19 +943,21 @@ fn shell_env_exports(script: &[u8]) -> Result<Vec<(String, String)>, String> {
     Ok(String::from_utf8_lossy(&output.stdout)
         .split('\0')
         .filter_map(|entry| entry.split_once('='))
-        .filter(|(name, _)| should_export_shell_var(name))
+        .filter(|(name, value)| should_export_shell_var(name, value, &baseline))
         .map(|(name, value)| (name.to_string(), value.to_string()))
         .collect())
 }
 
-fn should_export_shell_var(name: &str) -> bool {
-    !is_shell_export_blocked(name) && is_shell_identifier(name)
+fn should_export_shell_var(name: &str, value: &str, baseline: &HashMap<String, String>) -> bool {
+    !is_shell_export_blocked(name)
+        && is_shell_identifier(name)
+        && baseline.get(name).is_none_or(|baseline| baseline != value)
 }
 
 fn is_shell_export_blocked(name: &str) -> bool {
     matches!(
         name,
-        "" | "_" | "PWD" | "OLDPWD" | "SHLVL" | "shellHook" | "ROBO_NIX_QUIET"
+        "" | "_" | "PWD" | "OLDPWD" | "SHLVL" | "SHELL" | "shellHook" | "ROBO_NIX_QUIET"
     ) || name.starts_with("BASH")
 }
 
@@ -718,20 +986,18 @@ pub(crate) fn run_project_command(args: Vec<OsString>, config: Config) -> ExitCo
         args
     };
 
-    run_marked_uv_command(args, config)
+    let env = match load_cached_or_refresh_shell_env(config, None) {
+        Ok(env) => env,
+        Err(code) => return code,
+    };
+
+    run_uv_command(args, env, config)
 }
 
 pub(crate) fn run_internal_exec(args: Vec<OsString>, config: Config) -> ExitCode {
     if args.is_empty() {
         error(config, "internal exec needs a command.");
         return ExitCode::from(2);
-    }
-    let marker = env::var("ROBO_NIX_EXEC_MARKER").unwrap_or_default();
-    if !marker.is_empty() {
-        let _ = std::io::stdout().write_all(marker.as_bytes());
-        let _ = std::io::stderr().write_all(marker.as_bytes());
-        let _ = std::io::stdout().flush();
-        let _ = std::io::stderr().flush();
     }
 
     let mut command = Command::new(&args[0]);
@@ -758,33 +1024,11 @@ fn exec_command(mut command: Command) -> ExitCode {
     }
 }
 
-fn run_marked_uv_command(args: Vec<OsString>, config: Config) -> ExitCode {
-    let marker = format!("__ROBO_NIX_COMMAND_STARTED_{}__", std::process::id());
-    let Ok(current_exe) = env::current_exe() else {
-        return run_status(
-            command_for_runtime(config)
-                .arg("develop")
-                .arg("-c")
-                .arg("uv")
-                .arg("run")
-                .args(args),
-            config,
-        );
-    };
-
-    run_status_after_marker(
-        command_for_runtime(config)
-            .env("ROBO_NIX_EXEC_MARKER", &marker)
-            .arg("develop")
-            .arg("-c")
-            .arg(current_exe)
-            .arg("__exec")
-            .arg("uv")
-            .arg("run")
-            .args(args),
-        config,
-        &marker,
-    )
+fn run_uv_command(args: Vec<OsString>, env: Vec<(String, String)>, config: Config) -> ExitCode {
+    let mut command = Command::new("uv");
+    command.arg("run").args(args);
+    apply_env(&mut command, &env);
+    run_status(&mut command, config)
 }
 
 fn prepare_uv_runtime(
@@ -1071,27 +1315,12 @@ fn repair_managed_flake_source(config: Config) -> Result<(), ExitCode> {
         );
         return Err(ExitCode::from(1));
     }
-    let source_url = match env::var("ROBO_NIX_DEFAULT_SOURCE_URL") {
-        Ok(source_url) => source_url,
-        Err(_) => {
-            if flake.contains("github:ausbxuse/robo-nix") {
-                error(
-                    config,
-                    "flake.nix points at github:ausbxuse/robo-nix, but this robo install has no packaged source URL.",
-                );
-                hint(
-                    config,
-                    "run `robo init . --robo-nix-url path:/path/to/robo-nix` to repair this project.",
-                );
-                return Err(ExitCode::from(1));
-            }
-            return Ok(());
-        }
-    };
+    let source_url = env::var("ROBO_NIX_DEFAULT_SOURCE_URL")
+        .unwrap_or_else(|_| "github:ausbxuse/robo-nix".to_string());
     let Some(current_source_url) = managed_robo_nix_url(&flake) else {
         return Ok(());
     };
-    if current_source_url == source_url {
+    if current_source_url == source_url || !is_nonshareable_store_source(&current_source_url) {
         return Ok(());
     }
     let repaired = flake.replace(
@@ -1103,10 +1332,7 @@ fn repair_managed_flake_source(config: Config) -> Result<(), ExitCode> {
         return Err(ExitCode::from(1));
     }
     status(config, &format!("repaired flake.nix to use {source_url}"));
-    hint(
-        config,
-        "packaged robo-nix source avoids copying large local checkout paths during shell startup.",
-    );
+    hint(config, "portable robo-nix source URLs keep generated projects shareable across hosts.");
     Ok(())
 }
 
@@ -1117,6 +1343,10 @@ fn managed_robo_nix_url(flake: &str) -> Option<String> {
             .and_then(|rest| rest.strip_suffix("\";"))
             .map(ToOwned::to_owned)
     })
+}
+
+fn is_nonshareable_store_source(source_url: &str) -> bool {
+    source_url.starts_with("path:/nix/store/")
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -1353,6 +1583,57 @@ mod tests {
         assert_eq!(clean_interactive_shell_args("zsh"), vec!["-i"]);
         assert_eq!(clean_interactive_shell_args("bash"), vec!["-i"]);
         assert_eq!(clean_interactive_shell_args("fish"), vec!["-i"]);
+    }
+
+    #[test]
+    fn shell_env_cache_round_trips_values() {
+        let env = vec![
+            ("PATH".to_string(), "/nix/store/bin:/usr/bin".to_string()),
+            ("ROBO_NIX_ACTIVE".to_string(), "1".to_string()),
+            ("CMAKE_PREFIX_PATH".to_string(), "/tmp/pkg/share/cmake".to_string()),
+        ];
+
+        assert_eq!(
+            parse_cached_shell_env(&serialize_shell_env(&env)).expect("cache should parse"),
+            env
+        );
+    }
+
+    #[test]
+    fn shell_env_cache_rejects_truncated_entries() {
+        let bytes = b"PATH\0/bin\0ROBO_NIX_ACTIVE";
+
+        assert_eq!(
+            parse_cached_shell_env(bytes).expect_err("truncated cache should fail"),
+            "shell env cache is truncated"
+        );
+    }
+
+    #[test]
+    fn shell_env_exports_skip_unchanged_parent_values() {
+        let baseline = HashMap::from([
+            ("EXPECTED_SHELL".to_string(), "/tmp/first".to_string()),
+            ("PATH".to_string(), "/usr/bin".to_string()),
+        ]);
+
+        assert!(!should_export_shell_var(
+            "EXPECTED_SHELL",
+            "/tmp/first",
+            &baseline
+        ));
+        assert!(should_export_shell_var("PATH", "/nix/bin:/usr/bin", &baseline));
+        assert!(!should_export_shell_var("SHELL", "/nix/store/bash", &baseline));
+    }
+
+    #[test]
+    fn only_nix_store_path_sources_are_repaired() {
+        assert!(is_nonshareable_store_source(
+            "path:/nix/store/example-source"
+        ));
+        assert!(!is_nonshareable_store_source(
+            "path:/home/user/src/robo-nix"
+        ));
+        assert!(!is_nonshareable_store_source("github:ausbxuse/robo-nix"));
     }
 
     #[test]
