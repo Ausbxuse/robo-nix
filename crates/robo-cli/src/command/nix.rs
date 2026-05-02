@@ -1,3 +1,4 @@
+use std::env;
 use std::process::{Command, ExitCode, Stdio};
 
 use crate::{error, hint, label, Config, LabelKind};
@@ -40,6 +41,15 @@ pub(crate) fn command_for_runtime(config: Config) -> Command {
         command.env("ROBO_NIX_QUIET", "1");
     }
     command
+}
+
+pub(crate) fn add_runtime_source_override(command: &mut Command) {
+    if let Ok(source_url) = env::var("ROBO_NIX_RUNTIME_SOURCE_URL") {
+        command
+            .arg("--override-input")
+            .arg("robo-nix")
+            .arg(source_url);
+    }
 }
 
 pub(super) fn run_status(command: &mut Command, config: Config) -> ExitCode {

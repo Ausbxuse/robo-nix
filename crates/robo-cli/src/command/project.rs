@@ -17,8 +17,8 @@ use crate::{Config, LabelKind, UiSpinner, error, field, hint, label, section, st
 use super::bootstrap::run_bootstrap;
 use super::cuda_compat::ensure_runtime_cuda_compat;
 use super::nix::{
-    check_command, command_for_runtime, exit_code, hint_native_cuda_link_failure, nix_command,
-    run_status,
+    add_runtime_source_override, check_command, command_for_runtime, exit_code,
+    hint_native_cuda_link_failure, nix_command, run_status,
 };
 use super::python::ensure_python_version_files;
 
@@ -71,7 +71,9 @@ pub(crate) fn run_project_app(mode: Option<&str>, args: Vec<OsString>, config: C
     }
 
     let mut command = nix_command(config);
-    command.arg("run").arg(".#default");
+    command.arg("run");
+    add_runtime_source_override(&mut command);
+    command.arg(".#default");
     if let Some(mode) = mode {
         command.arg("--").arg(mode);
     }
@@ -517,7 +519,9 @@ fn load_shell_env_script(
     progress: Option<&ShellProgress>,
 ) -> Result<Vec<u8>, ExitCode> {
     let mut command = command_for_runtime(config);
-    command.arg("print-dev-env").arg(".#default");
+    command.arg("print-dev-env");
+    add_runtime_source_override(&mut command);
+    command.arg(".#default");
     if let Some(progress) = progress {
         progress.set("shell: evaluating and realizing dev shell");
     }
@@ -847,6 +851,7 @@ fn shell_env_cache_key() -> String {
         .map(|path| path.display().to_string())
         .hash(&mut hasher);
     env::var("ROBO_NIX_DEFAULT_SOURCE_URL").ok().hash(&mut hasher);
+    env::var("ROBO_NIX_RUNTIME_SOURCE_URL").ok().hash(&mut hasher);
     for name in [
         "ROBO_NIX_WORKSPACE",
         "ROBO_NIX_LIBCUDA_PATH",

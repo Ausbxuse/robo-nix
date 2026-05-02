@@ -6,7 +6,10 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use crate::runtime::{build_runtime_why, read_project_runtime, WhyEntry};
-use crate::{error, ensure_project_runtime, label, nix_command, quoted_value, Config, LabelKind};
+use crate::{
+    add_runtime_source_override, error, ensure_project_runtime, label, nix_command, quoted_value,
+    Config, LabelKind,
+};
 
 #[derive(Args)]
 pub(crate) struct ContractArgs {
@@ -114,11 +117,9 @@ fn contract_field(config: Config, message: &str) {
 
 fn default_derivation_name(config: Config) -> Option<String> {
     let mut command = nix_command(config);
-    command.args([
-        "eval",
-        "--raw",
-        &format!(".#packages.{}.default.name", nix_system()),
-    ]);
+    command.args(["eval", "--raw"]);
+    add_runtime_source_override(&mut command);
+    command.arg(format!(".#packages.{}.default.name", nix_system()));
     command
         .output()
         .ok()

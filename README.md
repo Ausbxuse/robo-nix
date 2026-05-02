@@ -83,3 +83,7 @@ docs/                  short concept docs
 - [ROS](./docs/ros.md)
 - [Diagnostics](./docs/diagnostics.md)
 - [Roadmap](./docs/roadmap.md)
+
+## License
+
+`robo-nix` is licensed under GPL-3.0-or-later. See [LICENSE](./LICENSE).

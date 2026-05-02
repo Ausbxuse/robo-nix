@@ -10,9 +10,9 @@ use crate::runtime::{
     ProjectRuntime, RuntimeWhy, WhyEntry, build_runtime_why, read_project_runtime,
 };
 use crate::{
-    Config, LabelKind, UiProgress, UiSpinner, combined_output, command_for_runtime,
-    ensure_project_runtime, error, exact_python_requirement, field, inline, label, nix_command,
-    quoted_value, run_bootstrap_with_progress, section,
+    Config, LabelKind, UiProgress, UiSpinner, add_runtime_source_override, combined_output,
+    command_for_runtime, ensure_project_runtime, error, exact_python_requirement, field, inline,
+    label, nix_command, quoted_value, run_bootstrap_with_progress, section,
 };
 
 mod egl;
@@ -1277,7 +1277,9 @@ fn run_deep_checks(
 
 fn check_runtime_preview(config: Config, warnings: &mut usize, progress: Option<&mut UiProgress>) {
     let mut command = nix_command(config);
-    command.args(["build", ".#default", "--dry-run", "--no-link", "--json"]);
+    command.arg("build");
+    add_runtime_source_override(&mut command);
+    command.args([".#default", "--dry-run", "--no-link", "--json"]);
 
     let mut progress = progress;
     let output = match progress.as_deref_mut() {
@@ -1647,7 +1649,9 @@ fn runtime_output<const N: usize, const M: usize>(
     envs: [(&str, &str); M],
 ) -> Result<std::process::Output, std::io::Error> {
     let mut command = command_for_runtime(config);
-    command.arg("develop").arg("-c").arg(program).args(args);
+    command.arg("develop");
+    add_runtime_source_override(&mut command);
+    command.arg("-c").arg(program).args(args);
     for (name, value) in envs {
         command.env(name, value);
     }

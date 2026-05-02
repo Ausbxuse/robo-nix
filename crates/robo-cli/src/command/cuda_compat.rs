@@ -2,7 +2,7 @@ use std::process::ExitCode;
 
 use crate::{error, hint, ok, warn, Config};
 
-use super::nix::command_for_runtime;
+use super::nix::{add_runtime_source_override, command_for_runtime};
 
 pub(super) fn ensure_runtime_cuda_compat(config: Config, strict: bool) -> Result<(), ExitCode> {
     let runtime = crate::runtime::read_project_runtime();
@@ -139,8 +139,10 @@ if [ -n "$root" ] && [ -x "$root/bin/nvcc" ]; then
 elif command -v nvcc >/dev/null 2>&1; then
   nvcc --version
 fi"#;
-    let output = command_for_runtime(config)
-        .arg("develop")
+    let mut command = command_for_runtime(config);
+    command.arg("develop");
+    add_runtime_source_override(&mut command);
+    let output = command
         .arg("-c")
         .arg("bash")
         .arg("-lc")

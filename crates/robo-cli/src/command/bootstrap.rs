@@ -2,11 +2,15 @@ use std::process::{Command, ExitCode};
 
 use crate::{error, hint, ok, output_with_spinner, status, Config, UiProgress};
 
-use super::nix::{exit_code, hint_native_cuda_link_failure, nix_command, run_status};
+use super::nix::{
+    add_runtime_source_override, exit_code, hint_native_cuda_link_failure, nix_command, run_status,
+};
 
 pub(crate) fn run_bootstrap(config: Config) -> Result<(), ExitCode> {
     let mut command = nix_command(config);
-    command.arg("run").arg(".#default");
+    command.arg("run");
+    add_runtime_source_override(&mut command);
+    command.arg(".#default");
     command.env("ROBO_NIX_QUIET", "1");
 
     if config.debug {
@@ -43,7 +47,9 @@ pub(crate) fn run_bootstrap_with_progress(
     progress: &mut UiProgress,
 ) -> Result<(), ExitCode> {
     let mut command = nix_command(config);
-    command.arg("run").arg(".#default");
+    command.arg("run");
+    add_runtime_source_override(&mut command);
+    command.arg(".#default");
     command.env("ROBO_NIX_QUIET", "1");
 
     if config.debug {

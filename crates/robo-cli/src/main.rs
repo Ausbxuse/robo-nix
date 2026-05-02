@@ -63,8 +63,8 @@ mod shell {
 }
 
 pub(crate) use command::{
-    combined_output, command_for_runtime, ensure_project_runtime, nix_command, quoted_value,
-    run_bootstrap_with_progress,
+    add_runtime_source_override, combined_output, command_for_runtime, ensure_project_runtime,
+    nix_command, quoted_value, run_bootstrap_with_progress,
 };
 pub(crate) use pyproject::exact_python_requirement;
 pub(crate) use ui::{

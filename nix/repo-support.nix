@@ -59,6 +59,7 @@ in rec {
         text = ''
           export ROBO_NIX_COMPONENT_MANIFEST="${componentManifest}"
           export ROBO_NIX_DEFAULT_SOURCE_URL="${defaultSourceUrl}"
+          export ROBO_NIX_RUNTIME_SOURCE_URL="path:${repoSource}"
           exec ${roboBinary}/bin/robo "$@"
         '';
       })
@@ -157,6 +158,7 @@ in rec {
       text = ''
         export ROBO_NIX_COMPONENT_MANIFEST="${componentManifest}"
         export ROBO_NIX_DEFAULT_SOURCE_URL="${defaultSourceUrl}"
+        export ROBO_NIX_RUNTIME_SOURCE_URL="path:${repoSource}"
         exec ${roboBinary}/bin/robo cuda-check "$@"
       '';
     };
