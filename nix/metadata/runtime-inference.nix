@@ -49,6 +49,7 @@
         "imageio-ffmpeg"
         "ffmpeg-python"
         "decord"
+        "torchcodec"
       ];
       components = ["media"];
       note = "pyproject.toml uses FFmpeg/media packages";

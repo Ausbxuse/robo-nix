@@ -27,8 +27,8 @@ in {
     supportedSystems = ["x86_64-linux"];
   };
 
-  # TODO(robo): decide whether this remains a public preset after real
-  # downstream Isaac usage proves whether non-ROS Isaac is common enough.
+  # NOTE: keep this under review until downstream usage proves whether
+  # non-ROS Isaac projects are common enough.
   isaac-learning = fromProfile profiles.mujoco-sim {
     description = "Isaac Sim oriented shell with local host install integration";
     components = [

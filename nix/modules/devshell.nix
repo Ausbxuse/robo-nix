@@ -25,7 +25,9 @@
     };
   };
 
-  native-build = {pkgs, ...}: {
+  native-build = {pkgs, ...}: let
+    libcDev = pkgs.stdenv.cc.libc.dev or pkgs.glibc.dev;
+  in {
     packages = [
       pkgs.cmake
       pkgs.gnumake
@@ -34,24 +36,42 @@
       pkgs.pkg-config
       pkgs.stdenv.cc
     ];
-    shellInit = common.exportVars {
-      CC = "${pkgs.stdenv.cc.targetPrefix}cc";
-      CXX = "${pkgs.stdenv.cc.targetPrefix}c++";
-      OPENSSL_ROOT_DIR = pkgs.openssl.out;
-      OPENSSL_INCLUDE_DIR = "${pkgs.openssl.dev}/include";
-      OPENSSL_CRYPTO_LIBRARY = "${pkgs.openssl.out}/lib/libcrypto.so";
-      OPENSSL_SSL_LIBRARY = "${pkgs.openssl.out}/lib/libssl.so";
-    };
+    shellInit =
+      common.exportVars {
+        CC = "${pkgs.stdenv.cc.targetPrefix}cc";
+        CXX = "${pkgs.stdenv.cc.targetPrefix}c++";
+        OPENSSL_ROOT_DIR = pkgs.openssl.out;
+        OPENSSL_INCLUDE_DIR = "${pkgs.openssl.dev}/include";
+        OPENSSL_CRYPTO_LIBRARY = "${pkgs.openssl.out}/lib/libcrypto.so";
+        OPENSSL_SSL_LIBRARY = "${pkgs.openssl.out}/lib/libssl.so";
+        ROBO_NIX_LIBC_DEV = libcDev;
+      }
+      + "\n"
+      + common.prependPath "PATH" "${pkgs.cmake}/bin"
+      + "\n"
+      + common.prependPath "PATH" "${pkgs.gnumake}/bin"
+      + "\n"
+      + common.prependPath "PATH" "${pkgs.ninja}/bin"
+      + "\n"
+      + common.prependPath "PATH" "${pkgs.pkg-config}/bin"
+      + "\n"
+      + common.prependPath "PATH" "${pkgs.stdenv.cc}/bin";
     check = common.mkComponentCheck "native-build" [];
   };
 
-  media = {pkgs, ...}: {
+  media = {pkgs, ...}: let
+    ffmpeg = pkgs.ffmpeg_7 or pkgs.ffmpeg;
+  in {
     packages = [
-      pkgs.ffmpeg
+      ffmpeg
     ];
-    shellInit = common.exportVars {
-      ROBO_NIX_FFMPEG_ROOT = pkgs.ffmpeg;
-    };
+    shellInit =
+      common.exportVars {
+        ROBO_NIX_FFMPEG_ROOT = ffmpeg;
+        ROBO_NIX_FFMPEG_LIB = "${ffmpeg.lib}/lib";
+      }
+      + "\n"
+      + common.prependPath "LD_LIBRARY_PATH" "${ffmpeg.lib}/lib";
     check = common.mkComponentCheck "media" [];
   };
 
@@ -59,7 +79,12 @@
     packages = [
       pkgs.linuxHeaders
     ];
-    shellInit = common.prependPath "CPATH" "${pkgs.linuxHeaders}/include";
+    shellInit =
+      common.exportVars {
+        ROBO_NIX_LINUX_HEADERS = "${pkgs.linuxHeaders}/include";
+      }
+      + "\n"
+      + common.prependPath "CPATH" "$ROBO_NIX_LINUX_HEADERS";
     supportedSystems = common.linuxSystems;
     check = common.mkComponentCheck "linux-headers" [];
   };
@@ -68,14 +93,9 @@
     packages = [
       pkgs.mujoco
     ];
-    shellInit =
-      common.exportVars {
-        MUJOCO_PATH = pkgs.mujoco;
-      }
-      + "\n"
-      + common.exportDefaults {
-        MUJOCO_GL = "egl";
-      };
+    shellInit = common.exportVars {
+      MUJOCO_PATH = pkgs.mujoco;
+    };
     supportedSystems = common.linuxSystems;
     check = common.mkComponentCheck "mujoco" [];
   };

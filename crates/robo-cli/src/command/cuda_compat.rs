@@ -95,7 +95,7 @@ pub(super) fn ensure_runtime_cuda_compat(config: Config, strict: bool) -> Result
         }
         hint(
             config,
-            "run `robo check --deep` and check the cuda-toolkit component in robo.nix.",
+            "run `robo doctor --deep` and check the cuda-toolkit component in robo.nix.",
         );
         return if strict {
             Err(ExitCode::from(1))

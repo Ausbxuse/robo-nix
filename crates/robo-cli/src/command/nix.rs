@@ -196,7 +196,7 @@ pub(super) fn hint_native_cuda_link_failure(config: Config, output: &std::proces
     );
     hint(
         config,
-        "run `robo check --deep` to validate the cuda-toolkit build surface before changing project dependencies.",
+        "run `robo doctor --deep` to validate the cuda-toolkit build surface before changing project dependencies.",
     );
 }
 

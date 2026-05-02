@@ -8,4 +8,4 @@ The default ROS workspace convention is:
 ros_ws/src
 ```
 
-TODO(robo): add more ROS distributions only after the component contract stays identical across real projects.
+Additional ROS distributions should be added only when their component contract is reusable across real downstream projects.

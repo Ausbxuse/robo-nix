@@ -1,6 +1,6 @@
 # Architecture
 
-`robo-nix` has three active layers:
+`robo-nix` has four active layers:
 
 - `crates/robo-cli`: command-line UX and subprocess wrapping.
 - `nix/modules`: reusable runtime component implementations.
@@ -17,5 +17,5 @@ Keep new package/runtime coverage data-driven in `nix/metadata` unless it needs 
 
 The scalable target is the [runtime capability model](./runtime-capability-model.md):
 project facts infer runtime requirements, Nix components and host probes provide
-capabilities, and `robo check` compares the two. Avoid growing direct
+capabilities, and `robo doctor` compares the two. Avoid growing direct
 package-to-component heuristics as the primary extension mechanism.

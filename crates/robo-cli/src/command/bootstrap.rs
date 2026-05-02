@@ -1,6 +1,6 @@
 use std::process::{Command, ExitCode};
 
-use crate::{error, ok, output_with_spinner, status, Config, UiProgress};
+use crate::{error, hint, ok, output_with_spinner, status, Config, UiProgress};
 
 use super::nix::{exit_code, hint_native_cuda_link_failure, nix_command, run_status};
 
@@ -27,6 +27,7 @@ pub(crate) fn run_bootstrap(config: Config) -> Result<(), ExitCode> {
             error(config, "runtime bootstrap failed");
             print_captured("stdout", &output.stdout);
             print_captured("stderr", &output.stderr);
+            hint_project_bootstrap_failure(config, &output);
             hint_native_cuda_link_failure(config, &output);
             Err(exit_code(output.status.code()))
         }
@@ -63,6 +64,7 @@ pub(crate) fn run_bootstrap_with_progress(
             error(config, "runtime bootstrap failed");
             print_captured("stdout", &output.stdout);
             print_captured("stderr", &output.stderr);
+            hint_project_bootstrap_failure(config, &output);
             hint_native_cuda_link_failure(config, &output);
             Err(exit_code(output.status.code()))
         }
@@ -86,4 +88,58 @@ fn print_captured(label: &str, bytes: &[u8]) {
     }
     eprintln!("--- bootstrap {label} ---");
     eprint!("{}", String::from_utf8_lossy(bytes));
+}
+
+fn hint_project_bootstrap_failure(config: Config, output: &std::process::Output) {
+    let text = super::nix::combined_output(output);
+    hint(
+        config,
+        "bootstrap is project-owned code from the bootstrap block or source scripts in robo.nix.",
+    );
+    if let Some(name) = missing_env_var(&text) {
+        hint(
+            config,
+            &format!("set `{name}` in your shell or map it from a robo-nix runtime variable in robo.nix."),
+        );
+    }
+    hint(
+        config,
+        "run `robo doctor --why` to see which bootstrap scripts are part of this runtime.",
+    );
+}
+
+fn missing_env_var(text: &str) -> Option<&str> {
+    text.lines().find_map(|line| {
+        let name = line.trim().strip_suffix(" is not set")?;
+        is_env_var_name(name).then_some(name)
+    })
+}
+
+fn is_env_var_name(name: &str) -> bool {
+    !name.is_empty()
+        && name
+            .chars()
+            .all(|ch| ch == '_' || ch.is_ascii_uppercase() || ch.is_ascii_digit())
+        && name
+            .chars()
+            .next()
+            .is_some_and(|ch| ch == '_' || ch.is_ascii_uppercase())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn detects_missing_env_var_from_bootstrap_output() {
+        assert_eq!(
+            missing_env_var("PROJECT_SDK_ROOT is not set"),
+            Some("PROJECT_SDK_ROOT")
+        );
+    }
+
+    #[test]
+    fn ignores_non_env_var_bootstrap_output() {
+        assert_eq!(missing_env_var("some lowercase setting is not set"), None);
+    }
 }

@@ -3,6 +3,7 @@
   lib,
   nix-ros-overlay,
   nixpkgs,
+  nixpkgs-python ? null,
 }: let
   common = import ./modules/common.nix {inherit lib;};
   defaultSupportedSystems = [
@@ -14,8 +15,8 @@
     // {
       components = envSpec.components or [];
       description = envSpec.description or "${envName} robo-nix environment";
-      # NOTE: uv owns the interpreter. This value is only metadata for
-      # generated files, diagnostics, and UV_PYTHON.
+      # NOTE: uv owns the virtualenv, packages, and lockfile. robo-nix uses
+      # this to select an ABI-aligned CPython executable for uv.
       pythonVersion = envSpec.pythonVersion or "3.11";
       extraPackages = envSpec.extraPackages or [];
       shellInit = envSpec.shellInit or "";
@@ -63,6 +64,10 @@
         config = nixpkgsConfig;
         overlays = [nix-ros-overlay.overlays.default];
       };
+      nixpkgsPythonPackages =
+        if nixpkgs-python != null && builtins.hasAttr system nixpkgs-python.packages
+        then nixpkgs-python.packages.${system}
+        else {};
 
       uniquePackages = packages:
         lib.unique (
@@ -86,6 +91,7 @@
         pkgs.freetype
         pkgs.libGL
         pkgs.libGLU
+        pkgs.mesa
         pkgs.libxcrypt-legacy
         pkgs.vulkan-loader
         pkgs.expat
@@ -115,12 +121,13 @@
         pkgs.xorg.xcbutilrenderutil
         pkgs.xorg.xcbutilwm
         pkgs.wayland
+        pkgs.libxml2
         pkgs.zlib
       ];
       runtimeLibPath = lib.makeLibraryPath runtimeLibs;
 
       mkContext = envName: envSpec: {
-        inherit componentCatalog envName envSpec lib pkgs pkgsRos runtimeLibPath runtimeLibs system;
+        inherit componentCatalog envName envSpec lib nixpkgsPythonPackages pkgs pkgsRos runtimeLibPath runtimeLibs system;
       };
 
       resolveComponent = ctx: componentName: let
@@ -159,7 +166,7 @@
           if [ ! -d "$WORKSPACE_ROOT/${path}" ]; then
             bootstrap_error "missing required directory: $WORKSPACE_ROOT/${path}"
             check_hint "create $WORKSPACE_ROOT/${path} or point ROBO_NIX_WORKSPACE at the correct checkout" >&2
-            check_hint "run 'robo check' for a full setup report" >&2
+            check_hint "run 'robo doctor' for a full setup report" >&2
             exit 1
           fi
         '')
@@ -170,7 +177,7 @@
           if [ ! -f "$WORKSPACE_ROOT/${path}" ]; then
             bootstrap_error "missing required file: $WORKSPACE_ROOT/${path}"
             check_hint "restore $WORKSPACE_ROOT/${path} or point ROBO_NIX_WORKSPACE at the correct checkout" >&2
-            check_hint "run 'robo check' for a full setup report" >&2
+            check_hint "run 'robo doctor' for a full setup report" >&2
             exit 1
           fi
         '')
@@ -402,12 +409,12 @@
 
                 if [ "$issues" -eq 0 ]; then
                   check_next "run 'robo dry-run' if you want a bootstrap-only validation pass"
-                  check_next "run 'robo activate' to enter the environment"
+                  check_next "run 'robo shell' to enter the environment"
                   check_status_ok
                   return 0
                 fi
 
-                check_next "fix the issues above and rerun 'robo check'"
+                check_next "fix the issues above and rerun 'robo doctor'"
                 check_status_error
                 return 1
               }
@@ -420,7 +427,7 @@
               if [ ! -d "$WORKSPACE_ROOT" ]; then
                 bootstrap_error "workspace not found: $WORKSPACE_ROOT"
                 check_hint "set ROBO_NIX_WORKSPACE to the project checkout you want to bootstrap" >&2
-                check_hint "run 'robo check' first if you are not sure what is missing" >&2
+                check_hint "run 'robo doctor' first if you are not sure what is missing" >&2
                 exit 1
               fi
 
@@ -455,7 +462,7 @@
               if [ -d "$WORKSPACE_ROOT" ]; then
                 mkdir -p "$WORKSPACE_ROOT/.robo-nix"
               fi
-              if [ -z "''${ROBO_NIX_QUIET:-}" ] && [ -z "''${ROBO_NIX_ACTIVATE:-}" ]; then
+              if [ -z "''${ROBO_NIX_QUIET:-}" ]; then
                 if { [ "''${ROBO_NIX_COLOR:-}" = "1" ] || { [ -z "''${NO_COLOR:-}" ] && [ -t 1 ]; }; } && [ "''${ROBO_NIX_COLOR:-}" != "0" ]; then
                   c_status="$(printf '\033[36;1m')"
                   c_hint="$(printf '\033[2m')"
@@ -469,16 +476,6 @@
                 printf "    %spython=%s%s\n" "$c_hint" "$c_reset" "$ROBO_NIX_PYTHON_VERSION"
                 printf "    %ssystem=%s%s\n" "$c_hint" "$c_reset" "$ROBO_NIX_SYSTEM"
                 printf "    %sworkspace=%s%s\n" "$c_hint" "$c_reset" "$WORKSPACE_ROOT"
-              fi
-              if [ -n "''${ROBO_NIX_ACTIVATE:-}" ]; then
-                export ROBO_NIX_ACTIVE=1
-                if [ -n "''${ROBO_NIX_ACTIVATION_SHELL:-}" ]; then
-                  export SHELL="$ROBO_NIX_ACTIVATION_SHELL"
-                fi
-                if [ -n "''${ROBO_NIX_ROBO_BIN:-}" ]; then
-                  export PATH="$(dirname "$ROBO_NIX_ROBO_BIN"):$PATH"
-                fi
-                export ROBO_NIX_PROMPT_PREFIX="<$ROBO_NIX_ENV_NAME> "
               fi
             '';
           };

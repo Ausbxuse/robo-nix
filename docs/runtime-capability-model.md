@@ -194,9 +194,9 @@ cuda-toolkit = {
 
 It should not pretend host-owned requirements are solved by Nix.
 
-### `robo check`
+### `robo doctor`
 
-`robo check` should:
+`robo doctor` should:
 
 1. load the requirement contract
 2. probe host capabilities

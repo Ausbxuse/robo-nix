@@ -167,6 +167,12 @@ impl UiSpinner {
             bar.finish_and_clear();
         }
     }
+
+    pub(crate) fn set_message(&self, message: &str) {
+        if let Some(bar) = &self.bar {
+            bar.set_message(message.to_string());
+        }
+    }
 }
 
 impl Drop for UiSpinner {
@@ -247,7 +253,7 @@ fn spinner(config: Config, message: &str) -> ProgressBar {
     let spinner = ProgressBar::new_spinner();
     spinner.set_draw_target(ProgressDrawTarget::stderr());
     spinner.set_style(
-        ProgressStyle::with_template("{prefix} {spinner:.cyan} {msg}")
+        ProgressStyle::with_template("{prefix} {spinner:.cyan} {elapsed_precise} {msg}")
             .unwrap_or_else(|_| ProgressStyle::default_spinner())
             .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]),
     );

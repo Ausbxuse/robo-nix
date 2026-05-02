@@ -12,7 +12,6 @@ pub(super) struct ProbeResult {
     pub(super) cuda_wheel_version: Option<ProbeValue>,
     pub(super) components: Vec<ProbeComponent>,
     pub(super) required_dirs: Vec<String>,
-    pub(super) source_scripts: Vec<String>,
     pub(super) notes: Vec<String>,
     pub(super) suggestions: Vec<ProbeSuggestion>,
     pub(super) component_suggestions: Vec<ProbeComponentSuggestion>,
@@ -198,7 +197,12 @@ fn probe_workspace_scripts(target: &Path, manifest: &Manifest, probe: &mut Probe
                             "skipped bootstrap {relative}: appears to start a long-running process"
                         ));
                     } else {
-                        probe.source_scripts.push(relative);
+                        probe.suggestions.push(ProbeSuggestion {
+                            kind: "bootstrap".to_string(),
+                            path: relative.clone(),
+                            reason: "discovered bootstrap script; review before enabling"
+                                .to_string(),
+                        });
                     }
                     probe_script_rules(&text, manifest, probe);
                     probe_script_paths(&text, discovery, probe);

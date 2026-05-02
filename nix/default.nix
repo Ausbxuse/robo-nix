@@ -4,11 +4,12 @@
   lib,
   nix-ros-overlay,
   nixpkgs,
+  nixpkgs-python,
   profileMetadata,
   runtimeInference,
 }: let
   mkEngine = import ./mk-flake.nix {
-    inherit componentCatalog lib nix-ros-overlay nixpkgs;
+    inherit componentCatalog lib nix-ros-overlay nixpkgs nixpkgs-python;
   };
   loadProjectManifest = import;
   mkProjectFlakeFromManifest = manifestPath:

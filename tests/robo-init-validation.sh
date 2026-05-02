@@ -52,7 +52,8 @@ assert_basic_project_init() {
 	assert_file_contains "$tmpdir/project/.gitignore" ".robo-nix/"
 	assert_file_contains "$init_output" "wrote   $tmpdir/project/.gitignore"
 	assert_file_contains "$init_output" "updated $tmpdir/project/flake.lock"
-	assert_file_contains "$init_output" "(cd '$tmpdir/project' && robo check)"
+	assert_file_contains "$init_output" "cd '$tmpdir/project'"
+	assert_file_contains "$init_output" "robo doctor"
 
 	if ! run_full_mode; then
 		return
@@ -63,12 +64,12 @@ assert_basic_project_init() {
 		nix run .#default -- --check >"$check_output"
 	)
 	assert_file_contains "$check_output" "env=project"
-	assert_file_contains "$check_output" "next: run 'robo activate' to enter the environment"
+	assert_file_contains "$check_output" "next: run 'robo shell' to enter the environment"
 	assert_file_contains "$check_output" "status=ok"
 
 	(
 		cd "$tmpdir/project"
-		nix run "path:${repo_root}#robo" -- check >"$robo_wrapper_check_output"
+		nix run "path:${repo_root}#robo" -- doctor >"$robo_wrapper_check_output"
 	)
 	assert_file_contains "$robo_wrapper_check_output" "checked project"
 	assert_file_contains "$robo_wrapper_check_output" "status"
@@ -119,7 +120,8 @@ EOF
 		--robo-nix-url "path:${repo_root}" >"$wildcard_output" 2>&1
 	assert_file_contains "$tmpdir/python-version-wildcard-project/.python-version" "3.10"
 	assert_file_contains "$tmpdir/python-version-wildcard-project/robo.nix" 'pythonVersion = "3.10";'
-	assert_file_contains "$wildcard_output" "python 3.10: pyproject.toml requires-python"
+	assert_file_contains "$wildcard_output" "python 3.10"
+	assert_file_contains "$wildcard_output" "pyproject.toml requires-python"
 
 	printf '3.11\n' >"$tmpdir/python-version-wildcard-project/.python-version"
 	(
@@ -148,7 +150,7 @@ assert_runtime_repairs_legacy_github_source() {
 
 	if ! (
 		cd "$tmpdir/legacy-source-project"
-		nix run "path:${repo_root}#robo" -- check >"$check_output" 2>&1
+		nix run "path:${repo_root}#robo" -- doctor >"$check_output" 2>&1
 	); then
 		cat "$check_output" >&2
 		exit 1
@@ -166,7 +168,7 @@ assert_runtime_repairs_legacy_github_source() {
 
 	if ! (
 		cd "$tmpdir/local-source-project"
-		nix run "path:${repo_root}#robo" -- check >"$local_check_output" 2>&1
+		nix run "path:${repo_root}#robo" -- doctor >"$local_check_output" 2>&1
 	); then
 		cat "$local_check_output" >&2
 		exit 1
@@ -196,7 +198,7 @@ assert_interactive_project_init() {
 		nix run .#default -- --check >"$interactive_check_output"
 	)
 	assert_file_contains "$interactive_check_output" "env=interactive-project"
-	assert_file_contains "$interactive_check_output" "next: run 'robo activate' to enter the environment"
+	assert_file_contains "$interactive_check_output" "next: run 'robo shell' to enter the environment"
 	assert_file_contains "$interactive_check_output" "status=ok"
 }
 
@@ -286,6 +288,8 @@ EOF
 	assert_file_contains "$tmpdir/probed-project/robo.nix" 'componentReasons = ['
 	assert_file_contains "$tmpdir/probed-project/robo.nix" 'source = "pyproject inference";'
 	assert_file_contains "$tmpdir/probed-project/robo.nix" 'suggestions = ['
+	assert_file_contains "$tmpdir/probed-project/robo.nix" 'path = "scripts/bootstrap_local_sdk.sh";'
+	assert_file_contains "$tmpdir/probed-project/robo.nix" 'kind = "bootstrap";'
 	assert_file_contains "$tmpdir/probed-project/robo.nix" '"third_party/local-sdk/setup.py"'
 	assert_file_contains "$tmpdir/probed-project/robo.nix" '"third_party/local-sdk/src/bindings.cpp"'
 	assert_file_contains "$tmpdir/probed-project/robo.nix" 'pythonVersion = "3.12.11";'
@@ -300,10 +304,14 @@ EOF
 		echo "low-confidence source file inference became a hard requirement" >&2
 		exit 1
 	fi
+	if grep -F 'bootstrap = ' "$tmpdir/probed-project/robo.nix" >/dev/null; then
+		echo "discovered bootstrap script should not be enabled non-interactively" >&2
+		exit 1
+	fi
 
 	(
 		cd "$tmpdir/probed-project"
-		nix run "path:${repo_root}#robo" -- check --why --json >"$probed_why_output"
+		nix run "path:${repo_root}#robo" -- doctor --why --json >"$probed_why_output"
 		nix run "path:${repo_root}#robo" -- contract --json >"$probed_contract_output"
 	)
 	assert_file_contains "$probed_why_output" '"profile": "minimal"'
@@ -331,7 +339,8 @@ EOF
 		nix run .#default -- --check >"$probed_check_output"
 	)
 	assert_file_contains "$probed_check_output" "env=probed-project"
-	assert_file_contains "$probed_check_output" "suggestion: check whether third_party/local-sdk/setup.py should be required for this project"
+	assert_file_contains "$probed_check_output" "suggestion: review file third_party/local-sdk/setup.py"
+	assert_file_contains "$probed_check_output" "suggestion: review bootstrap scripts/bootstrap_local_sdk.sh"
 	assert_file_contains "$probed_check_output" "status=ok"
 }
 
@@ -398,13 +407,20 @@ EOF
 		--robo-nix-url "path:${repo_root}" >/dev/null
 	sed -i '/"media"/d' "$tmpdir/stale-project/robo.nix"
 
+	set +e
 	(
 		cd "$tmpdir/stale-project"
-		nix run "path:${repo_root}#robo" -- check >"$stale_check_output"
+		nix run "path:${repo_root}#robo" -- doctor >"$stale_check_output"
 	)
+	local stale_check_status=$?
+	set -e
+	if [ "$stale_check_status" -eq 0 ]; then
+		echo "stale runtime contract should fail doctor" >&2
+		exit 1
+	fi
 	assert_file_contains "$stale_check_output" "runtime components may be incomplete"
 	assert_file_contains "$stale_check_output" "missing: media"
-	assert_file_contains "$stale_check_output" "ok,"
+	assert_file_contains "$stale_check_output" "error,"
 }
 
 assert_tricky_package_runtime_inference() {
@@ -441,7 +457,7 @@ EOF
 
 	(
 		cd "$tmpdir/tricky-project"
-		nix run "path:${repo_root}#robo" -- check --why --json >"$tricky_why_output"
+		nix run "path:${repo_root}#robo" -- doctor --why --json >"$tricky_why_output"
 		nix run "path:${repo_root}#robo" -- contract --json >"$tricky_contract_output"
 	)
 	assert_file_contains "$tricky_why_output" '"envName": "tricky-project"'

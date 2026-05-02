@@ -23,7 +23,14 @@ pub(crate) struct ProjectRuntime {
     pub(crate) python_version: String,
     pub(crate) cuda_wheel_version: Option<String>,
     pub(crate) components: Vec<String>,
-    pub(crate) suggestions: Vec<String>,
+    pub(crate) suggestions: Vec<RuntimeSuggestion>,
+}
+
+#[derive(Clone)]
+pub(crate) struct RuntimeSuggestion {
+    pub(crate) kind: String,
+    pub(crate) path: String,
+    pub(crate) reason: String,
 }
 
 #[derive(Serialize)]
@@ -133,7 +140,11 @@ struct ProjectManifestComponentReason {
 
 #[derive(Deserialize)]
 struct ProjectManifestSuggestion {
+    #[serde(default = "default_suggestion_kind")]
+    kind: String,
     path: String,
+    #[serde(default = "default_suggestion_reason")]
+    reason: String,
 }
 
 pub(crate) fn read_project_runtime() -> ProjectRuntime {
@@ -150,7 +161,11 @@ pub(crate) fn read_project_runtime() -> ProjectRuntime {
             .provenance
             .suggestions
             .into_iter()
-            .map(|suggestion| suggestion.path)
+            .map(|suggestion| RuntimeSuggestion {
+                kind: suggestion.kind,
+                path: suggestion.path,
+                reason: suggestion.reason,
+            })
             .collect(),
     }
 }
@@ -526,17 +541,37 @@ pub(crate) fn build_runtime_why(runtime: &ProjectRuntime) -> RuntimeWhy {
         suggestions: runtime
             .suggestions
             .iter()
-            .map(|path| WhyEntry {
-                name: path.clone(),
+            .map(|suggestion| WhyEntry {
+                name: suggestion.path.clone(),
                 source: "workspace inference".to_string(),
-                reason: "optional low-confidence source/runtime inference".to_string(),
+                reason: suggestion.reason.clone(),
                 remove_hint: "delete this entry from provenance.suggestions in robo.nix".to_string(),
-                remediation_hint: format!(
-                    "promote `{path}` to requiredFiles or requiredDirectories only if bootstrap truly depends on it"
-                ),
+                remediation_hint: suggestion_remediation_hint(suggestion),
             })
             .collect(),
     }
+}
+
+fn suggestion_remediation_hint(suggestion: &RuntimeSuggestion) -> String {
+    if suggestion.kind == "bootstrap" {
+        format!(
+            "add `{}` to the bootstrap block in robo.nix only if this project should run it automatically",
+            suggestion.path
+        )
+    } else {
+        format!(
+            "promote `{}` to requiredFiles or requiredDirectories only if bootstrap truly depends on it",
+            suggestion.path
+        )
+    }
+}
+
+fn default_suggestion_kind() -> String {
+    "path".to_string()
+}
+
+fn default_suggestion_reason() -> String {
+    "optional low-confidence source/runtime inference".to_string()
 }
 
 pub(crate) fn expected_components_from_pyproject(text: &str) -> Vec<ExpectedComponent> {
@@ -593,7 +628,7 @@ fn explain_component(
             remove_hint: format!(
                 "remove `{component}` from `components` in robo.nix if the inference is wrong"
             ),
-            remediation_hint: "run `robo check --why` after edits to confirm the runtime contract still matches the project".to_string(),
+            remediation_hint: "run `robo doctor --why` after edits to confirm the runtime contract still matches the project".to_string(),
         }
     } else if !provenance.inferred.is_empty() {
         WhyEntry {
@@ -604,7 +639,7 @@ fn explain_component(
             remove_hint: format!(
                 "remove `{component}` from `components` in robo.nix if the inference is wrong"
             ),
-            remediation_hint: "run `robo check --why` after edits to confirm the inferred runtime still matches the project".to_string(),
+            remediation_hint: "run `robo doctor --why` after edits to confirm the inferred runtime still matches the project".to_string(),
         }
     } else {
         WhyEntry {

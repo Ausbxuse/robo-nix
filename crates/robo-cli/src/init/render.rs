@@ -21,6 +21,7 @@ pub(super) fn write_project(
     force: bool,
     source_url: &str,
     config: Config,
+    quiet: bool,
 ) -> Result<(), ExitCode> {
     fs::create_dir_all(target).map_err(|err| {
         error(
@@ -93,15 +94,17 @@ pub(super) fn write_project(
     if matches!(lock_status, LockStatus::Updated) {
         register_git(target, &["flake.lock"]);
     }
-    print_summary(
-        target,
-        spec,
-        pyproject_status,
-        gitignore_status,
-        source_url,
-        lock_status,
-        config,
-    );
+    if !quiet {
+        print_summary(
+            target,
+            spec,
+            pyproject_status,
+            gitignore_status,
+            source_url,
+            lock_status,
+            config,
+        );
+    }
     Ok(())
 }
 
@@ -268,8 +271,8 @@ fn print_summary(
     if target != Path::new(".") {
         crate::command_row_err(config, &format!("cd {}", shell_quote(target)));
     }
-    crate::command_row_err(config, "robo check");
-    crate::command_row_err(config, "robo activate");
+    crate::command_row_err(config, "robo doctor");
+    crate::command_row_err(config, "robo shell");
     crate::command_row_err(config, "uv sync");
 }
 

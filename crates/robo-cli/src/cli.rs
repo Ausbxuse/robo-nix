@@ -4,11 +4,13 @@ use clap_complete::{Shell, generate};
 use std::env;
 use std::ffi::OsString;
 use std::io::IsTerminal;
+use std::path::PathBuf;
 use std::process::ExitCode;
 
 use crate::command::{
-    run_internal_activate_env, run_internal_exec, run_project_activate, run_project_app,
-    run_project_command, run_project_deactivate, run_project_hook, run_project_status,
+    run_internal_exec, run_internal_shell_env, run_project_app, run_project_command,
+    run_project_deactivate, run_project_hook, run_project_shell, run_project_status,
+    run_project_up,
 };
 use crate::shell::{SUPPORTED_INTERACTIVE_SHELLS, requested_shell_name};
 use crate::{Config, LabelKind, check, contract, cuda, error, init, label};
@@ -41,23 +43,26 @@ enum CliCommand {
     #[command(about = "Initialize robo-nix runtime files")]
     Init(init::InitArgs),
 
-    #[command(about = "Activate the project runtime environment")]
-    Activate(PassthroughArgs),
+    #[command(about = "Prepare the project runtime and sync Python packages")]
+    Up(UpArgs),
 
-    #[command(about = "Show current runtime activation status")]
+    #[command(about = "Open the project runtime shell")]
+    Shell(PassthroughArgs),
+
+    #[command(about = "Show current runtime shell status")]
     Status,
 
     #[command(about = "Show how to leave the active runtime shell")]
     Deactivate,
 
     #[command(
-        about = "Print shell integration for prompt-aware activation",
+        about = "Print shell integration for prompt-aware runtime shells",
         after_help = "Examples:
   eval \"$(robo hook)\"       install the hook for the current shell
   eval \"$(robo hook zsh)\"   print the zsh hook explicitly
 
 After installing the hook:
-  robo activate              activate in-place and show <env> in the prompt
+  robo shell                 enter the runtime in-place and show <env> in the prompt
   robo deactivate            restore the previous prompt and environment"
     )]
     Hook(HookArgs),
@@ -65,8 +70,8 @@ After installing the hook:
     #[command(about = "Run project bootstrap scripts")]
     Bootstrap(PassthroughArgs),
 
-    #[command(about = "Check the current project runtime")]
-    Check(check::CheckArgs),
+    #[command(about = "Diagnose the current project runtime")]
+    Doctor(check::CheckArgs),
 
     #[command(about = "Print the resolved runtime contract")]
     Contract(contract::ContractArgs),
@@ -89,8 +94,8 @@ After installing the hook:
     #[command(name = "__exec", hide = true)]
     InternalExec(PassthroughArgs),
 
-    #[command(name = "__activate-env", hide = true)]
-    InternalActivateEnv,
+    #[command(name = "__shell-env", hide = true)]
+    InternalShellEnv,
 
     #[command(about = "Show help")]
     Help,
@@ -100,6 +105,18 @@ After installing the hook:
 struct PassthroughArgs {
     #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
     args: Vec<OsString>,
+}
+
+#[derive(Args)]
+struct UpArgs {
+    #[arg(default_value = ".", help = "Project directory to prepare")]
+    target: PathBuf,
+
+    #[arg(long, help = "Initialize missing runtime files without prompting")]
+    yes: bool,
+
+    #[arg(long, help = "Prepare the native runtime but skip uv sync")]
+    no_sync: bool,
 }
 
 #[derive(Args)]
@@ -133,19 +150,20 @@ pub(crate) fn run() -> ExitCode {
 
     match cli.command {
         Some(CliCommand::Init(args)) => init::run(args, config),
-        Some(CliCommand::Activate(args)) => run_project_activate(args.args, config),
+        Some(CliCommand::Up(args)) => run_project_up(args.target, args.yes, args.no_sync, config),
+        Some(CliCommand::Shell(args)) => run_project_shell(args.args, config),
         Some(CliCommand::Status) => run_project_status(config),
         Some(CliCommand::Deactivate) => run_project_deactivate(config),
         Some(CliCommand::Hook(args)) => run_project_hook(args.shell.into_iter().collect(), config),
         Some(CliCommand::Bootstrap(args)) => run_project_app(None, args.args, config),
-        Some(CliCommand::Check(args)) => check::run(args, config),
+        Some(CliCommand::Doctor(args)) => check::run(args, config),
         Some(CliCommand::Contract(args)) => contract::run(args, config),
         Some(CliCommand::DryRun(args)) => run_project_app(Some("--dry-run"), args.args, config),
         Some(CliCommand::Run(args)) => run_project_command(args.args, config),
         Some(CliCommand::Completion(args)) => print_completions(args.args, config),
         Some(CliCommand::CudaCheck) => cuda::check(config),
         Some(CliCommand::InternalExec(args)) => run_internal_exec(args.args, config),
-        Some(CliCommand::InternalActivateEnv) => run_internal_activate_env(config),
+        Some(CliCommand::InternalShellEnv) => run_internal_shell_env(config),
         Some(CliCommand::Help) | None => print_help(config),
     }
 }
@@ -171,27 +189,27 @@ fn print_help(config: Config) -> ExitCode {
     help_section(config, "common workflows");
     help_row(
         config,
-        "robo init .",
-        "write robo.nix, flake.nix, and .python-version",
+        "robo up",
+        "prepare this project and sync Python packages",
     );
     help_row(
         config,
-        "robo check",
-        "verify the runtime contract and host prerequisites",
+        "robo run <cmd>",
+        "run a command inside the prepared runtime",
     );
-    help_row(config, "robo activate", "enter an activated runtime shell");
-    help_row(config, "uv sync", "sync Python packages with uv");
+    help_row(config, "robo doctor", "diagnose runtime and host prerequisites");
+    help_row(config, "robo shell", "open an interactive runtime shell");
 
     println!();
     help_section(config, "prompt prefix");
     help_row(
         config,
         "eval \"$(robo hook)\"",
-        "enable Conda-like in-place activation for this shell",
+        "enable Conda-like in-place runtime shells",
     );
     help_row(
         config,
-        "robo activate",
+        "robo shell",
         "updates the current prompt, for example <simple>",
     );
     help_row(
@@ -206,7 +224,7 @@ fn print_help(config: Config) -> ExitCode {
         "  {}",
         label(
             config,
-            "Without the hook, `robo activate` still works by opening a child runtime shell.",
+            "Without the hook, `robo shell` still works by opening a child runtime shell.",
             LabelKind::Hint,
         )
     );
@@ -214,7 +232,7 @@ fn print_help(config: Config) -> ExitCode {
         "  {}",
         label(
             config,
-            "Use `robo status` to see whether the current shell is activated.",
+            "Use `robo status` to see whether the current shell is active.",
             LabelKind::Hint,
         )
     );

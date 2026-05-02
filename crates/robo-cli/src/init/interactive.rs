@@ -49,6 +49,8 @@ pub(super) fn run(args: &mut InitArgs, manifest: &Manifest, config: Config) -> R
 }
 
 pub(super) fn apply_component_suggestions(spec: &mut ProjectSpec, config: Config) {
+    apply_bootstrap_suggestions(spec, config);
+
     let suggestions = spec.component_suggestions.clone();
     let mut accepted = BTreeSet::new();
     for suggestion in suggestions {
@@ -71,6 +73,30 @@ pub(super) fn apply_component_suggestions(spec: &mut ProjectSpec, config: Config
     }
     spec.component_suggestions
         .retain(|suggestion| !accepted.contains(&suggestion.name));
+}
+
+fn apply_bootstrap_suggestions(spec: &mut ProjectSpec, config: Config) {
+    let suggestions = spec.suggestions.clone();
+    let mut accepted = BTreeSet::new();
+    for suggestion in suggestions {
+        if suggestion.kind != "bootstrap" {
+            continue;
+        }
+        let answer = match ask(
+            &format!("Enable bootstrap script {}? {}", suggestion.path, suggestion.reason),
+            "no",
+            config,
+        ) {
+            Ok(answer) => answer,
+            Err(_) => "no".to_string(),
+        };
+        if matches!(answer.as_str(), "yes" | "y") {
+            spec.add_source_script(&suggestion.path);
+            accepted.insert(suggestion.path);
+        }
+    }
+    spec.suggestions
+        .retain(|suggestion| suggestion.kind != "bootstrap" || !accepted.contains(&suggestion.path));
 }
 
 fn ask(prompt: &str, default: &str, config: Config) -> Result<String, ExitCode> {

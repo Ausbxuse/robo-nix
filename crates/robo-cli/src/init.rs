@@ -77,7 +77,42 @@ pub struct InitArgs {
     pub robo_nix_url: Option<String>,
 }
 
+impl InitArgs {
+    pub(crate) fn generated(target: PathBuf, interactive: bool, force: bool) -> Self {
+        Self {
+            target: Some(target),
+            interactive,
+            list_profiles: false,
+            list_components: false,
+            stdout: false,
+            force,
+            name: None,
+            profile: None,
+            with_components: None,
+            no_probe: false,
+            description: None,
+            workspace_root: ".".to_string(),
+            components: None,
+            python_version: None,
+            systems: None,
+            required_dir: Vec::new(),
+            required_file: Vec::new(),
+            source_script: Vec::new(),
+            env: Vec::new(),
+            robo_nix_url: None,
+        }
+    }
+}
+
 pub fn run(args: InitArgs, config: Config) -> ExitCode {
+    run_inner(args, config, false)
+}
+
+pub(crate) fn run_quiet(args: InitArgs, config: Config) -> ExitCode {
+    run_inner(args, config, true)
+}
+
+fn run_inner(args: InitArgs, config: Config, quiet: bool) -> ExitCode {
     let manifest = match load_manifest() {
         Ok(manifest) => manifest,
         Err(message) => {
@@ -133,6 +168,7 @@ pub fn run(args: InitArgs, config: Config) -> ExitCode {
         args.force,
         &plan.source_url,
         config,
+        quiet,
     ) {
         Ok(()) => ExitCode::SUCCESS,
         Err(code) => code,

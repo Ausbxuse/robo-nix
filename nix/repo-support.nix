@@ -7,25 +7,26 @@
   repoRoot,
   runtimeInference,
 }: let
+  repoPath = toString repoRoot;
+  sourceFilter = path: _type: let
+    rel = lib.removePrefix (repoPath + "/") (toString path);
+    top = builtins.head (lib.splitString "/" rel);
+  in
+    !(builtins.elem top [
+      ".git"
+      ".github"
+      "playgrounds"
+      "target"
+    ]);
+  repoSource = lib.sources.cleanSourceWith {
+    src = repoRoot;
+    filter = sourceFilter;
+  };
   forEachSystem = f:
     lib.genAttrs allSystems (system:
       f system (import nixpkgs {inherit system;}));
 in rec {
   repoPackages = forEachSystem (_: pkgs: let
-    repoPath = toString repoRoot;
-    repoSource = pkgs.lib.sources.cleanSourceWith {
-      src = repoRoot;
-      filter = path: _type: let
-        rel = lib.removePrefix (repoPath + "/") (toString path);
-        top = builtins.head (lib.splitString "/" rel);
-      in
-        !(builtins.elem top [
-          ".git"
-          ".github"
-          "playgrounds"
-          "target"
-        ]);
-    };
     defaultSourceUrl = "path:${repoSource}";
     repoTargetPrelude = ''
       target_dir="''${ROBO_NIX_REPO_ROOT:-$PWD}"
@@ -76,14 +77,20 @@ in rec {
       text = ''
         set -euo pipefail
         ${repoTargetPrelude}
+        find_nix_files() {
+          find . \
+            -path ./playgrounds -prune -o \
+            -path ./target -prune -o \
+            -type f -name '*.nix' -print0
+        }
         if [ "''${1:-}" = "--check" ]; then
           shift
-          alejandra --check .
+          find_nix_files | xargs -0 --no-run-if-empty alejandra --check
           find tests -type f -name '*.sh' -print0 | xargs -0 --no-run-if-empty shfmt -d
           exit 0
         fi
 
-        alejandra .
+        find_nix_files | xargs -0 --no-run-if-empty alejandra
         find tests -type f -name '*.sh' -print0 | xargs -0 --no-run-if-empty shfmt -w
       '';
     };
@@ -100,8 +107,16 @@ in rec {
       text = ''
         set -euo pipefail
         ${repoTargetPrelude}
-        deadnix --fail .
-        statix check .
+        find_nix_files() {
+          find . \
+            -path ./playgrounds -prune -o \
+            -path ./target -prune -o \
+            -type f -name '*.nix' -print0
+        }
+        find_nix_files | xargs -0 --no-run-if-empty deadnix --fail
+        while IFS= read -r -d "" file; do
+          statix check "$file"
+        done < <(find_nix_files)
         find tests -type f -name '*.sh' -print0 | xargs -0 --no-run-if-empty shellcheck -x
         find tests -type f -name '*.sh' -print0 | xargs -0 --no-run-if-empty shfmt -d
       '';
@@ -161,9 +176,7 @@ in rec {
     };
   });
 
-  repoChecks = forEachSystem (_: pkgs: let
-    lintSrc = pkgs.lib.sources.cleanSource repoRoot;
-  in {
+  repoChecks = forEachSystem (_: pkgs: {
     lint-nix =
       pkgs.runCommand "robo-nix-lint-nix" {
         nativeBuildInputs = [
@@ -171,7 +184,7 @@ in rec {
           pkgs.statix
         ];
       } ''
-        cd ${lintSrc}
+        cd ${repoSource}
         deadnix --fail .
         statix check .
         touch "$out"
@@ -184,7 +197,7 @@ in rec {
           pkgs.shellcheck
         ];
       } ''
-        cd ${lintSrc}
+        cd ${repoSource}
         find tests -type f -name '*.sh' -print0 | xargs -0 --no-run-if-empty shellcheck -x
         touch "$out"
       '';

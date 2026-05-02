@@ -110,6 +110,10 @@ impl ProjectSpec {
         }
     }
 
+    pub(super) fn add_source_script(&mut self, path: &str) {
+        push_unique(&mut self.source_scripts, path);
+    }
+
     pub(super) fn add_component_suggestion(
         &mut self,
         component: &str,
@@ -150,9 +154,6 @@ impl ProjectSpec {
         }
         for path in probe.required_dirs {
             self.add_required_dir(&path);
-        }
-        for path in probe.source_scripts {
-            push_unique(&mut self.source_scripts, &path);
         }
         self.probe_notes.extend(probe.notes);
         for suggestion in probe.suggestions {

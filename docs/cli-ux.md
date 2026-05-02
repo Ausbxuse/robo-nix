@@ -27,34 +27,34 @@ generated
   kept    ./pyproject.toml
 
 next steps
-  robo check
-  robo activate
+  robo doctor
+  robo shell
   uv sync
 ```
 
 Do not mix heading styles such as `Project:`, `ok: Generated:`, and `robo: next steps:` in the same summary.
 
-Generated shell summaries, including activation output from `nix develop`, should follow the same section and `key=value` shape. Do not print ad hoc labels such as `activated:`, `python:`, or `python packages:`.
+Generated shell summaries, including shell output from `nix develop`, should follow the same section and `key=value` shape. Do not print ad hoc labels such as `runtime:`, `python:`, or `python packages:`.
 
-Activation should enter the user's current interactive shell when possible. The default `robo activate` path must keep working without shell setup by launching an activated runtime shell. The optional `eval "$(robo hook)"` path may install shell-specific functions for in-place activation, prompt prefixing, and `robo deactivate`.
+Shell should enter the user's current interactive shell when possible. The default `robo shell` path must keep working without shell setup by launching a runtime shell. The optional `eval "$(robo hook)"` path may install shell-specific functions for in-place shell entry, prompt prefixing, and `robo deactivate`.
 
-Prompt mutation is shell-owned. `robo hook` may update the prompt for shells it explicitly supports, and the runtime exports `ROBO_NIX_PROMPT_PREFIX` for shell integrations. Without the hook, `robo status` is the canonical way to see whether the current shell is activated. `robo deactivate` should deactivate in-place only when installed as a hook function; the binary path should print the clean `exit` action when inside an activated runtime shell.
+Prompt mutation is shell-owned. `robo hook` may update the prompt for shells it explicitly supports, and the runtime exports `ROBO_NIX_PROMPT_PREFIX` for shell integrations. Without the hook, `robo status` is the canonical way to see whether the current shell is active. `robo deactivate` should deactivate in-place only when installed as a hook function; the binary path should print the clean `exit` action when inside a runtime shell.
 
 Do not repeat command names as prefixes on every line. Prefer this:
 
 ```text
 ok: workspace root exists
 warn: uv virtual environment is missing
-hint: run 'robo activate', then run 'uv sync' to create .venv
+hint: run 'robo shell', then run 'uv sync' to create .venv
 status=error issues=1 warnings=2
 ```
 
 Avoid this:
 
 ```text
-check: ok: workspace root exists
-check: warn: uv virtual environment is missing
-check: status=error issues=1 warnings=2
+doctor: ok: workspace root exists
+doctor: warn: uv virtual environment is missing
+doctor: status=error issues=1 warnings=2
 ```
 
 ## Color
@@ -127,8 +127,8 @@ Next steps should be directly copyable shell commands. Keep them project-generic
 
 ```text
 next steps
-  robo check
-  robo activate
+  robo doctor
+  robo shell
   uv sync
 ```
 
@@ -154,4 +154,4 @@ ready
   ✓ inferred components
 ```
 
-Print individual items only when the user needs to act on them, such as missing paths, unhealthy drivers, or mismatched components. Keep detailed evidence available through `robo check --verbose`; default `robo check` should read as a grouped health report with `project`, `ready`, `attention`, `skipped`, and `status` sections.
+Print individual items only when the user needs to act on them, such as missing paths, unhealthy drivers, or mismatched components. Keep detailed evidence available through `robo doctor --verbose`; default `robo doctor` should read as a grouped health report with `project`, `ready`, `attention`, `skipped`, and `status` sections.

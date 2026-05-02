@@ -8,11 +8,16 @@
 
   inputs = {
     nix-ros-overlay.url = "github:lopsided98/nix-ros-overlay/master";
+    nixpkgs-python = {
+      url = "github:cachix/nixpkgs-python";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     nixpkgs.follows = "nix-ros-overlay/nixpkgs";
   };
 
   outputs = {
     nix-ros-overlay,
+    nixpkgs-python,
     nixpkgs,
     ...
   }: let
@@ -28,7 +33,7 @@
       (builtins.attrValues presetEnvCatalog)
     );
     roboLib = import ./nix {
-      inherit componentCatalog componentMetadata lib nix-ros-overlay nixpkgs profileMetadata runtimeInference;
+      inherit componentCatalog componentMetadata lib nix-ros-overlay nixpkgs nixpkgs-python profileMetadata runtimeInference;
     };
     generatedPresets = roboLib.mkFlakeFromEnvCatalog {
       defaultEnvName = "robot-learning";

@@ -70,7 +70,7 @@ EOF
 
 nix run /workspace/robo-nix#robo -- init "$project" --robo-nix-url path:/workspace/robo-nix
 cd "$project"
-nix run /workspace/robo-nix#robo -- check
+nix run /workspace/robo-nix#robo -- doctor
 nix run /workspace/robo-nix#robo -- status
 
 cat >/tmp/fake-shell <<EOF
@@ -83,5 +83,5 @@ robo status
 EOF
 chmod +x /tmp/fake-shell
 
-ROBO_NIX_SHELL=/tmp/fake-shell nix run /workspace/robo-nix#robo -- activate
+ROBO_NIX_SHELL=/tmp/fake-shell nix run /workspace/robo-nix#robo -- shell
 '

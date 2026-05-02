@@ -6,23 +6,32 @@
     ...
   }: {
     packages = runtimeLibs ++ [pkgs.vulkan-tools];
-    shellInit = common.prependPath "LD_LIBRARY_PATH" runtimeLibPath;
+    shellInit =
+      common.prependPath "LD_LIBRARY_PATH" runtimeLibPath
+      + "\n"
+      + common.exportDefaults {
+        __EGL_VENDOR_LIBRARY_FILENAMES = "${pkgs.mesa}/share/glvnd/egl_vendor.d/50_mesa.json";
+      };
     supportedSystems = common.linuxSystems;
     check = common.mkComponentCheck "x11-gl" [];
   };
 
-  qt6 = {pkgs, ...}: {
+  qt6 = {pkgs, ...}: let
+    qtCmakePrefix = "${pkgs.qt6.qtbase.dev}:${pkgs.qt6.qt5compat.dev}";
+  in {
     packages = [
       pkgs.qt6.qtbase
       pkgs.qt6.qt5compat
     ];
     shellInit =
-      common.exportVars {
-        ROBO_NIX_QT_PREFIX_PATH = "${pkgs.qt6.qtbase.dev}:${pkgs.qt6.qt5compat.dev}";
-      }
+      common.prependPath "CMAKE_PREFIX_PATH" qtCmakePrefix
       + ''
 
-        export ROBO_NIX_QT_PLUGIN_PATH="$(${pkgs.qt6.qtbase}/bin/qtpaths6 --query QT_INSTALL_PLUGINS 2>/dev/null || true)"
+        robo_nix_qt_plugin_path="$(${pkgs.qt6.qtbase}/bin/qtpaths6 --query QT_INSTALL_PLUGINS 2>/dev/null || true)"
+        if [ -n "$robo_nix_qt_plugin_path" ]; then
+          export QT_PLUGIN_PATH="$robo_nix_qt_plugin_path''${QT_PLUGIN_PATH:+:$QT_PLUGIN_PATH}"
+        fi
+        unset robo_nix_qt_plugin_path
       '';
     supportedSystems = common.linuxSystems;
     check = common.mkComponentCheck "qt6" [];

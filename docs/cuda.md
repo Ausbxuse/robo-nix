@@ -7,7 +7,7 @@ CUDA support is split between host reality and reproducible runtime setup.
 - Nix provides the CUDA toolkit when the `cuda-toolkit` component is selected.
 - The host NVIDIA driver remains a host prerequisite.
 - `robo` detects host driver CUDA support by loading NVML first, then falling back to `nvidia-smi`.
-- For CUDA runtimes, `robo activate` exposes the host driver library by checking `ROBO_NIX_LIBCUDA_PATH`, common Linux/NixOS driver locations, and `ldconfig`. `ROBO_NIX_LIBCUDA_PATH` may point either to `libcuda.so.1` or to the directory containing it.
+- `robo shell` does not scan host driver directories. If a package needs an explicit CUDA driver library path, set `ROBO_NIX_LIBCUDA_PATH` to `libcuda.so.1` or to the directory containing it; `robo doctor` reports what it can observe.
 
 Python CUDA wheels and the CUDA toolkit are checked separately:
 
@@ -18,7 +18,5 @@ Python CUDA wheels and the CUDA toolkit are checked separately:
 Run:
 
 ```bash
-robo check
+robo doctor
 ```
-
-TODO(robo): make CUDA version selection more interactive once the host-driver compatibility policy is fully specified.

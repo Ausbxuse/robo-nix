@@ -4,7 +4,7 @@
 
 - `uv` owns Python: `.python-version`, `.venv`, `pyproject.toml`, `uv.lock`.
 - Nix owns native runtime: CUDA, graphics, ROS, simulators, compilers, shared libraries.
-- `robo` owns workflow: `init`, `check`, `activate`, `status`, `run`.
+- `robo` owns workflow: `up`, `doctor`, `shell`, `status`, `run`.
 
 The goal is that a robot-learning project can keep normal Python packaging while still getting the native libraries that Python metadata cannot express.
 
@@ -13,35 +13,37 @@ The goal is that a robot-learning project can keep normal Python packaging while
 Current alpha usage:
 
 ```bash
-nix run github:ausbxuse/robo-nix#robo -- init .
-nix run github:ausbxuse/robo-nix#robo -- check
-nix run github:ausbxuse/robo-nix#robo -- activate -c "uv sync"
+nix run github:ausbxuse/robo-nix#robo -- up --yes
 nix run github:ausbxuse/robo-nix#robo -- run pytest tests
 ```
 
 The intended installed flow is:
 
 ```bash
-robo init robot-learning
+robo up robot-learning --yes
 cd robot-learning
-robo check
-robo activate
-uv sync
+robo run pytest tests
 robo status
 ```
 
 `robo init` writes generated Nix plumbing plus a small `robo.nix`. Existing `pyproject.toml` and `uv.lock` stay project-owned.
 
-`robo status` shows whether the current shell is inside an activated runtime. To leave an activated runtime shell, run `exit`; `robo deactivate` prints that clean exit path when users need a reminder.
+`robo status` shows whether the current shell is inside a runtime shell. To leave a runtime shell, run `exit`; `robo deactivate` prints that clean exit path when users need a reminder.
 
-For a Conda-like prompt prefix and in-place activation, install the optional shell hook:
+For a Conda-like prompt prefix and in-place shell entry, install the optional shell hook:
 
 ```bash
 eval "$(robo hook)"
-robo activate
+robo shell
 ```
 
-The hook supports bash and zsh in-place activation. Fish currently keeps the standard subprocess activation path.
+The hook supports bash and zsh in-place shell entry. Fish currently keeps the standard subprocess shell path.
+
+## Product Boundary
+
+`robo up` prepares the native runtime and can run `uv sync`, but it does not choose project-specific Python extras, dependency groups, indexes, or source pins. Those stay in `pyproject.toml`, `uv.lock`, and project docs.
+
+`robo doctor --deep` reports observed host facts for CUDA and graphics. It does not scan arbitrary driver directories or guess host-specific library paths during shell setup.
 
 ## Repository Shape
 
@@ -59,7 +61,7 @@ docs/                  short concept docs
 
 `robo.nix` is the project runtime contract. It lists reusable native components such as `python-uv`, `native-build`, `media`, `x11-gl`, `cuda-toolkit`, `ros2-jazzy`, and `mujoco`.
 
-`robo check --why` explains why components were selected. `robo contract --json` prints the resolved contract for tooling.
+`robo doctor --why` explains why components were selected. `robo contract --json` prints the resolved contract for tooling.
 
 ## Docs
 

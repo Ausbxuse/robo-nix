@@ -162,8 +162,8 @@ while [ "$#" -gt 0 ]; do
 	cd "$project"
 
 	nix run /workspace/robo-nix#robo -- init . --robo-nix-url path:/workspace/robo-nix
-	nix run /workspace/robo-nix#robo -- check
-	nix run /workspace/robo-nix#robo -- activate -c "uv sync"
+	nix run /workspace/robo-nix#robo -- doctor
+	nix run /workspace/robo-nix#robo -- shell -c "uv sync"
 
 	if [ "${ROBO_NIX_UBUNTU_GUI:-0}" = "1" ]; then
 		bash /workspace/robo-nix/tests/gui-runtime-smoke.sh "$project"

@@ -2,7 +2,7 @@
 
 Short-term:
 
-- keep `robo init`, `robo check`, `robo activate`, and `robo run` small and reliable
+- keep `robo init`, `robo doctor`, `robo shell`, and `robo run` small and reliable
 - keep runtime inference as data under `nix/metadata`
 - keep Python ownership in `uv`
 
