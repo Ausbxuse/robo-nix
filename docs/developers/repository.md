@@ -11,6 +11,8 @@ nix build .#docs
 nix run .#docs-serve
 ```
 
+GitHub Pages deployment is handled by `.github/workflows/docs.yml`. The workflow builds from `docs/` with Node and sets `ROBO_NIX_DOCS_BASE=/robo-nix/`, because project Pages sites are served below `https://<owner>.github.io/robo-nix/`.
+
 Keep docs organized by audience:
 
 - `docs/users/` for usage, setup, workflows, runtime expectations, and troubleshooting

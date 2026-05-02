@@ -2,6 +2,7 @@
   description = "Canonical robot-learning development environments with composable Nix components";
 
   nixConfig = {
+    substituters = ["https://cache.nixos.org"];
     extra-substituters = ["https://ros.cachix.org"];
     extra-trusted-public-keys = ["ros.cachix.org-1:dSyZxI8geDCJrwgvCOHDoAfOm5sV1wCPjBkKL+38Rvo="];
   };

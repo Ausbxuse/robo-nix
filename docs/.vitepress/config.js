@@ -1,6 +1,7 @@
 export default {
   title: 'robo-nix',
   description: 'Robotics runtime environments powered by Nix and uv',
+  base: process.env.ROBO_NIX_DOCS_BASE || '/',
   cleanUrls: true,
 
   themeConfig: {
