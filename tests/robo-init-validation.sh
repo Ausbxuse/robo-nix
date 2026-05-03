@@ -52,7 +52,7 @@ assert_basic_project_init() {
 	assert_file_contains "$init_output" "wrote   $tmpdir/project/.gitignore"
 	assert_file_contains "$init_output" "skipped $tmpdir/project/flake.lock"
 	assert_file_contains "$init_output" "cd '$tmpdir/project'"
-	assert_file_contains "$init_output" "robo doctor"
+	assert_file_contains "$init_output" "robo check"
 
 	if ! run_full_mode; then
 		return
@@ -68,11 +68,10 @@ assert_basic_project_init() {
 
 	(
 		cd "$tmpdir/project"
-		nix run "${repo_flake_url}#robo" -- doctor >"$robo_wrapper_check_output"
+		nix run "${repo_flake_url}#robo" -- check >"$robo_wrapper_check_output"
 	)
-	assert_file_contains "$robo_wrapper_check_output" "checked project"
-	assert_file_contains "$robo_wrapper_check_output" "status"
-	assert_file_contains "$robo_wrapper_check_output" "ok"
+	assert_file_contains "$robo_wrapper_check_output" "ready: runtime is prepared for \`project\`"
+	assert_file_contains "$robo_wrapper_check_output" "packages are not synced yet"
 }
 
 assert_python_version_preflight() {
@@ -149,7 +148,7 @@ assert_runtime_repairs_nonshareable_store_source() {
 
 	if ! (
 		cd "$tmpdir/store-source-project"
-		nix run "${repo_flake_url}#robo" -- doctor >"$check_output" 2>&1
+		nix run "${repo_flake_url}#robo" -- check >"$check_output" 2>&1
 	); then
 		cat "$check_output" >&2
 		exit 1
@@ -157,9 +156,8 @@ assert_runtime_repairs_nonshareable_store_source() {
 	assert_file_contains "$tmpdir/store-source-project/flake.nix" 'robo-nix.url = "github:ausbxuse/robo-nix"'
 	assert_file_contains "$check_output" "repaired flake.nix to use github:ausbxuse/robo-nix"
 	assert_file_contains "$check_output" "keep generated projects shareable across hosts"
-	assert_file_contains "$check_output" "checked store-source-project"
-	assert_file_contains "$check_output" "status"
-	assert_file_contains "$check_output" "ok"
+	assert_file_contains "$check_output" "ready: runtime is prepared for \`store-source-project\`"
+	assert_file_contains "$check_output" "packages are not synced yet"
 
 	nix run "${repo_flake_url}#robo" -- init "$tmpdir/local-source-project" \
 		--profile minimal \
@@ -167,15 +165,14 @@ assert_runtime_repairs_nonshareable_store_source() {
 
 	if ! (
 		cd "$tmpdir/local-source-project"
-		nix run "${repo_flake_url}#robo" -- doctor >"$local_check_output" 2>&1
+		nix run "${repo_flake_url}#robo" -- check >"$local_check_output" 2>&1
 	); then
 		cat "$local_check_output" >&2
 		exit 1
 	fi
 	assert_file_contains "$tmpdir/local-source-project/flake.nix" "robo-nix.url = \"path:${repo_root}\""
-	assert_file_contains "$local_check_output" "checked local-source-project"
-	assert_file_contains "$local_check_output" "status"
-	assert_file_contains "$local_check_output" "ok"
+	assert_file_contains "$local_check_output" "ready: runtime is prepared for \`local-source-project\`"
+	assert_file_contains "$local_check_output" "packages are not synced yet"
 }
 
 assert_interactive_project_init() {
@@ -312,7 +309,7 @@ EOF
 
 	(
 		cd "$tmpdir/probed-project"
-		nix run "${repo_flake_url}#robo" -- doctor --why --json >"$probed_why_output"
+		nix run "${repo_flake_url}#robo" -- check --why --json >"$probed_why_output"
 		nix run "${repo_flake_url}#robo" -- contract --json >"$probed_contract_output"
 	)
 	assert_file_contains "$probed_why_output" '"profile": "minimal"'
@@ -404,22 +401,22 @@ EOF
 
 	nix run "${repo_flake_url}#robo" -- init "$tmpdir/stale-project" \
 		--robo-nix-url "path:${repo_root}" >/dev/null
-	sed -i '/"media"/d' "$tmpdir/stale-project/robo.nix"
+	sed -i '/^    "media"$/d' "$tmpdir/stale-project/robo.nix"
 
 	set +e
 	(
 		cd "$tmpdir/stale-project"
-		nix run "${repo_flake_url}#robo" -- doctor >"$stale_check_output"
+		nix run "${repo_flake_url}#robo" -- check >"$stale_check_output"
 	)
 	local stale_check_status=$?
 	set -e
 	if [ "$stale_check_status" -eq 0 ]; then
-		echo "stale runtime contract should fail doctor" >&2
+		echo "stale runtime contract should fail check" >&2
 		exit 1
 	fi
-	assert_file_contains "$stale_check_output" "runtime components may be incomplete"
-	assert_file_contains "$stale_check_output" "missing: media"
-	assert_file_contains "$stale_check_output" "error,"
+	assert_file_contains "$stale_check_output" "robo may be missing runtime components for stale-project"
+	assert_file_contains "$stale_check_output" "media: pyproject.toml uses FFmpeg/media packages"
+	assert_file_contains "$stale_check_output" "robo up"
 }
 
 assert_tricky_package_runtime_inference() {
@@ -456,7 +453,7 @@ EOF
 
 	(
 		cd "$tmpdir/tricky-project"
-		nix run "${repo_flake_url}#robo" -- doctor --why --json >"$tricky_why_output"
+		nix run "${repo_flake_url}#robo" -- check --why --json >"$tricky_why_output"
 		nix run "${repo_flake_url}#robo" -- contract --json >"$tricky_contract_output"
 	)
 	assert_file_contains "$tricky_why_output" '"envName": "tricky-project"'

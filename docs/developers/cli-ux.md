@@ -6,10 +6,10 @@ The style is one clear status line, short lowercase sections, sparse color, and 
 
 ## Shape
 
-Use one top-level status line with a themed prefix:
+Use one clear top-level status line. Color the action word, not a repeated tool prefix:
 
 ```text
-robo: initialized simple
+initialized simple
 ```
 
 After that, use plain lowercase section headings without trailing colons:
@@ -27,12 +27,12 @@ generated
   kept    ./pyproject.toml
 
 next steps
-  robo doctor
+  robo check
   robo shell
   uv sync
 ```
 
-Do not mix heading styles such as `Project:`, `ok: Generated:`, and `robo: next steps:` in the same summary.
+Do not mix heading styles such as `Project:`, `ok: Generated:`, and `next steps:` in the same summary.
 
 ## Shell Workflow
 
@@ -42,9 +42,9 @@ Shell should enter the user's current interactive shell when possible. The defau
 
 `uv sync` should be explicit:
 
-- interactive `robo up` may ask
-- automation should opt in with `robo up --sync`
-- ordinary `robo shell` should not install packages
+- `robo up` must not ask to run it
+- `robo up` must not provide an auto-sync flag
+- `robo shell` must not install packages
 
 `robo up` may cache realized runtime exports under `.robo-nix/`. The cache is an implementation detail for speed; `robo shell` and `robo run` should reuse it when runtime files still match and rebuild it clearly when the project contract changes.
 
@@ -52,7 +52,7 @@ Shell should enter the user's current interactive shell when possible. The defau
 
 Color should guide scanning, not decorate every word.
 
-- `robo:` and section headings: cyan/status color
+- phase labels such as `shell:` and section headings: cyan/status color
 - success markers such as `✓`: green
 - warning markers such as `!`: yellow
 - field labels and unchanged actions such as `kept`: dim
@@ -90,7 +90,7 @@ Next steps should be directly copyable shell commands:
 
 ```text
 next steps
-  robo doctor
+  robo check
   robo shell
   uv sync
 ```

@@ -17,6 +17,10 @@ The hard boundary is:
 
 Do not make Nix-managed Python a first-class product mode unless real users prove that need. Do not build a central Python package registry or preset matrix.
 
+Do not make `robo` run `uv sync` implicitly or offer an interactive "run uv sync now?" prompt. `robo` exists to make the uv environment work by providing the native/runtime layer and diagnostics; uv syncing remains an explicit user or project command because dependency groups, extras, package indexes, editable sources, and install policy are project-owned.
+
+Python interpreter selection must prioritize robotics compatibility and cache availability, not only whatever the current nixpkgs happens to expose. `cachix/nixpkgs-python` is the intended interpreter source for broad Python-version coverage, including older versions such as Python 3.11 that may fall out of current nixpkgs. Do not “optimize” `python-uv` to prefer nixpkgs for minor versions just because it evaluates locally; that regresses downstream users when nixpkgs drops older interpreters. If CPython starts compiling, fix substituter/cache wiring (`nixpkgs-python.cachix.org` plus `--accept-flake-config`) before changing interpreter selection.
+
 `robo-nix` is not here to adapt to every downstream project's environment policy. It should establish a consistent standard that downstream projects can converge on. Until they do, `robo` should print clear expectations, observed facts, and debugging context, not auto-solve project-specific dependency group choices, optional extras, source pins, or workflow conventions with narrow heuristics.
 
 When a failure comes from a project-owned layer such as `pyproject.toml`, `uv.lock`, dependency groups, optional extras, editable sources, Git/LFS pins, or package indexes, keep `robo`'s response generic and reusable:
@@ -133,8 +137,17 @@ Keep edit loops cheap:
 - When a build hangs or repeated attempts diverge, write the working facts, failed attempts, and next narrow reproducer into a gitignored note under `.failure-modes/` before trying another broad variant.
 - Before debugging a repeated-looking issue, read relevant notes under `.failure-modes/`, then summarize durable lessons back into `AGENTS.md` so future agents do not rediscover the same failure mode.
 - For VitePress/Nix docs work specifically, check `.failure-modes/vitepress-nix.md` first. The root cause of the earlier hang was VitePress's interactive progress renderer spinning inside the Nix builder; the Nix build must set `CI=1`.
+- For vague `robo up --shell` setup stalls, check `.failure-modes/up-shell-vague-runtime-status.md` first. Split the report by visible phase before changing behavior: runtime files, project bootstrap, CUDA compatibility, Nix shell evaluation, shell env capture, or shell launch.
 - For `robo up --shell` stalls around `shell: applying runtime exports`, check `.failure-modes/up-shell-hidden-sync-prompt.md` first. The previous root cause was an interactive `uv sync` prompt hidden behind an active spinner, not slow export materialization.
 - For init or test slowness around `nix flake lock --update-input robo-nix`, check `.failure-modes/flake-lock-refresh.md` first. Local `path:` and `git+file:` robo-nix sources should skip eager lock refresh; non-local refresh should be bounded and reported as skipped on network/cache failure.
+
+When the user corrects an agent:
+
+- Treat the correction as a signal to re-check assumptions, not as something to defend against.
+- Verify the correction against local code, docs, tests, or primary sources when practical; users can be right, partially right, or mistaken.
+- If the correction is right and reveals a reusable lesson, write the durable takeaway into `AGENTS.md` or a focused `.failure-modes/` note before continuing.
+- If the correction is mistaken, explain the evidence briefly and keep the product goal in view.
+- Do not repeat a corrected mistake after the takeaway has been recorded.
 
 ## Product North Star
 
@@ -151,7 +164,7 @@ The installed workflow should keep Nix in the background:
 
 ```bash
 robo up
-robo doctor
+robo check
 robo shell
 robo run <command>
 ```
@@ -161,8 +174,8 @@ robo run <command>
 1. Grow the Rust `robo` CLI into the primary UX.
    It should wrap Nix commands, hide `--extra-experimental-features`, detect missing Nix/flakes support, and print plain-language fixes.
 
-2. Make `doctor` the main diagnostics surface.
-   It should validate host prerequisites, Nix/flakes availability, workspace layout, supported platform, uv state, native runtime libraries, GPU/CUDA expectations, and likely missing runtime dependencies.
+2. Make `check` the main diagnostics surface.
+   It should validate host prerequisites, Nix/flakes availability, workspace layout, supported platform, uv state, native runtime libraries, GPU/CUDA expectations, and likely missing runtime dependencies. Keep `diagnose` focused on classifying existing error logs.
 
 3. Keep Python ownership in uv.
    Generated projects should use `.python-version`, `pyproject.toml`, and `uv.lock`. Nix should provide `uv` and the native/runtime layer that uv-installed packages need.
@@ -204,7 +217,8 @@ nix flake check
 - Templates are currently withheld pending manual approval. Do not publish one casually.
 - Generated projects should point at the packaged `robo-nix` source by default. Do not rely on `/usr/share`, GitHub queries, or an ambient local checkout for installed CLI behavior.
 - Repo-root `Cargo.toml` / `Cargo.lock` are intentional because Rust is the main CLI workspace. Docs-only Node tooling belongs under `docs/package.json` and `docs/package-lock.json`. Do not reintroduce root `package.json`, root `pyproject.toml`, or root `.python-version` unless the repo gains a real root Node or Python product surface.
-- The installer lives at [scripts/install.sh](./scripts/install.sh:1); keep README and docs curl commands pointed at `main/scripts/install.sh`.
+- The installer lives at [scripts/install.sh](./scripts/install.sh:1); keep README and docs curl commands pointed at `develop/scripts/install.sh` for now.
+- TODO: before the public release branch moves to `master`, update README and docs curl commands from `develop/scripts/install.sh` to `master/scripts/install.sh`.
 - Project-specific robot/source policy should stay in downstream projects unless it becomes broadly reusable.
 - The product north star is filling the native runtime gap implied by `pyproject.toml` and `uv.lock`.
 - Runtime inference rules live in [nix/metadata/runtime-inference.nix](./nix/metadata/runtime-inference.nix:1); known failure modes are documented in [docs/users/diagnostics.md](./docs/users/diagnostics.md:1).

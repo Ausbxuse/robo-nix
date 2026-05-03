@@ -4,7 +4,7 @@ This roadmap is intentionally conservative. `robo-nix` should become easier to u
 
 ## Short Term
 
-- keep `robo up`, `robo doctor`, `robo shell`, `robo run`, and `robo status` reliable
+- keep `robo up`, `robo check`, `robo diagnose`, `robo shell`, `robo run`, and `robo status` reliable
 - make first-run setup feel beginner-friendly without hiding Python package installation policy
 - keep runtime inference data-driven in `nix/metadata`
 - keep Python ownership in uv

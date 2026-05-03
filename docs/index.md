@@ -27,7 +27,7 @@ features:
 ## What It Feels Like
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ausbxuse/robo-nix/main/scripts/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/ausbxuse/robo-nix/develop/scripts/install.sh | sh
 
 robo up --shell
 uv sync
@@ -35,6 +35,10 @@ robo run python -m pytest
 ```
 
 `robo-nix` is for robot-learning projects that want reproducible native runtime setup without turning every contributor into a Nix user.
+
+::: warning Early beta
+`robo-nix` is still being validated against real robotics projects. CLI wording, generated files, diagnostics, runtime coverage, and installer behavior may change. Review generated `robo.nix` and `flake.nix` before committing them, and pin versions for shared team workflows.
+:::
 
 It keeps the contract simple:
 
@@ -44,6 +48,6 @@ It keeps the contract simple:
 
 ## Where to Go
 
-- New to the project: start with [Getting Started](./users/getting-started.md).
-- Debugging setup: read [Diagnostics](./users/diagnostics.md).
-- Maintaining robo-nix: read the [Developer Overview](./developers/overview.md).
+- New to the project: start with the [User Guide](./users/).
+- Debugging setup: read [Diagnostics](./users/diagnostics.md) or the [Runtime Failure Guide](./users/failure-guide.md).
+- Maintaining robo-nix: read the [Developer Guide](./developers/).

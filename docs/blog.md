@@ -53,6 +53,41 @@ robo run python -m pytest
 
 The goal is not to hide reality. The goal is to make reality easier to see and easier to reproduce.
 
+## How It Compares
+
+`robo-nix` is not trying to win every environment category. It is focused on uv-managed robotics projects that need a reproducible native runtime without making every contributor learn Nix first.
+
+<div class="feature-matrix">
+
+| Tool | Python lock | Native libs | CUDA/graphics | Host diagnostics | Simple workflow |
+| --- | :-: | :-: | :-: | :-: | :-: |
+| `robo-nix` | <span class="yes">✓</span> | <span class="yes">✓</span> | <span class="yes">✓</span> | <span class="yes">✓</span> | <span class="yes">✓</span> |
+| plain `uv` | <span class="yes">✓</span> | <span class="no">✕</span> | <span class="no">✕</span> | <span class="no">✕</span> | <span class="yes">✓</span> |
+| Conda | <span class="partial">~</span> | <span class="yes">✓</span> | <span class="partial">~</span> | <span class="no">✕</span> | <span class="partial">~</span> |
+| Pixi | <span class="partial">~</span> | <span class="yes">✓</span> | <span class="partial">~</span> | <span class="partial">~</span> | <span class="yes">✓</span> |
+| Docker | <span class="partial">~</span> | <span class="yes">✓</span> | <span class="partial">~</span> | <span class="no">✕</span> | <span class="partial">~</span> |
+| `uv2nix` | <span class="yes">✓</span> | <span class="yes">✓</span> | <span class="partial">~</span> | <span class="no">✕</span> | <span class="partial">~</span> |
+| devenv | <span class="partial">~</span> | <span class="yes">✓</span> | <span class="partial">~</span> | <span class="partial">~</span> | <span class="yes">✓</span> |
+| raw flakes | <span class="partial">~</span> | <span class="yes">✓</span> | <span class="yes">✓</span> | <span class="partial">~</span> | <span class="no">✕</span> |
+
+</div>
+
+<div class="legend">
+  <span class="yes">✓</span> strong fit
+  <span class="partial">~</span> possible with tradeoffs
+  <span class="no">✕</span> not the tool's job
+</div>
+
+The practical read:
+
+- Use `uv` when you only need Python.
+- Use Docker when image deployment is the center of the workflow.
+- Use Pixi or Conda when your team wants the Conda ecosystem to own the environment.
+- Use `uv2nix` when you want Nix to own Python packages too.
+- Use devenv when you want a general Nix development shell.
+- Use raw flakes when your users are comfortable working directly in Nix.
+- Use `robo-nix` when the project should stay normal Python, but robotics-native dependencies and diagnostics need to be reproducible.
+
 ## Why Not Just Docker?
 
 Docker is useful, and for some workloads it is the right tool.

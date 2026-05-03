@@ -46,7 +46,7 @@ CUDAExtension, .cu files, custom kernels -> cuda-toolkit
 Run:
 
 ```bash
-robo doctor --deep
+robo check cuda
 ```
 
 Deep diagnostics report the observed driver state and the CUDA requirements inferred from `uv.lock`.
@@ -73,4 +73,4 @@ export ROBO_NIX_LIBCUDA_PATH=/path/to/libcuda.so.1
 
 or point it at the directory containing `libcuda.so.1`.
 
-`robo doctor --deep` reports what it observes so the user can make that host-owned fix deliberately.
+`robo check cuda` reports what it observes so the user can make that host-owned fix deliberately.

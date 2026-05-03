@@ -1,6 +1,6 @@
 use std::process::ExitCode;
 
-use crate::{error, hint, ok, warn, Config};
+use crate::{error, hint, ok, status, warn, Config};
 
 use super::nix::{add_runtime_source_override, command_for_runtime};
 
@@ -14,6 +14,11 @@ pub(super) fn ensure_runtime_cuda_compat(config: Config, strict: bool) -> Result
     let Some(expected_version) = expected_version else {
         return Ok(());
     };
+
+    status(
+        config,
+        &format!("runtime: checking CUDA compatibility ({expected_version})"),
+    );
 
     match crate::runtime::host_cuda_driver_version() {
         Some(host_version) => {
@@ -95,7 +100,7 @@ pub(super) fn ensure_runtime_cuda_compat(config: Config, strict: bool) -> Result
         }
         hint(
             config,
-            "run `robo doctor --deep` and check the cuda-toolkit component in robo.nix.",
+            "run `robo check --deep` and check the cuda-toolkit component in robo.nix.",
         );
         return if strict {
             Err(ExitCode::from(1))

@@ -27,6 +27,7 @@ pub(crate) fn nix_command(config: Config) -> Command {
         "nix-command",
         "--extra-experimental-features",
         "flakes",
+        "--accept-flake-config",
     ]);
     command.arg("--no-warn-dirty");
     if !config.debug {
@@ -88,7 +89,7 @@ pub(super) fn hint_native_cuda_link_failure(config: Config, output: &std::proces
     );
     hint(
         config,
-        "run `robo doctor --deep` to validate the cuda-toolkit build surface before changing project dependencies.",
+        "run `robo check --deep` to validate the cuda-toolkit build surface before changing project dependencies.",
     );
 }
 

@@ -84,12 +84,13 @@ pub(crate) fn run_project_app(mode: Option<&str>, args: Vec<OsString>, config: C
 pub(crate) fn run_project_up(
     target: PathBuf,
     yes: bool,
-    sync: bool,
     open_shell: bool,
     config: Config,
 ) -> ExitCode {
+    let implicit_yes = yes || open_shell;
+
     if !target.exists() {
-        if !yes && !confirm_create_dir(config, &target) {
+        if !implicit_yes && !confirm_create_dir(config, &target) {
             hint(config, "rerun with `robo up --yes <dir>` to create it non-interactively.");
             return ExitCode::from(1);
         }
@@ -112,7 +113,9 @@ pub(crate) fn run_project_up(
 
     let initialized = Path::new("flake.nix").exists() && Path::new("robo.nix").exists();
     if !initialized {
-        if !yes && !confirm_up_init(config) {
+        if open_shell {
+            status(config, "up: initializing runtime files");
+        } else if !implicit_yes && !confirm_up_init(config) {
             hint(config, "rerun with `robo up --yes` to initialize non-interactively.");
             return ExitCode::from(1);
         }
@@ -125,7 +128,7 @@ pub(crate) fn run_project_up(
         }
     }
 
-    status(config, "up: preparing runtime");
+    status(config, "up: checking runtime files");
     if let Err(code) = prepare_uv_runtime(config, "up", false) {
         return code;
     }
@@ -137,7 +140,7 @@ pub(crate) fn run_project_up(
             return code;
         }
     };
-    let mut env = match materialize_shell_env(&shell_script, config, Some(&progress)) {
+    let env = match materialize_shell_env(&shell_script, config, Some(&progress)) {
         Ok(env) => env,
         Err(code) => {
             progress.finish();
@@ -146,47 +149,23 @@ pub(crate) fn run_project_up(
     };
     progress.finish();
 
-    let sync = sync || (!yes && confirm_up_sync(config));
-    if !sync {
-        write_shell_env_cache_if_possible(&env, config);
-    }
+    write_shell_env_cache_if_possible(&env, config);
 
-    if sync {
-        status(config, "up: syncing Python packages");
-        let mut command = Command::new("uv");
-        command.arg("sync");
-        apply_env(&mut command, &env);
-        let code = run_status(&mut command, config);
-        if code != ExitCode::SUCCESS {
-            return code;
-        }
-
-        let mut progress = ShellProgress::new(config, "up: updating runtime shell cache");
-        env = match materialize_shell_env(&shell_script, config, Some(&progress)) {
-            Ok(env) => env,
-            Err(code) => {
-                progress.finish();
-                return code;
-            }
-        };
-        write_shell_env_cache_if_possible(&env, config);
-        progress.finish();
-    }
-
-    section(config, "ready");
-    field(config, "runtime", "prepared");
-    if sync {
-        field(config, "python", "synced");
-    } else {
-        field(config, "python", "not synced");
-    }
-    section(config, "run");
-    action_row(config, "robo run <command>", "run a command in the runtime");
-    action_row(config, "robo shell", "open an interactive runtime shell");
-    action_row(config, "uv sync", "sync Python packages when ready");
     if open_shell {
+        println!("robo is ready for this project.");
+        println!("Entering the runtime shell...");
         return run_project_shell(vec![], config);
     }
+    println!("robo is ready for this project.\n");
+    println!("Python packages are not synced yet.");
+    println!("Run the uv command documented by this project.");
+    println!(
+        "Default: `{}`",
+        label(config, "uv sync", LabelKind::Command)
+    );
+    println!();
+    println!("Enter the runtime shell:");
+    action_row(config, "robo shell", "open an interactive runtime shell");
     ExitCode::SUCCESS
 }
 
@@ -224,8 +203,7 @@ fn confirm_up_init(config: Config) -> bool {
         error(config, "no robo.nix found and stdin is not interactive.");
         return false;
     }
-    section(config, "setup");
-    field(config, "status", "no robo-nix runtime files found");
+    println!("No robo runtime files were found in this project.\n");
     print!(
         "{} ",
         label(
@@ -240,26 +218,6 @@ fn confirm_up_init(config: Config) -> bool {
         return false;
     }
     matches!(answer.trim().to_ascii_lowercase().as_str(), "" | "y" | "yes")
-}
-
-fn confirm_up_sync(config: Config) -> bool {
-    if !io::stdin().is_terminal() {
-        return false;
-    }
-    print!(
-        "{} ",
-        label(
-            config,
-            "Run uv sync now? This may install or build project Python packages. [y/N]",
-            LabelKind::Hint,
-        )
-    );
-    let _ = io::stdout().flush();
-    let mut answer = String::new();
-    if io::stdin().read_line(&mut answer).is_err() {
-        return false;
-    }
-    matches!(answer.trim().to_ascii_lowercase().as_str(), "y" | "yes")
 }
 
 pub(crate) fn run_project_shell(args: Vec<OsString>, config: Config) -> ExitCode {
@@ -455,12 +413,6 @@ fn shorten_middle(value: &str, max_len: usize) -> String {
     let keep = max_len.saturating_sub(3);
     let tail: String = value.chars().skip(len.saturating_sub(keep)).collect();
     format!("...{tail}")
-}
-
-pub(crate) fn run_project_status(config: Config) -> ExitCode {
-    let state = RuntimeState::read();
-    print_runtime_state(config, &state);
-    ExitCode::SUCCESS
 }
 
 pub(crate) fn run_project_hook(args: Vec<OsString>, config: Config) -> ExitCode {
@@ -1059,7 +1011,6 @@ struct RuntimeState {
     python_version: String,
     workspace: String,
     shell: Option<String>,
-    prompt_prefix: Option<String>,
 }
 
 impl RuntimeState {
@@ -1092,36 +1043,7 @@ impl RuntimeState {
             python_version,
             workspace,
             shell: env::var("SHELL").ok(),
-            prompt_prefix: env::var("ROBO_NIX_PROMPT_PREFIX").ok(),
         }
-    }
-}
-
-fn print_runtime_state(config: Config, state: &RuntimeState) {
-    section(config, "runtime");
-    field(config, "env", &state.env_name);
-    field(
-        config,
-        "state",
-        if state.active { "active" } else { "inactive" },
-    );
-    field(config, "python", &state.python_version);
-    if let Some(shell) = &state.shell {
-        field(config, "shell", &shell_name(shell));
-    }
-    field(config, "workspace", &state.workspace);
-    if let Some(prefix) = &state.prompt_prefix {
-        field(config, "prompt-prefix", prefix);
-    }
-
-    println!();
-    if state.active {
-        section(config, "actions");
-        action_row(config, "uv sync", "sync Python packages from uv.lock");
-        action_row(config, "exit", "leave this runtime shell");
-    } else {
-        section(config, "action");
-        action_row(config, "robo shell", "enter the Nix runtime shell");
     }
 }
 
@@ -1306,7 +1228,7 @@ fn ensure_pyproject(config: Config, command_name: &str) -> Result<(), ExitCode> 
 
 fn repair_managed_flake_source(config: Config) -> Result<(), ExitCode> {
     let flake_path = Path::new("flake.nix");
-    let flake = match fs::read_to_string(flake_path) {
+    let mut flake = match fs::read_to_string(flake_path) {
         Ok(flake) => flake,
         Err(err) => {
             error(config, &format!("failed to read flake.nix: {err}"));
@@ -1326,20 +1248,69 @@ fn repair_managed_flake_source(config: Config) -> Result<(), ExitCode> {
     let Some(current_source_url) = managed_robo_nix_url(&flake) else {
         return Ok(());
     };
-    if current_source_url == source_url || !is_nonshareable_store_source(&current_source_url) {
+
+    let mut changed = false;
+    let mut added_binary_caches = false;
+    if current_source_url != source_url && is_nonshareable_store_source(&current_source_url) {
+        flake = flake.replace(
+            &format!("inputs.robo-nix.url = \"{current_source_url}\";"),
+            &format!("inputs.robo-nix.url = \"{source_url}\";"),
+        );
+        changed = true;
+    }
+
+    if !flake.contains("nixpkgs-python.cachix.org") {
+        let Some(repaired) = add_generated_flake_nix_config(&flake) else {
+            return Ok(());
+        };
+        flake = repaired;
+        changed = true;
+        added_binary_caches = true;
+    }
+
+    if !changed {
         return Ok(());
     }
-    let repaired = flake.replace(
-        &format!("inputs.robo-nix.url = \"{current_source_url}\";"),
-        &format!("inputs.robo-nix.url = \"{source_url}\";"),
-    );
-    if let Err(err) = fs::write(flake_path, repaired) {
+    if let Err(err) = fs::write(flake_path, flake) {
         error(config, &format!("failed to repair flake.nix: {err}"));
         return Err(ExitCode::from(1));
     }
-    status(config, &format!("repaired flake.nix to use {source_url}"));
-    hint(config, "portable robo-nix source URLs keep generated projects shareable across hosts.");
+    if current_source_url != source_url && is_nonshareable_store_source(&current_source_url) {
+        status(config, &format!("repaired flake.nix to use {source_url}"));
+        hint(config, "portable robo-nix source URLs keep generated projects shareable across hosts.");
+    }
+    if added_binary_caches {
+        status(config, "repaired flake.nix to use robo-nix binary caches");
+        hint(
+            config,
+            "the nixpkgs-python cache avoids compiling Python interpreters when substitutes are available.",
+        );
+    }
     Ok(())
+}
+
+fn add_generated_flake_nix_config(flake: &str) -> Option<String> {
+    if flake.contains("nixConfig =") {
+        return None;
+    }
+
+    let nix_config = r#"  nixConfig = {
+    substituters = ["https://cache.nixos.org"];
+    extra-substituters = [
+      "https://nixpkgs-python.cachix.org"
+      "https://ros.cachix.org"
+    ];
+    extra-trusted-public-keys = [
+      "nixpkgs-python.cachix.org-1:hxjI7pFxTyuTHn2NkvWCrAUcNZLNS3ZAvfYNuYifcEU="
+      "ros.cachix.org-1:dSyZxI8geDCJrwgvCOHDoAfOm5sV1wCPjBkKL+38Rvo="
+    ];
+  };
+
+"#;
+
+    flake
+        .strip_prefix("{\n")
+        .map(|rest| format!("{{\n{nix_config}{rest}"))
 }
 
 fn managed_robo_nix_url(flake: &str) -> Option<String> {
@@ -1640,6 +1611,21 @@ mod tests {
             "path:/home/user/src/robo-nix"
         ));
         assert!(!is_nonshareable_store_source("github:ausbxuse/robo-nix"));
+    }
+
+    #[test]
+    fn generated_flake_cache_config_is_inserted_once() {
+        let flake = r#"{
+  inputs.robo-nix.url = "github:ausbxuse/robo-nix";
+
+  outputs = {robo-nix, ...}:
+    robo-nix.lib.mkProjectFlakeFromManifest ./robo.nix;
+}"#;
+
+        let repaired = add_generated_flake_nix_config(flake).unwrap();
+        assert!(repaired.contains("nixpkgs-python.cachix.org"));
+        assert!(repaired.contains("inputs.robo-nix.url"));
+        assert!(add_generated_flake_nix_config(&repaired).is_none());
     }
 
     #[test]

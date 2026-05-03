@@ -167,7 +167,7 @@
           if [ ! -d "$WORKSPACE_ROOT/${path}" ]; then
             bootstrap_error "missing required directory: $WORKSPACE_ROOT/${path}"
             check_hint "create $WORKSPACE_ROOT/${path} or point ROBO_NIX_WORKSPACE at the correct checkout" >&2
-            check_hint "run 'robo doctor' for a full setup report" >&2
+            check_hint "run 'robo check --deep' for a full setup report" >&2
             exit 1
           fi
         '')
@@ -178,7 +178,7 @@
           if [ ! -f "$WORKSPACE_ROOT/${path}" ]; then
             bootstrap_error "missing required file: $WORKSPACE_ROOT/${path}"
             check_hint "restore $WORKSPACE_ROOT/${path} or point ROBO_NIX_WORKSPACE at the correct checkout" >&2
-            check_hint "run 'robo doctor' for a full setup report" >&2
+            check_hint "run 'robo check --deep' for a full setup report" >&2
             exit 1
           fi
         '')
@@ -415,7 +415,7 @@
                   return 0
                 fi
 
-                check_next "fix the issues above and rerun 'robo doctor'"
+                check_next "fix the issues above and rerun 'robo check --deep'"
                 check_status_error
                 return 1
               }
@@ -428,7 +428,7 @@
               if [ ! -d "$WORKSPACE_ROOT" ]; then
                 bootstrap_error "workspace not found: $WORKSPACE_ROOT"
                 check_hint "set ROBO_NIX_WORKSPACE to the project checkout you want to bootstrap" >&2
-                check_hint "run 'robo doctor' first if you are not sure what is missing" >&2
+                check_hint "run 'robo check --deep' first if you are not sure what is missing" >&2
                 exit 1
               fi
 

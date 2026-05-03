@@ -3,6 +3,7 @@ mod cli;
 mod command;
 mod contract;
 mod cuda;
+mod diagnose;
 mod init;
 mod pyproject;
 mod runtime;

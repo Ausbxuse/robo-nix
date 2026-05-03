@@ -135,7 +135,7 @@ CUDA Python wheels do not imply `runtime.cuda.toolkit` by themselves. They usual
 3. choose Nix components that provide runtime-owned requirements
 4. write the selected components and the requirement contract into `robo.nix`
 
-`robo doctor` should:
+`robo check` should:
 
 1. load the requirement contract
 2. probe host capabilities

@@ -1,5 +1,7 @@
 # Developer Overview
 
+Start here if you maintain `robo-nix` code, Nix modules, metadata, tests, or documentation.
+
 This section is for people maintaining `robo-nix` itself.
 
 The project goal is not to wrap every downstream workflow. The goal is to provide a clear, reusable native runtime standard for uv-managed robotics projects.
@@ -43,6 +45,8 @@ For docs:
 nix build .#docs
 nix run .#docs-serve
 ```
+
+For CLI behavior changes, read the current [CLI UX contract](/developers/cli-ux) and the [UX iteration guide](/developers/ux-iteration) before editing command output.
 
 For broader validation:
 

@@ -272,8 +272,8 @@ fn print_summary(
     config: Config,
 ) {
     eprintln!(
-        "{} initialized {}",
-        crate::label(config, "robo:", crate::LabelKind::Status),
+        "{} {}",
+        crate::label(config, "initialized", crate::LabelKind::Status),
         spec.env_name
     );
     eprintln!();
@@ -327,7 +327,7 @@ fn print_summary(
     if target != Path::new(".") {
         crate::command_row_err(config, &format!("cd {}", shell_quote(target)));
     }
-    crate::command_row_err(config, "robo doctor");
+    crate::command_row_err(config, "robo check");
     crate::command_row_err(config, "robo shell");
     crate::command_row_err(config, "uv sync");
 }
@@ -430,6 +430,18 @@ fn print_attention_line(config: Config, message: &str) {
 pub(super) fn render_flake(source_url: &str) -> String {
     format!(
         r#"{{
+  nixConfig = {{
+    substituters = ["https://cache.nixos.org"];
+    extra-substituters = [
+      "https://nixpkgs-python.cachix.org"
+      "https://ros.cachix.org"
+    ];
+    extra-trusted-public-keys = [
+      "nixpkgs-python.cachix.org-1:hxjI7pFxTyuTHn2NkvWCrAUcNZLNS3ZAvfYNuYifcEU="
+      "ros.cachix.org-1:dSyZxI8geDCJrwgvCOHDoAfOm5sV1wCPjBkKL+38Rvo="
+    ];
+  }};
+
   inputs.robo-nix.url = "{}";
 
   # NOTE: generated plumbing. Most users should edit robo.nix,

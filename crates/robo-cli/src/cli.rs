@@ -9,11 +9,10 @@ use std::process::ExitCode;
 
 use crate::command::{
     run_internal_exec, run_internal_shell_env, run_project_app, run_project_command,
-    run_project_deactivate, run_project_hook, run_project_shell, run_project_status,
-    run_project_up,
+    run_project_deactivate, run_project_hook, run_project_shell, run_project_up,
 };
 use crate::shell::{SUPPORTED_INTERACTIVE_SHELLS, requested_shell_name};
-use crate::{Config, LabelKind, check, contract, cuda, error, init, label};
+use crate::{Config, LabelKind, check, contract, cuda, diagnose, error, init, label};
 
 #[derive(Parser)]
 #[command(
@@ -49,8 +48,14 @@ enum CliCommand {
     #[command(about = "Open the project runtime shell")]
     Shell(PassthroughArgs),
 
-    #[command(about = "Show current runtime shell status")]
+    #[command(about = "Summarize project runtime health")]
     Status,
+
+    #[command(about = "Diagnose project runtime and host prerequisites")]
+    Check(check::CheckArgs),
+
+    #[command(about = "Classify an existing runtime error log")]
+    Diagnose(diagnose::DiagnoseArgs),
 
     #[command(about = "Show how to leave the active runtime shell")]
     Deactivate,
@@ -70,7 +75,7 @@ After installing the hook:
     #[command(about = "Run project bootstrap scripts")]
     Bootstrap(PassthroughArgs),
 
-    #[command(about = "Diagnose the current project runtime")]
+    #[command(about = "Print the detailed legacy runtime report")]
     Doctor(check::CheckArgs),
 
     #[command(about = "Print the resolved runtime contract")]
@@ -115,9 +120,6 @@ struct UpArgs {
     #[arg(long, help = "Initialize missing runtime files without prompting")]
     yes: bool,
 
-    #[arg(long, help = "Run uv sync after the native runtime is prepared")]
-    sync: bool,
-
     #[arg(long, help = "Open an interactive runtime shell after setup succeeds")]
     shell: bool,
 }
@@ -153,11 +155,11 @@ pub(crate) fn run() -> ExitCode {
 
     match cli.command {
         Some(CliCommand::Init(args)) => init::run(args, config),
-        Some(CliCommand::Up(args)) => {
-            run_project_up(args.target, args.yes, args.sync, args.shell, config)
-        }
+        Some(CliCommand::Up(args)) => run_project_up(args.target, args.yes, args.shell, config),
         Some(CliCommand::Shell(args)) => run_project_shell(args.args, config),
-        Some(CliCommand::Status) => run_project_status(config),
+        Some(CliCommand::Status) => check::run_status(config),
+        Some(CliCommand::Check(args)) => check::run_check(args, config),
+        Some(CliCommand::Diagnose(args)) => diagnose::run(args, config),
         Some(CliCommand::Deactivate) => run_project_deactivate(config),
         Some(CliCommand::Hook(args)) => run_project_hook(args.shell.into_iter().collect(), config),
         Some(CliCommand::Bootstrap(args)) => run_project_app(None, args.args, config),
@@ -202,7 +204,10 @@ fn print_help(config: Config) -> ExitCode {
         "robo run <cmd>",
         "run a command inside the prepared runtime",
     );
-    help_row(config, "robo doctor", "diagnose runtime and host prerequisites");
+    help_row(config, "robo check", "summarize runtime diagnostics");
+    help_row(config, "robo check --deep", "run slower runtime probes");
+    help_row(config, "robo diagnose -", "classify piped error logs");
+    help_row(config, "robo status", "summarize runtime health");
     help_row(config, "robo shell", "open an interactive runtime shell");
 
     println!();
@@ -237,7 +242,7 @@ fn print_help(config: Config) -> ExitCode {
         "  {}",
         label(
             config,
-            "Use `robo status` to see whether the current shell is active.",
+            "Use `robo status` for a quick runtime health summary.",
             LabelKind::Hint,
         )
     );

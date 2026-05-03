@@ -628,7 +628,7 @@ fn explain_component(
             remove_hint: format!(
                 "remove `{component}` from `components` in robo.nix if the inference is wrong"
             ),
-            remediation_hint: "run `robo doctor --why` after edits to confirm the runtime contract still matches the project".to_string(),
+            remediation_hint: "run `robo check --why` after edits to confirm the runtime contract still matches the project".to_string(),
         }
     } else if !provenance.inferred.is_empty() {
         WhyEntry {
@@ -639,7 +639,7 @@ fn explain_component(
             remove_hint: format!(
                 "remove `{component}` from `components` in robo.nix if the inference is wrong"
             ),
-            remediation_hint: "run `robo doctor --why` after edits to confirm the inferred runtime still matches the project".to_string(),
+            remediation_hint: "run `robo check --why` after edits to confirm the inferred runtime still matches the project".to_string(),
         }
     } else {
         WhyEntry {

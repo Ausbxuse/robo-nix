@@ -16,7 +16,7 @@ nix run "${repo_flake_url}#robo" -- init "$tmpdir/contract-project" \
 (
 	cd "$tmpdir/contract-project"
 	nix run "${repo_flake_url}#robo" -- contract --json >"$tmpdir/contract.json"
-	nix run "${repo_flake_url}#robo" -- doctor --why --json >"$tmpdir/why.json"
+	nix run "${repo_flake_url}#robo" -- check --why --json >"$tmpdir/why.json"
 )
 
 assert_file_contains "$tmpdir/contract.json" '"envName": "contract-project"'

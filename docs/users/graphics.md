@@ -52,7 +52,7 @@ The `robo-nix` default keeps the boundary explicit:
 - Nix components expose coherent runtime libraries.
 - The host owns GPU kernel drivers, display sockets, GPU devices, and `libcuda.so.1`.
 - uv owns Python packages and Python CUDA wheels.
-- `robo doctor --deep` reports observed graphics and driver state.
+- `robo check graphics --verbose` reports observed graphics and driver state.
 
 If proprietary NVIDIA OpenGL/EGL support becomes a common requirement, it should be added as an explicit component or mode with its own diagnostics, not as hidden default shell setup.
 
@@ -61,7 +61,7 @@ If proprietary NVIDIA OpenGL/EGL support becomes a common requirement, it should
 Use:
 
 ```bash
-robo doctor --deep
+robo check graphics --verbose
 ```
 
 For graphics projects, deep diagnostics report:

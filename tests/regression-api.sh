@@ -659,12 +659,12 @@ EOF
 	assert_command_fails_capture "$check_file" nix run "$tmpdir#default" -- --check
 	grep -F "error: missing workspace directory: ros_ws/src" "$check_file" >/dev/null
 	grep -F "hint: create " "$check_file" >/dev/null
-	grep -F "next: fix the issues above and rerun 'robo doctor'" "$check_file" >/dev/null
+	grep -F "next: fix the issues above and rerun 'robo check --deep'" "$check_file" >/dev/null
 	grep -F "status=error" "$check_file" >/dev/null
 
 	assert_command_fails_capture "$dryrun_file" nix run "$tmpdir#default" -- --dry-run
 	grep -F "bootstrap error: missing required directory:" "$dryrun_file" >/dev/null
-	grep -F "hint: run 'robo doctor' for a full setup report" "$dryrun_file" >/dev/null
+	grep -F "hint: run 'robo check --deep' for a full setup report" "$dryrun_file" >/dev/null
 
 	trap - RETURN
 	cleanup_dir "$tmpdir"

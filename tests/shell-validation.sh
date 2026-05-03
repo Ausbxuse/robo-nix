@@ -44,8 +44,9 @@ outside_status="$tmpdir/outside-status.txt"
 	cd "$project"
 	"$robo" status >"$outside_status"
 )
-assert_file_contains "$outside_status" "state=inactive"
-assert_file_contains "$outside_status" "robo shell"
+assert_file_contains "$outside_status" "checked shell-shell-project"
+assert_file_contains "$outside_status" "uv.lock missing"
+assert_file_contains "$outside_status" "Python environment missing"
 
 make_fake_shell() {
 	local name="$1"
@@ -97,8 +98,8 @@ up_shell_output="$tmpdir/up-shell.txt"
 	test -s .robo-nix/shell-env
 	test -s .robo-nix/shell-env.key
 )
-assert_file_contains "$up_shell_output" "runtime=prepared"
-assert_file_contains "$up_shell_output" "python=not synced"
+assert_file_contains "$up_shell_output" "robo is ready for this project."
+assert_file_contains "$up_shell_output" "Entering the runtime shell..."
 assert_file_contains "$up_shell_output" "active=1"
 assert_file_contains "$up_shell_output" "env=shell-shell-project"
 
@@ -112,9 +113,9 @@ active_status="$tmpdir/active-status.txt"
 		ROBO_NIX_PROMPT_PREFIX="<shell-shell-project> " \
 		"$robo" status >"$active_status"
 )
-assert_file_contains "$active_status" "state=active"
-assert_file_contains "$active_status" "uv sync"
-assert_file_contains "$active_status" "leave this runtime shell"
+assert_file_contains "$active_status" "checked shell-shell-project"
+assert_file_contains "$active_status" "uv.lock missing"
+assert_file_contains "$active_status" "Python environment missing"
 
 hook_output="$tmpdir/hook.txt"
 "$robo" hook bash >"$hook_output"
@@ -142,7 +143,7 @@ test -z "${ROBO_NIX_ACTIVE:-}"
 test "$PS1" = "$ "
 ' >"$hook_status"
 )
-assert_file_contains "$hook_status" "state=active"
+assert_file_contains "$hook_status" "checked shell-shell-project"
 
 if command -v zsh >/dev/null 2>&1; then
 	zsh_hook_status="$tmpdir/zsh-hook-status.txt"
@@ -165,5 +166,5 @@ test -z "${ROBO_NIX_ACTIVE:-}"
 test "$PS1" = "$ "
 ' >"$zsh_hook_status"
 	)
-	assert_file_contains "$zsh_hook_status" "state=active"
+	assert_file_contains "$zsh_hook_status" "checked shell-shell-project"
 fi

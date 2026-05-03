@@ -40,6 +40,8 @@ Nix owns:
 
 `robo shell` points uv at a Nix-provided CPython executable for the requested Python major/minor version. That keeps uv-created virtualenvs aligned with the Nix libc and dynamic loader, which matters on older distro containers.
 
+robo-nix uses `cachix/nixpkgs-python` for Python interpreter coverage, then falls back to nixpkgs when that input does not provide the requested version. This keeps older robotics-friendly Python versions such as 3.11 available even after they leave current nixpkgs package sets. Generated flakes include the `nixpkgs-python.cachix.org` binary cache so normal users can fetch those interpreters instead of compiling CPython locally.
+
 ## Recreate Old Virtualenvs
 
 If `.venv` was created before entering `robo shell`, recreate it:

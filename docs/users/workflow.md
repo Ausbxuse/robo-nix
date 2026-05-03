@@ -12,11 +12,11 @@ It can:
 - infer common runtime needs from project files
 - realize the Nix runtime
 - cache shell exports for faster later commands
-- optionally run `uv sync`
 - optionally enter a runtime shell
 
 It does not:
 
+- run `uv sync`
 - choose project-specific uv dependency groups or optional extras
 - repair broken editable source paths
 - decide private package indexes or auth
@@ -29,10 +29,16 @@ Examples:
 robo up
 robo up --yes
 robo up --shell
-robo up --sync
 ```
 
-Use `--yes` for non-interactive defaults. Use `--sync` only when package installation is intended.
+Use `--yes` for non-interactive defaults.
+
+Run the uv command documented by the project after the runtime is ready:
+
+```bash
+robo shell
+uv sync
+```
 
 ## `robo shell`
 
@@ -70,25 +76,46 @@ robo run uv sync
 
 This is often better than entering a shell in scripts or CI because it keeps the command boundary explicit.
 
-## `robo doctor`
+## `robo check`
 
-`robo doctor` explains the current runtime state:
+`robo check` is the diagnostic entry point for the current runtime:
 
 ```bash
-robo doctor
-robo doctor --why
-robo doctor --deep
+robo check
+robo check graphics
+robo check native
+robo check python
+robo check cuda
+robo check --deep
 ```
 
-Use `--why` to see why components were selected. Use `--deep` for host/runtime probes such as CUDA and graphics checks.
+Use it when CUDA, graphics, ROS, native extension builds, or the Python environment is not behaving. Focused checks give a shorter answer and a clearer next action than the older full report.
 
-Deep checks can be slower because they may realize the runtime shell and inspect loaded native libraries.
+## `robo diagnose`
+
+`robo diagnose` classifies existing error text:
+
+```bash
+uv sync 2>&1 | robo diagnose -
+robo diagnose build.log
+```
+
+Use it when you already have a traceback, compiler log, or loader error. It is grounded in known failure signatures and the failure guide; it does not probe the current runtime and it does not apply automatic fixes.
+
+`robo check --why` prints the component provenance report:
+
+```bash
+robo check --why
+robo check --why --json
+```
+
+Use `check --deep` for the broad runtime probe set.
 
 ## `robo status`
 
-`robo status` reports whether the current process environment is inside a `robo` runtime shell.
+`robo status` prints the quick runtime health summary: project, Python version, ready checks, attention items, and the final ok/error count.
 
-Without the optional hook, this is the canonical way to check activation state. With the hook, your prompt may also show a runtime prefix.
+Use `status` for a fast read. Use `check` when you need to know what is broken and what to try next.
 
 ## Runtime Files
 

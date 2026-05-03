@@ -81,7 +81,7 @@ fn next_inline_delimiter(text: &str) -> Option<(&str, char, &str)> {
 }
 
 pub(crate) fn status(config: Config, message: &str) {
-    eprintln!("{} {}", label(config, "robo:", LabelKind::Status), inline(config, message));
+    eprintln!("{}", status_message(config, message));
 }
 
 pub(crate) fn ok(config: Config, message: &str) {
@@ -147,6 +147,7 @@ pub(crate) struct UiProgress {
 }
 
 pub(crate) struct UiSpinner {
+    config: Config,
     bar: Option<ProgressBar>,
 }
 
@@ -154,10 +155,11 @@ impl UiSpinner {
     pub(crate) fn new(config: Config, message: &str) -> Self {
         if config.debug || !std::io::stderr().is_terminal() {
             status(config, message);
-            return Self { bar: None };
+            return Self { config, bar: None };
         }
 
         Self {
+            config,
             bar: Some(spinner(config, message)),
         }
     }
@@ -170,7 +172,7 @@ impl UiSpinner {
 
     pub(crate) fn set_message(&self, message: &str) {
         if let Some(bar) = &self.bar {
-            bar.set_message(message.to_string());
+            bar.set_message(status_message(self.config, message));
         }
     }
 }
@@ -196,13 +198,14 @@ impl UiProgress {
         let bar = ProgressBar::new(total);
         bar.set_draw_target(ProgressDrawTarget::stderr());
         bar.set_style(
-            ProgressStyle::with_template("{prefix} {spinner:.cyan} [{bar:20.cyan/blue}] {pos}/{len} {msg}")
+            ProgressStyle::with_template(
+                "{spinner:.cyan} [{bar:20.cyan/blue}] {pos:.dim}/{len:.dim} {msg}",
+            )
                 .unwrap_or_else(|_| ProgressStyle::default_bar())
                 .progress_chars("=>-")
                 .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]),
         );
-        bar.set_prefix(label(config, "robo:", LabelKind::Status));
-        bar.set_message(message.to_string());
+        bar.set_message(status_message(config, message));
         bar.enable_steady_tick(Duration::from_millis(80));
 
         Self {
@@ -217,7 +220,15 @@ impl UiProgress {
         self.current = (self.current + 1).min(self.total);
         if let Some(bar) = &self.bar {
             bar.set_position(self.current);
-            bar.set_message(message.to_string());
+            bar.set_message(status_message(self.config, message));
+        } else {
+            status(self.config, message);
+        }
+    }
+
+    pub(crate) fn set(&self, message: &str) {
+        if let Some(bar) = &self.bar {
+            bar.set_message(status_message(self.config, message));
         } else {
             status(self.config, message);
         }
@@ -229,6 +240,18 @@ impl UiProgress {
         message: &str,
     ) -> Result<Output, std::io::Error> {
         self.step(message);
+        if self.bar.is_some() {
+            command.stdout(Stdio::piped()).stderr(Stdio::piped());
+        }
+        command.output()
+    }
+
+    pub(crate) fn output_current(
+        &self,
+        command: &mut Command,
+        message: &str,
+    ) -> Result<Output, std::io::Error> {
+        self.set(message);
         if self.bar.is_some() {
             command.stdout(Stdio::piped()).stderr(Stdio::piped());
         }
@@ -253,14 +276,25 @@ fn spinner(config: Config, message: &str) -> ProgressBar {
     let spinner = ProgressBar::new_spinner();
     spinner.set_draw_target(ProgressDrawTarget::stderr());
     spinner.set_style(
-        ProgressStyle::with_template("{prefix} {spinner:.cyan} {elapsed_precise} {msg}")
+        ProgressStyle::with_template("{spinner:.cyan} {elapsed_precise:.dim} {msg}")
             .unwrap_or_else(|_| ProgressStyle::default_spinner())
             .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]),
     );
-    spinner.set_prefix(label(config, "robo:", LabelKind::Status));
-    spinner.set_message(message.to_string());
+    spinner.set_message(status_message(config, message));
     spinner.enable_steady_tick(Duration::from_millis(80));
     spinner
+}
+
+fn status_message(config: Config, message: &str) -> String {
+    let Some((phase, rest)) = message.split_once(": ") else {
+        return inline(config, message);
+    };
+
+    format!(
+        "{} {}",
+        label(config, &format!("{phase}:"), LabelKind::Status),
+        inline(config, rest)
+    )
 }
 
 fn keep_spinner_visible(started_at: Instant) {

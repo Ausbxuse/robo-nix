@@ -1,4 +1,4 @@
-use clap::Args;
+use clap::{Args, ValueEnum};
 use std::collections::BTreeSet;
 use std::env;
 use std::ffi::OsStr;
@@ -19,17 +19,29 @@ mod egl;
 
 #[derive(Args)]
 pub(crate) struct CheckArgs {
+    #[arg(value_enum, help = "Focused check domain")]
+    domain: Option<CheckDomain>,
+
     #[arg(long, help = "Run runtime probes that may realize larger Nix closures")]
     deep: bool,
+
+    #[arg(long, help = "Show evidence behind the check result")]
+    verbose: bool,
 
     #[arg(long, help = "Explain why runtime entries are present")]
     why: bool,
 
-    #[arg(long, help = "Print detailed check evidence")]
-    verbose: bool,
-
     #[arg(long, requires = "why", help = "Emit machine-readable provenance")]
     json: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+enum CheckDomain {
+    Graphics,
+    Native,
+    Python,
+    Cuda,
+    Ros,
 }
 
 #[derive(serde::Deserialize)]
@@ -42,6 +54,36 @@ struct NixDryRunItem {
 const NATIVE_TOOL_WHEEL_PACKAGES: &[&str] = &["cmake", "ninja", "patchelf"];
 
 pub(crate) fn run(args: CheckArgs, config: Config) -> ExitCode {
+    run_with_mode(args, config, CheckMode::Doctor)
+}
+
+pub(crate) fn run_check(args: CheckArgs, config: Config) -> ExitCode {
+    run_with_mode(args, config, CheckMode::Check)
+}
+
+pub(crate) fn run_status(config: Config) -> ExitCode {
+    run_with_mode(CheckArgs::default(), config, CheckMode::Status)
+}
+
+enum CheckMode {
+    Check,
+    Doctor,
+    Status,
+}
+
+impl Default for CheckArgs {
+    fn default() -> Self {
+        Self {
+            domain: None,
+            deep: false,
+            verbose: false,
+            why: false,
+            json: false,
+        }
+    }
+}
+
+fn run_with_mode(args: CheckArgs, config: Config, mode: CheckMode) -> ExitCode {
     let mut preflight = (!args.json).then(|| UiSpinner::new(config, "loading runtime contract"));
     if let Err(code) = ensure_project_runtime(config) {
         if let Some(progress) = &mut preflight {
@@ -72,11 +114,437 @@ pub(crate) fn run(args: CheckArgs, config: Config) -> ExitCode {
         }
     }
 
-    if !args.verbose && !args.why {
+    if matches!(mode, CheckMode::Status) {
         return run_summary(args, config, runtime, why);
     }
 
+    if matches!(mode, CheckMode::Doctor)
+        && args.domain.is_none()
+        && !args.deep
+        && !args.verbose
+        && !args.why
+    {
+        return run_summary(args, config, runtime, why);
+    }
+
+    if matches!(mode, CheckMode::Check) {
+        return run_check_surface(args, config, runtime, why);
+    }
+
     run_detailed(args, config, runtime, why)
+}
+
+fn run_check_surface(
+    args: CheckArgs,
+    config: Config,
+    runtime: ProjectRuntime,
+    why: RuntimeWhy,
+) -> ExitCode {
+    if args.why {
+        if args.json {
+            match serde_json::to_string_pretty(&why) {
+                Ok(text) => {
+                    println!("{text}");
+                    return ExitCode::SUCCESS;
+                }
+                Err(err) => {
+                    error(
+                        config,
+                        &format!("failed to encode runtime provenance: {err}"),
+                    );
+                    return ExitCode::from(1);
+                }
+            }
+        }
+        print_runtime_why(config, &why);
+        return ExitCode::SUCCESS;
+    }
+
+    if args.json {
+        error(config, "`robo check --json` is not implemented yet; use `robo check --why --json` for runtime provenance");
+        return ExitCode::from(2);
+    }
+
+    match args.domain {
+        Some(CheckDomain::Graphics) => run_graphics_check(config, &runtime, args.verbose),
+        Some(CheckDomain::Native) => run_native_check(config, &runtime, args.verbose),
+        Some(CheckDomain::Python) => run_python_check(config, &runtime),
+        Some(CheckDomain::Cuda) => run_cuda_check(config, &runtime, args.deep),
+        Some(CheckDomain::Ros) => run_ros_check(config, &runtime),
+        None if args.deep || args.verbose => run_detailed(args, config, runtime, why),
+        None => run_default_check(config, &runtime),
+    }
+}
+
+fn run_default_check(config: Config, runtime: &ProjectRuntime) -> ExitCode {
+    let pyproject = fs::read_to_string("pyproject.toml").ok();
+    let missing_components = pyproject
+        .as_deref()
+        .map(|text| {
+            crate::runtime::expected_components_from_pyproject(text)
+                .into_iter()
+                .filter(|expected| !runtime_has_component(runtime, &expected.name))
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    if runtime.schema_version.as_deref() != Some("1") {
+        println!("robo cannot trust this runtime contract yet.\n");
+        println!("The generated robo.nix schema is missing or newer than this CLI understands.");
+        println!("Review local edits, then regenerate the runtime files:");
+        print_command(config, "robo init . --force");
+        return ExitCode::from(1);
+    }
+
+    if !missing_components.is_empty() {
+        println!("robo may be missing runtime components for {}.\n", runtime.env_name);
+        for component in &missing_components {
+            println!("- {}: {}", component.name, component.reason);
+        }
+        println!();
+        println!("Review robo.nix, then refresh the runtime:");
+        print_command(config, "robo up");
+        return ExitCode::from(1);
+    }
+
+    match python_environment_origin() {
+        PythonEnvironmentOrigin::HostBacked(origin) => {
+            println!("robo is blocked for {}.\n", runtime.env_name);
+            println!("The Python environment was created outside the robo runtime.");
+            println!("Found interpreter origin: {origin}");
+            println!();
+            println!("Recreate it inside the runtime:");
+            print_command(config, "robo shell");
+            print_command(config, "uv venv --python \"$ROBO_NIX_PYTHON\" --clear");
+            print_command(config, "uv sync");
+            return ExitCode::from(1);
+        }
+        PythonEnvironmentOrigin::Missing => {
+            println!(
+                "{} {}\n",
+                label(config, "ready:", LabelKind::Ok),
+                inline(config, &format!("runtime is prepared for `{}`", runtime.env_name))
+            );
+            println!(
+                "{} {}",
+                label(config, "python:", LabelKind::Warn),
+                inline(config, "packages are not synced yet")
+            );
+            println!(
+                "{} {}",
+                label(config, "owner:", LabelKind::Status),
+                inline(config, "uv owns package sync; use the command documented by this project")
+            );
+            println!(
+                "{} {}",
+                label(config, "default:", LabelKind::Hint),
+                label(config, "uv sync", LabelKind::Command)
+            );
+            return ExitCode::SUCCESS;
+        }
+        PythonEnvironmentOrigin::NixBacked(_) => {}
+    }
+
+    let tools = native_tool_wheel_shims();
+    if !tools.is_empty() {
+        println!("robo found Python-owned native build tool shims.\n");
+        println!("Found: {}", tools.join(", "));
+        println!("Nix should own CMake, Ninja, compilers, and native build tools.");
+        println!();
+        println!("If native builds fail, run:");
+        print_command(config, "robo check native --verbose");
+        return ExitCode::SUCCESS;
+    }
+
+    println!(
+        "{} {}\n",
+        label(config, "ready:", LabelKind::Ok),
+        inline(config, &format!("runtime is prepared for `{}`", runtime.env_name))
+    );
+    println!(
+        "{} {}",
+        label(config, "runtime:", LabelKind::Status),
+        inline(config, "Nix runtime, uv Python environment, and inferred components are aligned")
+    );
+    println!(
+        "{} {}",
+        label(config, "diagnostics:", LabelKind::Status),
+        inline(config, "run a focused check when a runtime area fails")
+    );
+    print_command(config, "robo check graphics");
+    print_command(config, "robo check native");
+    if cuda_check_plan(runtime).needed() {
+        print_command(config, "robo check cuda");
+    }
+    print_command(config, "robo check --deep");
+    ExitCode::SUCCESS
+}
+
+fn run_graphics_check(config: Config, runtime: &ProjectRuntime, verbose: bool) -> ExitCode {
+    if !graphics_relevant(runtime) {
+        println!("Graphics runtime is not required by this project.");
+        return ExitCode::SUCCESS;
+    }
+
+    if let Some(mujoco_gl) = forced_mujoco_gl(runtime, env::var_os("MUJOCO_GL").as_deref()) {
+        println!("Graphics runtime is blocked by MUJOCO_GL.\n");
+        println!("Found MUJOCO_GL={mujoco_gl}.");
+        println!("Desktop GLFW viewers usually need this unset.");
+        println!();
+        println!("Try:");
+        print_command(config, "unset MUJOCO_GL");
+        print_command(config, "robo check graphics");
+        return ExitCode::from(1);
+    }
+
+    if !runtime_has_component(runtime, "x11-gl") {
+        println!("Graphics runtime is not selected for this project.\n");
+        println!("This runtime appears to need desktop graphics, but robo.nix does not include `x11-gl`.");
+        println!();
+        println!("Add `x11-gl` to components in robo.nix, then run:");
+        print_command(config, "robo up");
+        return ExitCode::from(1);
+    }
+
+    let output = runtime_output_with_spinner(
+        config,
+        "graphics: probing EGL and display runtime",
+        "bash",
+        ["-lc", egl::PROBE_SCRIPT],
+        [],
+    );
+    let output = match output {
+        Ok(output) if output.status.success() => output,
+        Ok(output) => {
+            println!("Graphics runtime could not be probed.\n");
+            println!("{}", combined_output(&output));
+            println!("Run with more evidence:");
+            print_command(config, "robo check graphics --verbose");
+            return ExitCode::from(1);
+        }
+        Err(err) => {
+            println!("Graphics runtime could not be probed.\n");
+            println!("Failed to start the runtime probe: {err}");
+            return ExitCode::from(1);
+        }
+    };
+
+    let text = String::from_utf8_lossy(&output.stdout);
+    let findings = egl::findings(&egl::parse(&text));
+    let errors = findings
+        .iter()
+        .filter(|finding| finding.kind == egl::FindingKind::Error)
+        .collect::<Vec<_>>();
+    let warnings = findings
+        .iter()
+        .filter(|finding| finding.kind == egl::FindingKind::Warn)
+        .collect::<Vec<_>>();
+
+    if let Some(finding) = errors.first() {
+        println!("Graphics runtime is blocked.\n");
+        println!("{}", finding.message);
+        if let Some(hint) = finding.hint {
+            println!();
+            println!("{hint}");
+        }
+        println!();
+        println!("Show full evidence:");
+        print_command(config, "robo check graphics --verbose");
+        return ExitCode::from(1);
+    }
+
+    if let Some(finding) = warnings.first() {
+        println!("Graphics runtime needs attention.\n");
+        println!("{}", finding.message);
+        if let Some(hint) = finding.hint {
+            println!();
+            println!("{hint}");
+        }
+        if verbose {
+            print_graphics_evidence(config, &findings);
+        }
+        return ExitCode::SUCCESS;
+    }
+
+    println!("Graphics runtime looks ready.\n");
+    for finding in findings
+        .iter()
+        .filter(|finding| finding.kind == egl::FindingKind::Ok)
+        .take(2)
+    {
+        println!("Found {}", finding.message);
+    }
+    if verbose {
+        print_graphics_evidence(config, &findings);
+    }
+    ExitCode::SUCCESS
+}
+
+fn run_native_check(config: Config, runtime: &ProjectRuntime, verbose: bool) -> ExitCode {
+    let tools = native_tool_wheel_shims();
+    if !native_relevant(runtime) && tools.is_empty() {
+        println!("Native build support is not required by this project.");
+        return ExitCode::SUCCESS;
+    }
+
+    if !runtime_has_component(runtime, "native-build") {
+        println!("Native build support is not selected for this project.\n");
+        println!("This project appears to need C/C++ build tooling, but robo.nix does not include `native-build`.");
+        println!();
+        println!("Add `native-build` to components in robo.nix, then run:");
+        print_command(config, "robo up");
+        return ExitCode::from(1);
+    }
+
+    if !tools.is_empty() {
+        println!("Native build support needs attention.\n");
+        println!("The Python environment contains native build tool shims: {}.", tools.join(", "));
+        println!("Nix should own CMake, Ninja, compilers, and native build tools.");
+        println!();
+        println!("If builds call .venv/bin tools, prefer the runtime tools instead.");
+        return ExitCode::SUCCESS;
+    }
+
+    let script = r#"
+missing=0
+for tool in cc c++ cmake pkg-config; do
+  if command -v "$tool" >/dev/null 2>&1; then
+    printf 'found %s=%s\n' "$tool" "$(command -v "$tool")"
+  else
+    printf 'missing %s\n' "$tool"
+    missing=1
+  fi
+done
+exit "$missing"
+"#;
+
+    match runtime_output_with_spinner(
+        config,
+        "native: probing compiler and build tools",
+        "bash",
+        ["-lc", script],
+        [],
+    ) {
+        Ok(output) if output.status.success() => {
+            println!("Native build support looks ready.\n");
+            println!("Found a compiler, CMake, pkg-config, and common C/C++ build tooling.");
+            if verbose {
+                println!();
+                section(config, "evidence");
+                print!("{}", combined_output(&output));
+            }
+            ExitCode::SUCCESS
+        }
+        Ok(output) => {
+            println!("Native build support is incomplete.\n");
+            println!("{}", combined_output(&output));
+            println!("Nix owns these native build tools. Review the `native-build` component, then run:");
+            print_command(config, "robo up");
+            ExitCode::from(1)
+        }
+        Err(err) => {
+            println!("Native build support could not be probed.\n");
+            println!("Failed to start the runtime probe: {err}");
+            ExitCode::from(1)
+        }
+    }
+}
+
+fn run_python_check(config: Config, runtime: &ProjectRuntime) -> ExitCode {
+    match python_environment_origin() {
+        PythonEnvironmentOrigin::Missing => {
+            println!("Python packages are not synced yet.\n");
+            println!("Robo found the runtime contract for Python {}, but no `.venv` exists.", runtime.python_version);
+            println!("Run the uv command documented by this project.");
+            println!("Default: `{}`", label(config, "uv sync", LabelKind::Command));
+            ExitCode::SUCCESS
+        }
+        PythonEnvironmentOrigin::NixBacked(origin) => {
+            println!("Python environment looks aligned.\n");
+            println!("Found robo runtime Python: {origin}");
+            ExitCode::SUCCESS
+        }
+        PythonEnvironmentOrigin::HostBacked(origin) => {
+            println!("Python environment is blocked.\n");
+            println!("The active `.venv` was created outside the robo runtime.");
+            println!("Found interpreter origin: {origin}");
+            println!();
+            println!("Recreate it inside the runtime:");
+            print_command(config, "robo shell");
+            print_command(config, "uv venv --python \"$ROBO_NIX_PYTHON\" --clear");
+            print_command(config, "uv sync");
+            ExitCode::from(1)
+        }
+    }
+}
+
+fn run_cuda_check(config: Config, runtime: &ProjectRuntime, deep: bool) -> ExitCode {
+    let plan = cuda_check_plan(runtime);
+    if !plan.needed() {
+        println!("CUDA runtime is not required by this project.");
+        return ExitCode::SUCCESS;
+    }
+
+    let mut issues = 0;
+    let mut warnings = 0;
+    check_cuda_host(config, runtime, deep, &mut issues, &mut warnings);
+    if issues == 0 {
+        println!();
+        println!("CUDA checks finished without blocking issues.");
+        ExitCode::SUCCESS
+    } else {
+        println!();
+        println!("CUDA checks found blocking issues.");
+        ExitCode::from(1)
+    }
+}
+
+fn run_ros_check(_config: Config, runtime: &ProjectRuntime) -> ExitCode {
+    if runtime_has_component(runtime, "ros2-jazzy") || runtime_has_component(runtime, "ros-workspace") {
+        println!("ROS runtime is selected for this project.\n");
+        println!("Focused ROS probes are not implemented yet.");
+        println!("Use `robo check --deep` for the current broad runtime validation.");
+    } else {
+        println!("ROS runtime is not required by this project.");
+    }
+    ExitCode::SUCCESS
+}
+
+fn graphics_relevant(runtime: &ProjectRuntime) -> bool {
+    ["x11-gl", "mujoco", "qt6", "matplotlib-qt", "isaac-sim"]
+        .iter()
+        .any(|component| runtime_has_component(runtime, component))
+}
+
+fn native_relevant(runtime: &ProjectRuntime) -> bool {
+    ["native-build", "mujoco", "qt6", "cuda-toolkit", "isaac-sim", "ros2-jazzy"]
+        .iter()
+        .any(|component| runtime_has_component(runtime, component))
+}
+
+fn print_command(config: Config, command: &str) {
+    println!("  {}", label(config, command, LabelKind::Command));
+}
+
+fn print_graphics_evidence(config: Config, findings: &[egl::Finding]) {
+    println!();
+    section(config, "evidence");
+    for finding in findings {
+        let label_text = match finding.kind {
+            egl::FindingKind::Ok => "ok:",
+            egl::FindingKind::Warn => "warn:",
+            egl::FindingKind::Error => "error:",
+        };
+        let label_kind = match finding.kind {
+            egl::FindingKind::Ok => LabelKind::Ok,
+            egl::FindingKind::Warn => LabelKind::Warn,
+            egl::FindingKind::Error => LabelKind::Error,
+        };
+        check_line(config, label_text, label_kind, &finding.message);
+        if let Some(hint) = finding.hint {
+            check_hint(config, hint);
+        }
+    }
 }
 
 fn run_detailed(
@@ -148,14 +616,14 @@ fn run_detailed(
         } else {
             check_next(
                 config,
-                "run 'robo doctor --deep' before debugging native runtime failures",
+                "run 'robo check --deep' before debugging native runtime failures",
             );
         }
         check_next(config, "run 'robo shell' to enter the environment");
         check_status(config, "ok", LabelKind::Ok, 0, warnings);
         ExitCode::SUCCESS
     } else {
-        check_next(config, "fix the issues above and rerun 'robo doctor'");
+        check_next(config, "fix the issues above and rerun 'robo check --deep'");
         check_status(config, "error", LabelKind::Error, issues, warnings);
         ExitCode::from(1)
     }
@@ -561,7 +1029,7 @@ fn summarize_cuda_host_requirement(
         attention.push(
             Attention::new("CUDA driver library not found")
                 .detail("note: Nix provides the CUDA build toolkit, but libcuda.so.1 comes from the host driver")
-                .detail("deep: robo doctor --deep"),
+                .detail("deep: robo check --deep"),
         );
     }
 }
@@ -583,7 +1051,7 @@ fn summarize_cuda_toolkit_requirement(
             .detail("run: robo shell")
             .detail("note: CUDA_HOME/CUDA_PATH are set inside the runtime");
         if !deep {
-            item = item.detail("deep: robo doctor --deep validates the Nix CUDA toolkit");
+            item = item.detail("deep: robo check --deep validates the Nix CUDA toolkit");
         }
         attention.push(item);
         return;
@@ -599,7 +1067,7 @@ fn summarize_cuda_toolkit_requirement(
         attention.push(
             Attention::new("CUDA toolkit version is unknown")
                 .detail(format!("path: {cuda_root}"))
-                .detail("deep: robo doctor --deep"),
+                .detail("deep: robo check --deep"),
         );
         return;
     };
@@ -627,8 +1095,8 @@ fn print_summary(
     warnings: usize,
 ) {
     println!(
-        "{} checked {}\n",
-        label(config, "robo:", LabelKind::Status),
+        "{} {}\n",
+        label(config, "checked", LabelKind::Status),
         runtime.env_name
     );
 
@@ -659,7 +1127,7 @@ fn print_summary(
     if !deep {
         section(config, "skipped");
         println!("  deep runtime probes");
-        println!("    {}", summary_detail(config, "run: robo doctor --deep"));
+        println!("    {}", summary_detail(config, "run: robo check --deep"));
         println!();
     }
 
@@ -1263,14 +1731,10 @@ fn run_deep_checks(
         progress.finish();
         return Err(code);
     }
-    progress.step("checking runtime tools");
-    progress.suspend(|| check_runtime_tools(config, issues));
-    progress.step("checking EGL/GLVND graphics surface");
-    progress.suspend(|| check_runtime_egl_glvnd_surface(config, runtime, issues, warnings));
-    progress.step("checking CUDA native build surface");
-    progress.suspend(|| check_runtime_cuda_build_surface(config, runtime, issues));
-    progress.step("checking Python runtime probes");
-    progress.suspend(|| check_runtime_probes(config, pyproject_dependencies, warnings));
+    check_runtime_tools(config, issues, &mut progress);
+    check_runtime_egl_glvnd_surface(config, runtime, issues, warnings, &mut progress);
+    check_runtime_cuda_build_surface(config, runtime, issues, &mut progress);
+    check_runtime_probes(config, pyproject_dependencies, warnings, &mut progress);
     progress.finish();
     Ok(())
 }
@@ -1348,8 +1812,10 @@ fn summarize_nix_dry_run_json(stdout: &[u8]) -> Vec<String> {
     summary
 }
 
-fn check_runtime_tools(config: Config, issues: &mut usize) {
-    match runtime_output(config, "uv", ["--version"], []) {
+fn check_runtime_tools(config: Config, issues: &mut usize, progress: &mut UiProgress) {
+    let mut command = runtime_command(config, "uv", ["--version"], []);
+    let output = progress.output(&mut command, "checking runtime tools");
+    progress.suspend(|| match output {
         Ok(output) if output.status.success() => check_ok(config, "uv is available"),
         Ok(output) => {
             check_error(config, issues, "uv is not available in the runtime shell");
@@ -1362,7 +1828,7 @@ fn check_runtime_tools(config: Config, issues: &mut usize) {
                 &format!("failed to probe uv in runtime shell: {err}"),
             );
         }
-    }
+    });
 }
 
 fn check_runtime_egl_glvnd_surface(
@@ -1370,12 +1836,16 @@ fn check_runtime_egl_glvnd_surface(
     runtime: &ProjectRuntime,
     issues: &mut usize,
     warnings: &mut usize,
+    progress: &mut UiProgress,
 ) {
     if !runtime_has_component(runtime, "x11-gl") {
+        progress.step("skipping EGL/GLVND graphics surface");
         return;
     }
 
-    match runtime_output(config, "bash", ["-lc", egl::PROBE_SCRIPT], []) {
+    let mut command = runtime_command(config, "bash", ["-lc", egl::PROBE_SCRIPT], []);
+    let output = progress.output(&mut command, "checking EGL/GLVND graphics surface");
+    progress.suspend(|| match output {
         Ok(output) if output.status.success() => {
             let text = String::from_utf8_lossy(&output.stdout);
             for finding in egl::findings(&egl::parse(&text)) {
@@ -1407,15 +1877,21 @@ fn check_runtime_egl_glvnd_surface(
                 &format!("failed to probe EGL/GLVND runtime state: {err}"),
             );
         }
-    }
+    });
 }
 
-fn check_runtime_cuda_build_surface(config: Config, runtime: &ProjectRuntime, issues: &mut usize) {
+fn check_runtime_cuda_build_surface(
+    config: Config,
+    runtime: &ProjectRuntime,
+    issues: &mut usize,
+    progress: &mut UiProgress,
+) {
     if !runtime
         .components
         .iter()
         .any(|component| component == "cuda-toolkit")
     {
+        progress.step("skipping CUDA native build surface");
         return;
     }
 
@@ -1455,7 +1931,9 @@ fi
 printf 'root=%s\n' "$root"
 "#;
 
-    match runtime_output(config, "bash", ["-lc", script], []) {
+    let mut command = runtime_command(config, "bash", ["-lc", script], []);
+    let output = progress.output(&mut command, "checking CUDA native build surface");
+    progress.suspend(|| match output {
         Ok(output) if output.status.success() => {
             let text = String::from_utf8_lossy(&output.stdout);
             let root = text
@@ -1486,31 +1964,39 @@ printf 'root=%s\n' "$root"
                 &format!("failed to probe CUDA native build surface: {err}"),
             );
         }
-    }
+    });
 }
 
 fn check_runtime_probes(
     config: Config,
     pyproject_dependencies: &BTreeSet<String>,
     warnings: &mut usize,
+    progress: &mut UiProgress,
 ) {
     if pyproject_dependencies.is_empty() {
+        progress.step("skipping Python runtime probes");
         return;
     }
+    progress.step("checking Python runtime probes");
+
     if has_dependency(pyproject_dependencies, &["pyqt6", "pyqt5", "pyside6"]) {
         if !Path::new(".venv/bin/python").exists() {
-            check_warn(
-                config,
-                warnings,
-                "Python virtualenv is missing; skipped Qt binding import probe",
-            );
-            check_hint(
-                config,
-                "run 'robo shell', then run 'uv sync' before GUI runtime probing",
-            );
+            progress.suspend(|| {
+                check_warn(
+                    config,
+                    warnings,
+                    "Python virtualenv is missing; skipped Qt binding import probe",
+                );
+                check_hint(
+                    config,
+                    "run 'robo shell', then run 'uv sync' before GUI runtime probing",
+                );
+            });
         } else {
             let code = "from PyQt6 import QtCore, QtGui, QtWidgets; print(QtCore.QT_VERSION_STR)";
-            match runtime_output(config, ".venv/bin/python", ["-c", code], []) {
+            let mut command = runtime_command(config, ".venv/bin/python", ["-c", code], []);
+            let output = progress.output_current(&mut command, "checking PyQt6 GUI import");
+            progress.suspend(|| match output {
                 Ok(output) if output.status.success() => {
                     check_ok(config, "PyQt6 QtCore/QtGui/QtWidgets import works")
                 }
@@ -1527,29 +2013,33 @@ fn check_runtime_probes(
                     warnings,
                     &format!("failed to run PyQt6 GUI probe: {err}"),
                 ),
-            }
+            });
         }
     }
 
     if has_dependency(pyproject_dependencies, &["matplotlib"]) {
         if !Path::new(".venv/bin/python").exists() {
-            check_warn(
-                config,
-                warnings,
-                "Python virtualenv is missing; skipped matplotlib backend probe",
-            );
-            check_hint(
-                config,
-                "run 'robo shell', then run 'uv sync' before matplotlib runtime probing",
-            );
+            progress.suspend(|| {
+                check_warn(
+                    config,
+                    warnings,
+                    "Python virtualenv is missing; skipped matplotlib backend probe",
+                );
+                check_hint(
+                    config,
+                    "run 'robo shell', then run 'uv sync' before matplotlib runtime probing",
+                );
+            });
         } else {
             let code = "import matplotlib.pyplot as plt; fig = plt.figure(); print(type(fig.canvas).__name__)";
-            match runtime_output(
+            let mut command = runtime_command(
                 config,
                 ".venv/bin/python",
                 ["-c", code],
                 [("MPLBACKEND", "QtAgg")],
-            ) {
+            );
+            let output = progress.output_current(&mut command, "checking matplotlib QtAgg probe");
+            progress.suspend(|| match output {
                 Ok(output) if output.status.success() => {
                     check_ok(config, "matplotlib QtAgg smoke test works")
                 }
@@ -1566,24 +2056,28 @@ fn check_runtime_probes(
                     warnings,
                     &format!("failed to run matplotlib QtAgg probe: {err}"),
                 ),
-            }
+            });
         }
     }
 
     if has_dependency(pyproject_dependencies, &["torchcodec"]) {
         if !Path::new(".venv/bin/python").exists() {
-            check_warn(
-                config,
-                warnings,
-                "Python virtualenv is missing; skipped TorchCodec import probe",
-            );
-            check_hint(
-                config,
-                "run 'robo shell', then run 'uv sync' before video decoder runtime probing",
-            );
+            progress.suspend(|| {
+                check_warn(
+                    config,
+                    warnings,
+                    "Python virtualenv is missing; skipped TorchCodec import probe",
+                );
+                check_hint(
+                    config,
+                    "run 'robo shell', then run 'uv sync' before video decoder runtime probing",
+                );
+            });
         } else {
             let code = "import torchcodec; print('torchcodec ok')";
-            match runtime_output(config, ".venv/bin/python", ["-c", code], []) {
+            let mut command = runtime_command(config, ".venv/bin/python", ["-c", code], []);
+            let output = progress.output_current(&mut command, "checking TorchCodec import");
+            progress.suspend(|| match output {
                 Ok(output) if output.status.success() => check_ok(
                     config,
                     "TorchCodec import works with the runtime FFmpeg libraries",
@@ -1601,7 +2095,7 @@ fn check_runtime_probes(
                     warnings,
                     &format!("failed to run TorchCodec import probe: {err}"),
                 ),
-            }
+            });
         }
     }
 }
@@ -1642,12 +2136,23 @@ fn check_lock_freshness(config: Config, warnings: &mut usize) {
     }
 }
 
-fn runtime_output<const N: usize, const M: usize>(
+fn runtime_output_with_spinner<const N: usize, const M: usize>(
     config: Config,
+    message: &str,
     program: &str,
     args: [&str; N],
     envs: [(&str, &str); M],
 ) -> Result<std::process::Output, std::io::Error> {
+    let mut command = runtime_command(config, program, args, envs);
+    crate::output_with_spinner(config, &mut command, message)
+}
+
+fn runtime_command<const N: usize, const M: usize>(
+    config: Config,
+    program: &str,
+    args: [&str; N],
+    envs: [(&str, &str); M],
+) -> Command {
     let mut command = command_for_runtime(config);
     command.arg("develop");
     add_runtime_source_override(&mut command);
@@ -1655,7 +2160,7 @@ fn runtime_output<const N: usize, const M: usize>(
     for (name, value) in envs {
         command.env(name, value);
     }
-    command.output()
+    command
 }
 
 fn has_dependency(dependencies: &BTreeSet<String>, names: &[&str]) -> bool {

@@ -6,6 +6,8 @@ use super::nix::{
     add_runtime_source_override, exit_code, hint_native_cuda_link_failure, nix_command, run_status,
 };
 
+const BOOTSTRAP_MESSAGE: &str = "bootstrap: running project bootstrap";
+
 pub(crate) fn run_bootstrap(config: Config) -> Result<(), ExitCode> {
     let mut command = nix_command(config);
     command.arg("run");
@@ -14,7 +16,7 @@ pub(crate) fn run_bootstrap(config: Config) -> Result<(), ExitCode> {
     command.env("ROBO_NIX_QUIET", "1");
 
     if config.debug {
-        status(config, "preparing runtime");
+        status(config, BOOTSTRAP_MESSAGE);
         let status = run_status(&mut command, config);
         if status == ExitCode::SUCCESS {
             return Ok(());
@@ -60,7 +62,7 @@ pub(crate) fn run_bootstrap_with_progress(
         return Err(status);
     }
 
-    let output = progress.output(&mut command, "preparing runtime");
+    let output = progress.output(&mut command, BOOTSTRAP_MESSAGE);
     progress.suspend(|| match output {
         Ok(output) if output.status.success() => {
             ok(config, "runtime ready");
@@ -85,7 +87,7 @@ fn run_bootstrap_output(
     command: &mut Command,
     config: Config,
 ) -> Result<std::process::Output, std::io::Error> {
-    output_with_spinner(config, command, "preparing runtime")
+    output_with_spinner(config, command, BOOTSTRAP_MESSAGE)
 }
 
 fn print_captured(label: &str, bytes: &[u8]) {
@@ -110,7 +112,7 @@ fn hint_project_bootstrap_failure(config: Config, output: &std::process::Output)
     }
     hint(
         config,
-        "run `robo doctor --why` to see which bootstrap scripts are part of this runtime.",
+        "run `robo check --why` to see which bootstrap scripts are part of this runtime.",
     );
 }
 

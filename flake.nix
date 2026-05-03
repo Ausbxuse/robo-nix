@@ -3,8 +3,14 @@
 
   nixConfig = {
     substituters = ["https://cache.nixos.org"];
-    extra-substituters = ["https://ros.cachix.org"];
-    extra-trusted-public-keys = ["ros.cachix.org-1:dSyZxI8geDCJrwgvCOHDoAfOm5sV1wCPjBkKL+38Rvo="];
+    extra-substituters = [
+      "https://nixpkgs-python.cachix.org"
+      "https://ros.cachix.org"
+    ];
+    extra-trusted-public-keys = [
+      "nixpkgs-python.cachix.org-1:hxjI7pFxTyuTHn2NkvWCrAUcNZLNS3ZAvfYNuYifcEU="
+      "ros.cachix.org-1:dSyZxI8geDCJrwgvCOHDoAfOm5sV1wCPjBkKL+38Rvo="
+    ];
   };
 
   inputs = {
