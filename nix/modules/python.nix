@@ -85,6 +85,12 @@
 
         venv_dir="''${UV_PROJECT_ENVIRONMENT:-$WORKSPACE_ROOT/.venv}"
         site_packages="$venv_dir/lib/python''${ROBO_NIX_PYTHON_MAJOR_MINOR}/site-packages"
+        torch_lib="$site_packages/torch/lib"
+        case ":''${LD_LIBRARY_PATH:-}:" in
+          *":$torch_lib:"*) ;;
+          *) export LD_LIBRARY_PATH="$torch_lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" ;;
+        esac
+
         if [ -d "$site_packages" ]; then
           for cmake_prefix in "$site_packages" "$site_packages"/*; do
             if [ -d "$cmake_prefix/share/cmake" ]; then

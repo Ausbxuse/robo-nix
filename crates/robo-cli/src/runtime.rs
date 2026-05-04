@@ -16,6 +16,16 @@ const KNOWN_HOST_LIBCUDA_DIRS: &[&str] = &[
     "/usr/lib/x86_64-linux-gnu",
     "/usr/lib/wsl/lib",
 ];
+const KNOWN_HOST_EGL_VENDOR_DIRS: &[&str] = &[
+    "/run/opengl-driver/share/glvnd/egl_vendor.d",
+    "/usr/share/glvnd/egl_vendor.d",
+    "/etc/glvnd/egl_vendor.d",
+];
+const KNOWN_HOST_VULKAN_ICD_DIRS: &[&str] = &[
+    "/run/opengl-driver/share/vulkan/icd.d",
+    "/usr/share/vulkan/icd.d",
+    "/etc/vulkan/icd.d",
+];
 
 pub(crate) struct ProjectRuntime {
     pub(crate) schema_version: Option<String>,
@@ -348,6 +358,14 @@ pub(crate) fn find_host_libcuda() -> Option<String> {
         .or_else(find_libcuda_in_known_host_locations)
 }
 
+pub(crate) fn find_host_nvidia_egl_vendor_file() -> Option<String> {
+    find_first_nvidia_json(KNOWN_HOST_EGL_VENDOR_DIRS)
+}
+
+pub(crate) fn find_host_nvidia_vulkan_icd_file() -> Option<String> {
+    find_first_nvidia_json(KNOWN_HOST_VULKAN_ICD_DIRS)
+}
+
 #[cfg(all(target_os = "linux", not(target_env = "musl")))]
 struct DynamicLibrary(*mut c_void);
 
@@ -455,6 +473,26 @@ fn find_libcuda_in_dir(dir: &Path) -> Option<PathBuf> {
         .iter()
         .map(|name| dir.join(name))
         .find(|path| path.is_file())
+}
+
+fn find_first_nvidia_json(dirs: &[&str]) -> Option<String> {
+    dirs.iter()
+        .map(Path::new)
+        .filter(|dir| dir.is_dir())
+        .flat_map(|dir| fs::read_dir(dir).ok().into_iter().flatten())
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| path.is_file())
+        .filter(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| {
+                    let name = name.to_ascii_lowercase();
+                    name.contains("nvidia") && name.ends_with(".json")
+                })
+        })
+        .map(|path| path.display().to_string())
+        .next()
 }
 
 fn cuda_driver_api_version(version: i32) -> Option<String> {

@@ -1,44 +1,138 @@
+<div align="center">
+
 # robo-nix
 
-`robo-nix` is a runtime bridge for uv-managed robotics projects.
+Reproducible robotics environments without the setup ritual.
 
-- `uv` owns Python: `.python-version`, `.venv`, `pyproject.toml`, `uv.lock`.
-- Nix owns native runtime: CUDA, graphics, ROS, simulators, compilers, shared libraries.
-- `robo` owns workflow: `up`, `check`, `shell`, `status`, `run`.
+<a href="https://ausbxuse.github.io/robo-nix/">
+  <img alt="Docs" src="https://img.shields.io/badge/docs-online-6fb0f4?style=for-the-badge&labelColor=2c3144&color=6fb0f4">
+</a>
+<a href="https://ausbxuse.github.io/robo-nix/users/getting-started">
+  <img alt="Get Started" src="https://img.shields.io/badge/get_started-user_guide-8ac48a?style=for-the-badge&labelColor=2c3144&color=8ac48a">
+</a>
+<a href="https://github.com/ausbxuse/robo-nix/releases">
+  <img alt="Release" src="https://img.shields.io/github/v/release/ausbxuse/robo-nix?include_prereleases&display_name=tag&style=for-the-badge&label=release&labelColor=2c3144&color=62bcc6">
+</a>
+<a href="./LICENSE">
+  <img alt="License" src="https://img.shields.io/badge/license-GPL%20v3.0-5d6784?style=for-the-badge&labelColor=2c3144&color=5d6784">
+</a>
 
-The goal is simple: keep Python packaging normal while making the native robotics runtime reproducible, explicit, and easier to debug.
+</div>
+
+`robo-nix` helps robot-learning projects keep normal Python packaging while getting the system runtime pieces that robotics work usually needs: CUDA, graphics libraries, ROS tooling, simulators, compilers, media stacks, and debuggable shell environments.
+
+Use `uv` for Python packages. Use `robo` to prepare the robotics runtime, run commands, open shells, and explain setup failures.
+
+## Why
+
+Robotics projects often fail before the first experiment runs. One repo needs a CUDA runtime, another needs OpenGL, another needs ROS, MuJoCo, FFmpeg, native build tools, or a particular shared library that a Python wheel assumes already exists.
+
+`robo-nix` makes that system layer explicit and repeatable without asking every contributor to learn a new environment stack first.
 
 > [!WARNING]
-> `robo-nix` is early beta software. Expect CLI wording, generated files, diagnostics, runtime coverage, and installer behavior to change while the project is validated against real robotics repositories. Review generated `robo.nix` and `flake.nix` before committing them, and pin versions for shared team workflows.
+> `robo-nix` is early beta software. Expect CLI wording, generated runtime files, diagnostics, runtime coverage, and installer behavior to change while the project is validated against real robotics repositories. Review generated project files before committing them, and pin versions for shared team workflows.
 
-Read the documentation site at <https://ausbxuse.github.io/robo-nix/>.
+## Key Features
+
+| Feature | What it means |
+| --- | --- |
+| Normal Python workflow | Keep using `.python-version`, `.venv`, `pyproject.toml`, and `uv.lock`. |
+| Robotics runtime setup | Prepare native libraries, CUDA and graphics pieces, ROS and simulator tooling, compilers, and shell environment. |
+| Small command surface | Use `robo up`, `robo run`, `robo shell`, `robo check`, and `robo status` instead of copying long setup recipes. |
+| Runtime diagnostics | Separate Python, runtime, host driver, graphics, CUDA, and native build failures. |
+| Explicit project files | Generate reviewable runtime files instead of relying on hidden machine state. |
+| Fast repeat runs | Reuse cached runtime exports when the project runtime has not changed. |
+
+## How It Compares
+
+`robo-nix` is focused on uv-managed robotics projects that need more than Python packages. It is not trying to replace every environment tool.
+
+| Tool | Best fit | Where `robo-nix` is different |
+| --- | --- | --- |
+| `uv` | Fast Python package and virtual environment management. | `robo-nix` keeps `uv` in charge of Python and adds the native robotics runtime around it. |
+| Poetry | Python packaging and publishing workflows. | `robo-nix` does not manage Python packaging policy; it prepares the runtime Python packages need. |
+| Conda / Pixi | Teams that want one ecosystem to own Python and many native packages. | `robo-nix` keeps Python project files normal and focuses on robotics runtime setup and diagnostics. |
+| Docker / dev containers | Image-based development, deployment, and isolated services. | `robo-nix` targets host-integrated robotics work where GPUs, simulator GUIs, ROS networking, and hardware access matter. |
+| Handwritten setup docs | Small projects with simple dependencies. | `robo-nix` turns repeat setup assumptions into project files and reusable commands. |
+| General dev-shell tools | Teams already comfortable maintaining low-level environment definitions. | `robo` provides a robotics-oriented workflow, generated project files, and plain-language checks for users who should not need to become environment experts. |
 
 ## Quick Start
 
-Install on a fresh Linux, macOS, or WSL host:
+Install `robo` on Linux, macOS, or WSL:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/ausbxuse/robo-nix/develop/scripts/install.sh | sh
 ```
 
-The installer uses an existing `nix` when available. If Nix is missing, it installs Determinate Nix, then installs `robo` into the user's Nix profile.
+The installer reuses what is already on your machine when it can. On a fresh machine, it installs the pieces `robo` needs, then adds the `robo` command.
 
-Start a project:
+### Core Commands
+
+Learn these first. They are the day-to-day surface of `robo-nix`.
+
+| Command              | Use it when you want to...                                     |
+| -------------------- | -------------------------------------------------------------- |
+| `robo up`            | Create or refresh the project runtime.                         |
+| `robo up --shell`    | Create or refresh the runtime, then enter it immediately.      |
+| `robo run <command>` | Run one command inside the prepared runtime.                   |
+| `robo shell`         | Stay inside the runtime for interactive work.                  |
+| `robo check`         | Debug setup, Python, CUDA, graphics, and native build issues.  |
+| `robo status`        | See a quick health summary for the current project.            |
+
+### New Project
+
+Create a project and enter its runtime shell:
 
 ```bash
 robo up robot-learning --yes
 cd robot-learning
 robo up --shell
+```
+
+Then install Python packages with `uv`:
+
+```bash
 uv sync
+```
+
+Run a quick smoke test:
+
+```bash
+python -c "import sys; print(sys.executable)"
+```
+
+Leave the shell with `exit`. After that, use `robo run` for one-off commands or `robo shell` when you want to stay inside the runtime:
+
+```bash
+robo run python your_script.py
+robo shell
+robo check
+```
+
+### Existing Project
+
+For a repository that already has Python project files, run:
+
+```bash
+cd existing-project
+robo up --shell
+uv sync
+python -m pytest
+```
+
+`robo up --shell` prepares the runtime and drops you into it. `uv sync` is separate on purpose: each project controls its own dependency groups, extras, private indexes, and editable sources.
+
+After setup, keep using `robo` as the entry point:
+
+```bash
 robo run python -m pytest
+robo run python train.py
+robo check
+robo shell
 robo status
 ```
 
-Use `robo up --shell` when you want setup to drop directly into the runtime shell. Python package installation stays an explicit project step. `robo up` caches the realized shell environment in `.robo-nix/`, so later `robo shell` and `robo run ...` calls can start without repeating the full Nix shell evaluation unless runtime files change.
-
-`robo up` creates missing runtime files when needed. `robo init` is still available when you only want to generate the project files. Existing `pyproject.toml` and `uv.lock` stay project-owned.
-
-`robo status` prints a quick runtime health summary. `robo check` explains the next useful action when CUDA, graphics, ROS, native builds, or Python environment setup needs debugging. To leave a runtime shell, run `exit`; `robo deactivate` prints that clean exit path when users need a reminder.
+### Optional Shell Hook
 
 For a Conda-like prompt prefix and in-place shell entry, install the optional shell hook:
 
@@ -49,52 +143,31 @@ robo shell
 
 The hook supports bash and zsh in-place shell entry. Fish currently keeps the standard subprocess shell path.
 
-## Product Boundary
+## How It Works
 
-`robo up` prepares the native runtime. It does not run `uv sync` or choose project-specific Python extras, dependency groups, indexes, or source pins. Those stay in `pyproject.toml`, `uv.lock`, and project docs.
+`robo-nix` keeps ownership clear:
 
-`robo check cuda` and `robo check graphics --verbose` report observed host facts for CUDA and graphics. They do not scan arbitrary driver directories or guess host-specific library paths during shell setup.
+- `uv` owns Python versions, virtual environments, Python packages, and `uv.lock`.
+- The runtime layer owns native libraries, CUDA and graphics pieces, ROS and simulator tooling, compilers, and the shell environment.
+- `robo` owns workflow, generated runtime files, command wrapping, and diagnostics.
 
-## Repository Shape
+`robo up` creates or updates the project runtime files, prepares the runtime, and caches shell exports in `.robo-nix/` so later `robo shell` and `robo run ...` commands can start faster.
 
-```text
-crates/robo-cli/       Rust CLI
-nix/modules/           runtime component implementations
-nix/metadata/          component docs, starter profiles, and inference rules
-nix/mk-flake.nix       flake generator
-nix/repo-support.nix   repo checks and package wrappers
-tests/fixtures/        downstream flake fixtures
-docs/                  VitePress documentation source
-```
+Python package installation remains explicit. `robo` does not run `uv sync` for you, because dependency groups, extras, private indexes, editable sources, and install policy belong to each project.
 
-## Runtime Model
+## Documentation
 
-`robo.nix` is the project runtime contract. It lists reusable native components such as `python-uv`, `native-build`, `media`, `x11-gl`, `cuda-toolkit`, `ros2-jazzy`, and `mujoco`.
-
-`robo check --why` explains why components were selected. `robo contract --json` prints the resolved contract for tooling.
-
-## Docs
-
-The main documentation is published at <https://ausbxuse.github.io/robo-nix/>.
-
-Build the VitePress documentation site locally:
-
-```bash
-nix build .#docs
-```
-
-Preview it locally:
-
-```bash
-nix run .#docs-serve
-```
+Read the documentation site at <https://ausbxuse.github.io/robo-nix/>.
 
 Useful entry points:
 
-- [User guide](https://ausbxuse.github.io/robo-nix/users/getting-started)
+- [Get started](https://ausbxuse.github.io/robo-nix/users/getting-started)
 - [Why robo-nix](https://ausbxuse.github.io/robo-nix/blog)
 - [Diagnostics](https://ausbxuse.github.io/robo-nix/users/diagnostics)
+- [Python boundary](https://ausbxuse.github.io/robo-nix/users/python)
 - [Developer overview](https://ausbxuse.github.io/robo-nix/developers/overview)
+
+Contributor setup, repository layout, and local documentation commands live in the [Developer overview](https://ausbxuse.github.io/robo-nix/developers/overview).
 
 ## License
 

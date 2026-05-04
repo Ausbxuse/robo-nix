@@ -1607,6 +1607,18 @@ fn check_cuda_host_requirement(
 
     if let Some(path) = crate::runtime::find_host_libcuda() {
         check_ok(config, &format!("CUDA driver library visible at {path}"));
+        if env::var_os("ROBO_NIX_LIBCUDA_PATH").is_none()
+            && plan.host_required
+            && let Some(driver_dir) = Path::new(&path).parent()
+        {
+            check_hint(
+                config,
+                &format!(
+                    "robo run/shell will add {} to the runtime automatically; set ROBO_NIX_LIBCUDA_PATH to override",
+                    driver_dir.display()
+                ),
+            );
+        }
     } else {
         check_warn(
             config,

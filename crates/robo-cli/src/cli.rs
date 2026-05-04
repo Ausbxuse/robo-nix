@@ -120,6 +120,9 @@ struct UpArgs {
     #[arg(long, help = "Initialize missing runtime files without prompting")]
     yes: bool,
 
+    #[arg(long, help = "Replace generated runtime files during setup")]
+    force: bool,
+
     #[arg(long, help = "Open an interactive runtime shell after setup succeeds")]
     shell: bool,
 }
@@ -155,7 +158,9 @@ pub(crate) fn run() -> ExitCode {
 
     match cli.command {
         Some(CliCommand::Init(args)) => init::run(args, config),
-        Some(CliCommand::Up(args)) => run_project_up(args.target, args.yes, args.shell, config),
+        Some(CliCommand::Up(args)) => {
+            run_project_up(args.target, args.yes, args.force, args.shell, config)
+        }
         Some(CliCommand::Shell(args)) => run_project_shell(args.args, config),
         Some(CliCommand::Status) => check::run_status(config),
         Some(CliCommand::Check(args)) => check::run_check(args, config),

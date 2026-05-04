@@ -105,6 +105,18 @@ component x11-gl
 
 Nix components must not claim host-owned capabilities. For example, `cuda-toolkit` must not provide `host.cuda.driver` or `host.cuda.libcuda`.
 
+When a project requires host CUDA and the CLI can detect `host.cuda.libcuda`,
+`robo` may materialize that host provider into the cached runtime environment.
+That bridge is still host-owned: users can override it with
+`ROBO_NIX_LIBCUDA_PATH` or disable automatic bridging with
+`ROBO_NIX_DISABLE_HOST_CUDA_AUTO=1`.
+
+Some simulators also need host graphics manifests, not just Nix OpenGL libraries.
+For `isaac-sim`, the CLI may materialize detected host NVIDIA EGL and Vulkan
+manifest files into the cached runtime environment. That bridge does not own
+PRIME/offload policy; users still launch with their host's normal mechanism when
+needed. Disable it with `ROBO_NIX_DISABLE_HOST_GRAPHICS_AUTO=1`.
+
 ## Metadata Shape
 
 The metadata can remain Nix for now. The important change is semantic: rules produce requirements, and components declare capabilities.

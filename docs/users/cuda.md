@@ -63,9 +63,17 @@ Errors from Warp, Isaac, PyTorch, or JAX about missing CUDA driver symbols usual
 
 ## Driver Library Path
 
-`robo shell` does not scan arbitrary host driver directories and mutate library paths. This avoids turning one host-specific fix into a global shell behavior that affects Python installs, C++ builds, and simulators.
+For projects that declare CUDA wheels, Isaac Sim, or the CUDA toolkit, `robo up`
+probes the host for `libcuda.so.1`. When it finds a confident provider, such as
+`/run/opengl-driver/lib/libcuda.so.1` on many NixOS NVIDIA hosts, `robo run` and
+`robo shell` add that driver directory to the runtime automatically.
 
-If a package needs an explicit CUDA driver path, set:
+`robo` does not scan arbitrary host driver directories inside the generated Nix
+shell. The CLI materializes a detected host CUDA capability for CUDA projects,
+then caches that runtime environment. This keeps the host/Nix/uv boundary clear
+without making normal users wire `LD_LIBRARY_PATH` by hand.
+
+To override the detected path, set:
 
 ```bash
 export ROBO_NIX_LIBCUDA_PATH=/path/to/libcuda.so.1
@@ -73,4 +81,21 @@ export ROBO_NIX_LIBCUDA_PATH=/path/to/libcuda.so.1
 
 or point it at the directory containing `libcuda.so.1`.
 
-`robo check cuda` reports what it observes so the user can make that host-owned fix deliberately.
+To disable host CUDA driver auto-bridging, set:
+
+```bash
+export ROBO_NIX_DISABLE_HOST_CUDA_AUTO=1
+```
+
+## NVIDIA Offload
+
+`nvidia-offload` selects the NVIDIA GPU for rendering on hybrid NixOS systems. It
+does not expose the CUDA driver library by itself. Use it when the workload needs
+PRIME render offload:
+
+```bash
+nvidia-offload robo run python script.py
+```
+
+`robo` still handles the `libcuda.so.1` runtime bridge for CUDA projects when the
+host driver library is detectable.

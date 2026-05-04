@@ -10,14 +10,23 @@
   repoPath = toString repoRoot;
   sourceFilter = path: _type: let
     rel = lib.removePrefix (repoPath + "/") (toString path);
-    top = builtins.head (lib.splitString "/" rel);
+    parts = lib.splitString "/" rel;
+    top = builtins.head parts;
   in
     !(builtins.elem top [
+      ".codex"
+      ".direnv"
       ".git"
       ".github"
+      ".robo-nix"
+      ".venv"
+      "node_modules"
       "playgrounds"
+      "result"
       "target"
-    ]);
+    ])
+    && !(lib.any (part: part == "node_modules") parts)
+    && !(lib.hasPrefix "result-" top);
   repoSource = lib.sources.cleanSourceWith {
     src = repoRoot;
     filter = sourceFilter;
