@@ -475,6 +475,8 @@ fn find_libcuda_in_dir(dir: &Path) -> Option<PathBuf> {
         .find(|path| path.is_file())
 }
 
+// This is intentionally narrow: only trust NVIDIA-named manifests from standard
+// GLVND/Vulkan manifest directories that the host graphics stack already owns.
 fn find_first_nvidia_json(dirs: &[&str]) -> Option<String> {
     dirs.iter()
         .map(Path::new)

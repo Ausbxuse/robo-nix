@@ -63,7 +63,7 @@ Errors from Warp, Isaac, PyTorch, or JAX about missing CUDA driver symbols usual
 
 ## Driver Library Path
 
-For projects that declare CUDA wheels, Isaac Sim, or the CUDA toolkit, `robo up`
+For projects that declare CUDA wheels or Isaac Sim, `robo up`
 probes the host for `libcuda.so.1`. When it finds a confident provider, such as
 `/run/opengl-driver/lib/libcuda.so.1` on many NixOS NVIDIA hosts, `robo run` and
 `robo shell` add that driver directory to the runtime automatically.
