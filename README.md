@@ -32,19 +32,29 @@ Robotics setup usually fails at the boundary between Python and the host system.
 > [!WARNING]
 > `robo-nix` is early beta software. Expect CLI wording, generated runtime files, diagnostics, runtime coverage, and installer behavior to change while the project is validated against real robotics repositories. Review generated project files before committing them, and pin versions for shared team workflows.
 
+## Trust and Transparency
+
+`robo-nix` is early. The goal is robust downstream usage: projects should be easier to enter, run, and debug without requiring every user to become an environment expert.
+
+- Project files are generated as plain `flake.nix`, `robo.nix`, `.python-version`, and `pyproject.toml` so teams can review what changed.
+- Python package installation stays explicit. `robo` does not silently run `uv sync` or choose dependency groups, extras, indexes, or editable sources for a project.
+- Runtime inference rules live in metadata and validation checks, not scattered CLI heuristics.
+- Platform coverage is tracked below. GPU, display, hardware, ROS networking, and vendor SDK behavior are host-specific and called out separately.
+- This repository was created and developed with AI assistance. The project is open about that provenance; maintainers own design direction, review, and verification. See [Contributing](./CONTRIBUTING.md) and [AI-Assisted Contributing](https://ausbxuse.github.io/robo-nix/developers/ai-assisted-contributing).
+
 ## Tested Platforms
 
-This table describes the checks run by CI and scheduled validation jobs. Container-based checks cover clean-image setup plus `robo init`, `robo check`, and `robo status`; they do not prove desktop graphics, host GPU drivers, hardware access, shell entry, or ROS networking on that distribution.
+This table tracks product-level validation. Baseline means install plus `robo init`, `robo check`, and `robo status`; shell means entering and using the generated runtime shell. GPU, graphics, hardware access, and ROS networking need host-specific validation.
 
-| Platform | CI targets | Install / Nix setup | `robo init/check/status` | `robo shell` | GPU / graphics | Notes |
-| --- | --- | --- | --- | --- | --- | --- |
-| Ubuntu Linux | runners: 22.04, 24.04; containers: 22.04, 24.04 | ✓ | ✓ | ✓ | ✗ | Runner jobs cover shell validation; containers cover clean-image setup. |
-| Debian Linux | `debian:12`, `debian:13` | ✓ | ✓ | ✗ | ✗ | Clean container validation. |
-| Fedora Linux | `fedora:latest` | ✓ | ✓ | ✗ | ✗ | Clean container validation. |
-| Arch Linux | `archlinux:latest` | ✓ | ✓ | ✗ | ✗ | Clean container validation. |
-| NixOS / Nix image | `nixos/nix:latest` | ✓ | ✓ | ✗ | ✗ | Starts from an image with Nix already available. |
-| macOS | `macos-latest` | ✓ | partial | ✗ | ✗ | Evaluates library APIs and flake outputs; Linux runtime shells are not exercised. |
-| NVIDIA Linux host | self-hosted runner with `linux`, `x64`, `gpu`, `nvidia` labels | ✓ | ✓ | ✓ | ✓ | Scheduled CUDA and GPU validation. |
+| Platform | Versions | Baseline | Shell | GPU / graphics | Notes |
+| --- | --- | --- | --- | --- | --- |
+| Ubuntu Linux | 22.04, 24.04 | ✓ | ✓ | ✗ | Primary Linux validation target. |
+| Debian Linux | 12, 13 | ✓ | ✗ | ✗ | Clean-system baseline. |
+| Fedora Linux | current | ✓ | ✗ | ✗ | Clean-system baseline. |
+| Arch Linux | current | ✓ | ✗ | ✗ | Clean-system baseline. |
+| NixOS | current | ✓ | ✗ | ✗ | Validates an existing Nix installation. |
+| macOS | current | ✓ | partial | ✗ | API and flake evaluation only; Linux runtime shells are not exercised. |
+| NVIDIA Linux host | scheduled GPU host | ✓ | ✓ | ✓ | CUDA and graphics validation. |
 
 ## Key Features
 
@@ -57,18 +67,20 @@ This table describes the checks run by CI and scheduled validation jobs. Contain
 | Explicit project files | Generate reviewable runtime files instead of relying on hidden machine state. |
 | Fast repeat runs | Reuse cached runtime exports when the project runtime has not changed. |
 
-## How It Compares
+## Related Projects
 
-`robo-nix` is focused on uv-managed robotics projects that need more than Python packages. It is not trying to replace every environment tool.
+`robo-nix` complements these projects rather than replacing them:
 
-| Tool | Best fit | Where `robo-nix` is different |
-| --- | --- | --- |
-| `uv` | Fast Python package and virtual environment management. | `robo-nix` keeps `uv` in charge of Python and adds the native robotics runtime around it. |
-| Poetry | Python packaging and publishing workflows. | `robo-nix` does not manage Python packaging policy; it prepares the runtime Python packages need. |
-| Conda / Pixi | Teams that want one ecosystem to own Python and many native packages. | `robo-nix` keeps Python project files normal and focuses on robotics runtime setup and diagnostics. |
-| Docker / dev containers | Image-based development, deployment, and isolated services. | `robo-nix` targets host-integrated robotics work where GPUs, simulator GUIs, ROS networking, and hardware access matter. |
-| Handwritten setup docs | Small projects with simple dependencies. | `robo-nix` turns repeat setup assumptions into project files and reusable commands. |
-| General dev-shell tools | Teams already comfortable maintaining low-level environment definitions. | `robo` provides a robotics-oriented workflow, generated project files, and plain-language checks for users who should not need to become environment experts. |
+| Project | Relationship |
+| --- | --- |
+| [Nix](https://nixos.org/) | Reproducible native/runtime dependency model. |
+| [uv](https://github.com/astral-sh/uv) | Python package, virtual environment, lockfile, and interpreter workflow. |
+| [nixpkgs-python](https://github.com/cachix/nixpkgs-python) | Broad cached CPython coverage for uv-managed robotics projects. |
+| [nix-ros-overlay](https://github.com/lopsided98/nix-ros-overlay) | ROS package coverage used by ROS-facing runtime components. |
+| [nixGL](https://github.com/nix-community/nixGL) | Reference point for host graphics driver bridging and command-wrapper design. |
+| [uv2nix](https://github.com/pyproject-nix/uv2nix) | Nix-native Python environment approach for projects where Nix should own Python packages. |
+| [devenv](https://github.com/cachix/devenv) | General-purpose developer environments with a higher-level Nix interface. |
+| [pixi](https://github.com/prefix-dev/pixi) | Conda-style project environments when one ecosystem should own Python and native packages. |
 
 ## Quick Start
 
@@ -180,6 +192,7 @@ Useful entry points:
 - [Diagnostics](https://ausbxuse.github.io/robo-nix/users/diagnostics)
 - [Python boundary](https://ausbxuse.github.io/robo-nix/users/python)
 - [Developer overview](https://ausbxuse.github.io/robo-nix/developers/overview)
+- [AI-assisted contributing](https://ausbxuse.github.io/robo-nix/developers/ai-assisted-contributing)
 
 Contributor setup, repository layout, and local documentation commands live in the [Developer overview](https://ausbxuse.github.io/robo-nix/developers/overview).
 

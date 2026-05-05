@@ -2,9 +2,7 @@
 
 Start here if you maintain `robo-nix` code, Nix modules, metadata, tests, or documentation.
 
-This section is for people maintaining `robo-nix` itself.
-
-The project goal is not to wrap every downstream workflow. The goal is to provide a clear, reusable native runtime standard for uv-managed robotics projects.
+The goal is a clear, reusable native runtime standard for uv-managed robotics projects. If a change makes downstream users learn more Nix, debug more hidden shell behavior, or carry more project-specific policy in `robo-nix`, treat that as a product smell unless it solves a common problem.
 
 ## Product Boundary
 
@@ -46,7 +44,9 @@ nix build .#docs
 nix run .#docs-serve
 ```
 
-For CLI behavior changes, read the current [CLI UX contract](/developers/cli-ux) and the [UX iteration guide](/developers/ux-iteration) before editing command output.
+For CLI behavior changes, read the current [CLI UX contract](/developers/cli-ux) before editing command output. Use [UX design notes](/developers/ux-iteration) for exploratory direction.
+
+For AI-assisted work, read [AI-Assisted Contributing](/developers/ai-assisted-contributing).
 
 For broader validation:
 

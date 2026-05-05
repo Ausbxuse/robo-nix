@@ -4,21 +4,14 @@ This page covers repo-level maintenance.
 
 ## Documentation
 
-The VitePress site is the maintained documentation surface:
+The VitePress site is the maintained documentation surface.
 
 ```bash
 nix build .#docs
 nix run .#docs-serve
 ```
 
-GitHub Pages deployment is handled by `.github/workflows/docs.yml`. The workflow builds from `docs/` with Node and sets `ROBO_NIX_DOCS_BASE=/robo-nix/`, because project Pages sites are served below `https://<owner>.github.io/robo-nix/`.
-
-Keep docs organized by audience:
-
-- `docs/users/` for usage, setup, workflows, runtime expectations, and troubleshooting
-- `docs/developers/` for architecture, CLI contracts, metadata design, and maintainer workflow
-
-Do not reintroduce a second maintained Rustdoc-style documentation surface unless there is a concrete release need.
+GitHub Pages deployment is handled by `.github/workflows/docs.yml`. The workflow builds from `docs/` with Node and sets `ROBO_NIX_DOCS_BASE=/robo-nix/`.
 
 The docs site owns its Node toolchain under `docs/package.json` and `docs/package-lock.json`. Keep root `package.json` out of the repo unless the root gains a real Node product surface.
 
@@ -63,6 +56,10 @@ bash tests/gpu-validation.sh
 ```
 
 Do not treat GPU, Isaac, or broad Nix checks as cheap inner-loop tests.
+
+## AI-Assisted Work
+
+Use [AI-Assisted Contributing](./ai-assisted-contributing.md) for agent workflow, review expectations, and pull request disclosure.
 
 ## Failure Modes
 

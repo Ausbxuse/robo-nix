@@ -4,7 +4,7 @@ layout: home
 hero:
   name: robo-nix
   text: Reproducible robotics environments without the setup ritual.
-  tagline: Keep Python normal with uv. Let Nix handle native runtime libraries. Use robo for the workflow.
+  tagline: Start quickly with normal Python. Let Nix handle native runtime libraries. Use robo for the workflow.
   actions:
     - theme: brand
       text: Get Started
@@ -14,14 +14,14 @@ hero:
       link: /blog
 
 features:
-  - title: One workflow for setup
-    details: Prepare a project, enter the runtime, run commands, and inspect problems through the robo CLI.
+  - title: Start with three commands
+    details: Prepare the runtime, sync Python with uv, then run project commands through robo.
   - title: Normal Python, stronger runtime
     details: uv keeps owning .python-version, pyproject.toml, uv.lock, and .venv while Nix supplies native libraries.
   - title: Built for robotics friction
     details: CUDA, graphics, ROS, simulators, compilers, media libraries, and host-driver diagnostics belong in the environment story.
-  - title: Honest diagnostics
-    details: robo separates Python, Nix runtime, host driver, and project bootstrap failures instead of hiding them behind fragile shell tricks.
+  - title: Reviewable by design
+    details: Generated files are plain project files, platform coverage is tracked openly, and unsupported host-specific behavior is called out.
 ---
 
 ## What It Feels Like
@@ -34,7 +34,7 @@ uv sync
 robo run python -m pytest
 ```
 
-`robo-nix` is for robot-learning projects that want reproducible native runtime setup without turning every contributor into a Nix user.
+`robo-nix` is for robot-learning projects that want reproducible native runtime setup without turning every contributor into a Nix user. The goal is easier downstream usage: less setup drift, clearer failures, and fewer environment details for each user to rediscover.
 
 ::: warning Early beta
 `robo-nix` is still being validated against real robotics projects. CLI wording, generated files, diagnostics, runtime coverage, and installer behavior may change. Review generated `robo.nix` and `flake.nix` before committing them, and pin versions for shared team workflows.
@@ -51,3 +51,4 @@ It keeps the contract simple:
 - New to the project: start with the [User Guide](./users/).
 - Debugging setup: read [Diagnostics](./users/diagnostics.md) or the [Runtime Failure Guide](./users/failure-guide.md).
 - Maintaining robo-nix: read the [Developer Guide](./developers/).
+- Contributing with AI assistance: read [AI-Assisted Contributing](./developers/ai-assisted-contributing.md).

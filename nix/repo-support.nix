@@ -314,7 +314,7 @@ in rec {
       test -x ${repoPackages.${pkgs.system}.cuda-check}/bin/cuda-check
       cat >"$out" <<'EOF'
       GPU-required validation is intentionally separate from default CPU CI.
-      Run `nix run .#cuda-check` or the gpu-smoke workflow on a self-hosted NVIDIA runner.
+      Run `nix run .#cuda-check` or the gpu-validation workflow on a self-hosted NVIDIA runner.
       EOF
     '';
   });

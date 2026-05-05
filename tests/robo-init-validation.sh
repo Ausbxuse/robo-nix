@@ -236,7 +236,7 @@ EOF
 
 	(
 		cd "$tmpdir/robo-project"
-		nix run "${repo_flake_url}#robo" -- run python -c 'from pathlib import Path; assert Path(".robo-nix/bootstrap-stamp").is_file()' >"$robo_run_output"
+		nix run "${repo_flake_url}#robo" -- run python -c 'from pathlib import Path; raise SystemExit(0 if Path(".robo-nix/bootstrap-stamp").is_file() else "bootstrap stamp missing")' >"$robo_run_output"
 	)
 	test ! -s "$robo_run_output"
 }

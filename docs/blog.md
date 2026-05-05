@@ -53,32 +53,28 @@ robo run python -m pytest
 
 The goal is not to hide reality. The goal is to make reality easier to see and easier to reproduce.
 
-## How It Compares
+## Where It Fits
 
-`robo-nix` is not trying to win every environment category. It is focused on uv-managed robotics projects that need a reproducible native runtime without making every contributor learn Nix first.
+`robo-nix` is not trying to win every environment category. It is for uv-managed robotics projects that need host-integrated native runtime support without asking every contributor to become a Nix user.
 
-<div class="feature-matrix">
+<div class="fit-matrix">
 
-| Tool | Python lock | Native libs | CUDA/graphics | Host diagnostics | Simple workflow |
+| Tool | Python lock | Native libs | CUDA / graphics | Host diagnostics | Beginner workflow |
 | --- | :-: | :-: | :-: | :-: | :-: |
 | `robo-nix` | <span class="yes">✓</span> | <span class="yes">✓</span> | <span class="yes">✓</span> | <span class="yes">✓</span> | <span class="yes">✓</span> |
 | plain `uv` | <span class="yes">✓</span> | <span class="no">✕</span> | <span class="no">✕</span> | <span class="no">✕</span> | <span class="yes">✓</span> |
-| Conda | <span class="partial">~</span> | <span class="yes">✓</span> | <span class="partial">~</span> | <span class="no">✕</span> | <span class="partial">~</span> |
-| Pixi | <span class="partial">~</span> | <span class="yes">✓</span> | <span class="partial">~</span> | <span class="partial">~</span> | <span class="yes">✓</span> |
+| Conda / Pixi | <span class="partial">~</span> | <span class="yes">✓</span> | <span class="partial">~</span> | <span class="partial">~</span> | <span class="partial">~</span> |
 | Docker | <span class="partial">~</span> | <span class="yes">✓</span> | <span class="partial">~</span> | <span class="no">✕</span> | <span class="partial">~</span> |
 | `uv2nix` | <span class="yes">✓</span> | <span class="yes">✓</span> | <span class="partial">~</span> | <span class="no">✕</span> | <span class="partial">~</span> |
-| devenv | <span class="partial">~</span> | <span class="yes">✓</span> | <span class="partial">~</span> | <span class="partial">~</span> | <span class="yes">✓</span> |
-| raw flakes | <span class="partial">~</span> | <span class="yes">✓</span> | <span class="yes">✓</span> | <span class="partial">~</span> | <span class="no">✕</span> |
+| devenv / raw flakes | <span class="partial">~</span> | <span class="yes">✓</span> | <span class="partial">~</span> | <span class="partial">~</span> | <span class="no">✕</span> |
 
 </div>
 
-<div class="legend">
+<div class="matrix-legend">
   <span class="yes">✓</span> strong fit
   <span class="partial">~</span> possible with tradeoffs
   <span class="no">✕</span> not the tool's job
 </div>
-
-The practical read:
 
 - Use `uv` when you only need Python.
 - Use Docker when image deployment is the center of the workflow.

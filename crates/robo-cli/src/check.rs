@@ -1,6 +1,5 @@
 use clap::{Args, ValueEnum};
 use std::env;
-use std::ffi::OsStr;
 use std::fs;
 use std::path::Path;
 use std::process::{Command, ExitCode};
@@ -930,6 +929,7 @@ pub(super) fn runtime_command<const N: usize, const M: usize>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::ffi::OsStr;
 
     fn runtime(components: &[&str], cuda_wheel_version: Option<&str>) -> ProjectRuntime {
         ProjectRuntime {

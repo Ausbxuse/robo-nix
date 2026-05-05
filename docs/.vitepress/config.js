@@ -1,17 +1,17 @@
-const featureMatrixStyles = `
-.feature-matrix table {
+const fitMatrixStyles = `
+.fit-matrix table {
   display: table;
   width: 100%;
   font-size: 14px;
 }
 
-.feature-matrix th,
-.feature-matrix td {
+.fit-matrix th,
+.fit-matrix td {
   white-space: nowrap;
 }
 
-.feature-matrix td:not(:first-child),
-.feature-matrix th:not(:first-child) {
+.fit-matrix td:not(:first-child),
+.fit-matrix th:not(:first-child) {
   text-align: center;
 }
 
@@ -33,7 +33,7 @@ const featureMatrixStyles = `
   color: #b91c1c;
 }
 
-.legend {
+.matrix-legend {
   display: flex;
   flex-wrap: wrap;
   gap: 14px;
@@ -48,7 +48,7 @@ export default {
   description: 'Robotics runtime environments powered by Nix and uv',
   base: process.env.ROBO_NIX_DOCS_BASE || '/',
   cleanUrls: true,
-  head: [['style', {}, featureMatrixStyles]],
+  head: [['style', {}, fitMatrixStyles]],
 
   themeConfig: {
     logo: '/logo.svg',
@@ -97,6 +97,7 @@ export default {
           { text: 'Developer Overview', link: '/developers/overview' },
           { text: 'Architecture', link: '/developers/architecture' },
           { text: 'Repository Workflow', link: '/developers/repository' },
+          { text: 'AI-Assisted Contributing', link: '/developers/ai-assisted-contributing' },
           { text: 'Roadmap', link: '/developers/roadmap' }
         ]
       },
@@ -105,7 +106,7 @@ export default {
         items: [
           { text: 'Runtime Capability Model', link: '/developers/runtime-capability-model' },
           { text: 'CLI UX Contract', link: '/developers/cli-ux' },
-          { text: 'UX Iteration Guide', link: '/developers/ux-iteration' }
+          { text: 'UX Design Notes', link: '/developers/ux-iteration' }
         ]
       }
     ],

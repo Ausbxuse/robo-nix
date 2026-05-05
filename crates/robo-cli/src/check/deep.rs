@@ -338,11 +338,12 @@ fn check_runtime_probes(
             );
             let output = progress.output_current(&mut command, "checking matplotlib QtAgg probe");
             progress.suspend(|| match output {
-                Ok(output) if output.status.success() => {
-                    check_ok(config, "matplotlib QtAgg smoke test works")
-                }
+                Ok(output) if output.status.success() => check_ok(
+                    config,
+                    "matplotlib QtAgg backend probe works",
+                ),
                 Ok(output) => {
-                    check_warn(config, warnings, "matplotlib QtAgg smoke test failed");
+                    check_warn(config, warnings, "matplotlib QtAgg backend probe failed");
                     check_hint(config, &combined_output(&output));
                     check_hint(
                         config,

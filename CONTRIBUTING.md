@@ -1,6 +1,6 @@
 # Contributing
 
-`robo-nix` should be maintained like infrastructure, not like an ad hoc shell repo.
+`robo-nix` is infrastructure for downstream robotics projects. Changes should make projects easier to enter, run, and debug; they should not push extra environment knowledge, workflow policy, or maintenance burden onto users.
 
 ## Contribution Standard
 
@@ -15,11 +15,7 @@ Changes should preserve or improve:
 
 ## AI Usage Contract
 
-AI-assisted development is encouraged in this repo.
-
-That is a practical choice: `robo-nix` can become painful to maintain if every refactor, test addition, and documentation pass must be done manually.
-
-However, AI usage is only acceptable when the result is verifiable.
+This repository was created and developed with AI assistance. Future AI-assisted development is welcome when it is transparent, reviewable, and verified carefully.
 
 The required standard is:
 
@@ -36,17 +32,14 @@ Acceptable verification includes:
 - targeted `nix eval` or `nix run` validation
 - profiling output for performance-oriented refactors
 
-Unacceptable usage includes:
+Avoid:
 
 - merging AI-generated edits without understanding them
 - accepting plausible-looking Nix code without evaluation or tests
 - adding abstractions that cannot be justified beyond “the AI suggested it”
 - documenting behavior that was never validated
 
-The rule is simple:
-
-- AI may accelerate implementation
-- AI may not bypass justification or verification
+For agent prompts, PR disclosure, and review expectations, read [AI-Assisted Contributing](./docs/developers/ai-assisted-contributing.md).
 
 ## Preferred Workflow
 

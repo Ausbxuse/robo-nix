@@ -345,7 +345,7 @@ pub(crate) fn run_project_command(args: Vec<OsString>, config: Config) -> ExitCo
         return ExitCode::from(2);
     }
 
-    if let Err(code) = ensure_uv_project_runtime(config, "run") {
+    if let Err(code) = prepare_uv_runtime(config, "run", true) {
         return code;
     }
 
