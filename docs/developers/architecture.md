@@ -58,6 +58,6 @@ Do not treat host path inventories as a scalable abstraction.
 
 For GPU and graphics, prefer explicit diagnostics over generated-shell scans. Host driver visibility should be diagnosed from observed environment/tool output, not guessed from arbitrary filesystem inventories.
 
-When a runtime contract clearly requires a host-owned capability, `robo` may materialize a narrowly detected provider into the cached runtime environment. Current examples are `libcuda.so.1` for CUDA-wheel and Isaac Sim runtimes, and NVIDIA EGL/Vulkan manifest files for Isaac Sim. These bridges must be opt-out, respect user-provided environment variables, and must not own host policy such as PRIME/offload launchers.
+When a runtime contract clearly requires a host-owned capability, `robo` may materialize a narrowly detected provider into the cached runtime environment. Current examples are `libcuda.so.1` for CUDA-wheel and Isaac Sim runtimes, and NVIDIA EGL/Vulkan manifest files plus their resolved vendor library directories for Isaac Sim. These bridges must be opt-out, respect user-provided environment variables, and must not own host policy such as PRIME/offload launchers.
 
 If a generic exported fact is needed, design the contract first, document it, and add focused validation.

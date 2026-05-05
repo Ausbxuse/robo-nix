@@ -147,6 +147,12 @@ pub(crate) fn run_project_up(
             &format!("up: detected NVIDIA graphics manifests: {manifests}"),
         );
     }
+    if let Some(dirs) = host_bridge::auto_host_graphics_library_dirs(&env) {
+        status(
+            config,
+            &format!("up: detected NVIDIA graphics libraries at {dirs}"),
+        );
+    }
 
     if open_shell {
         println!("robo is ready for this project.");

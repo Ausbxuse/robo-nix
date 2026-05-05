@@ -113,9 +113,11 @@ That bridge is still host-owned: users can override it with
 
 Some simulators also need host graphics manifests, not just Nix OpenGL libraries.
 For `isaac-sim`, the CLI may materialize detected host NVIDIA EGL and Vulkan
-manifest files into the cached runtime environment. That bridge does not own
-PRIME/offload policy; users still launch with their host's normal mechanism when
-needed. Disable it with `ROBO_NIX_DISABLE_HOST_GRAPHICS_AUTO=1`.
+manifest files into the cached runtime environment. When those manifests name
+host vendor libraries by soname, the CLI may resolve them through the host
+linker cache and append only those vendor library directories. That bridge does
+not own PRIME/offload policy; users still launch with their host's normal
+mechanism when needed. Disable it with `ROBO_NIX_DISABLE_HOST_GRAPHICS_AUTO=1`.
 
 ## Metadata Shape
 

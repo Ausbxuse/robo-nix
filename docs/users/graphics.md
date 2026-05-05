@@ -28,6 +28,9 @@ Isaac Sim is stricter than many OpenGL viewers: it often needs the NVIDIA EGL
 vendor file and Vulkan ICD to be selected before startup. For runtimes with the
 `isaac-sim` component, `robo` probes common host manifest locations and, when it
 finds NVIDIA manifests, materializes those paths into `robo run` and `robo shell`.
+If those manifests point at host NVIDIA vendor libraries by soname, `robo`
+resolves them through the host linker cache and appends only the required vendor
+library directories to the runtime library path.
 This is not an offload launcher; use the host's normal launch policy, such as
 `nvidia-offload`, when the machine needs PRIME render offload.
 
@@ -69,7 +72,7 @@ The `robo-nix` default keeps the boundary explicit:
 
 - Nix components expose coherent runtime libraries.
 - The host owns GPU kernel drivers, display sockets, GPU devices, PRIME/offload, and `libcuda.so.1`.
-- For Isaac Sim, `robo` may bridge detected host NVIDIA EGL/Vulkan manifests without owning the offload launcher.
+- For Isaac Sim, `robo` may bridge detected host NVIDIA EGL/Vulkan manifests and the vendor library directories required by those manifests without owning the offload launcher.
 - uv owns Python packages and Python CUDA wheels.
 - `robo check graphics --verbose` reports observed graphics and driver state.
 
@@ -93,4 +96,4 @@ For graphics projects, deep diagnostics report:
 - whether EGL vendor files exist
 - warnings when Nix `libEGL.so.1` is paired with non-Nix vendor files
 
-This is diagnostic. For runtimes that need a host NVIDIA graphics provider, `robo` only materializes detected manifest files from known host locations and leaves user-provided graphics variables unchanged.
+This is diagnostic. For runtimes that need a host NVIDIA graphics provider, `robo` only materializes detected manifest files from known host locations plus the library directories named by those manifests, and leaves user-provided graphics variables unchanged.
