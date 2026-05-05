@@ -25,6 +25,7 @@
         cuda_cudart
         cuda_nvcc
         cuda_nvrtc
+        libnpp.lib
         cuda_profiler_api
       ];
     };

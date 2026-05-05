@@ -229,14 +229,49 @@ assert_native_build_reasserts_tool_path() {
       component = flake.lib.components."native-build" ctx;
       shellInit = builtins.unsafeDiscardStringContext component.shellInit;
       cmakeBin = builtins.unsafeDiscardStringContext "${pkgs.cmake}/bin";
+      gmpLib = builtins.unsafeDiscardStringContext "${pkgs.gmp}/lib";
       ninjaBin = builtins.unsafeDiscardStringContext "${pkgs.ninja}/bin";
       pkgConfigBin = builtins.unsafeDiscardStringContext "${pkgs.pkg-config}/bin";
     in
       assert flake.inputs.nixpkgs.lib.hasInfix cmakeBin shellInit;
+      assert flake.inputs.nixpkgs.lib.hasInfix gmpLib shellInit;
       assert flake.inputs.nixpkgs.lib.hasInfix ninjaBin shellInit;
+      assert flake.inputs.nixpkgs.lib.hasInfix "GMP_ROOT" shellInit;
       assert flake.inputs.nixpkgs.lib.hasInfix pkgConfigBin shellInit;
       assert flake.inputs.nixpkgs.lib.hasInfix "CC=" shellInit;
       assert flake.inputs.nixpkgs.lib.hasInfix "CXX=" shellInit;
+      true
+  '
+	assert_expr "$expr"
+}
+
+assert_python_uv_seeds_project_cmake_helper_prefixes() {
+	local expr
+	expr='
+    let
+      flake = builtins.getFlake "'"git+file://${repo_root}"'";
+      pkgs = import flake.inputs.nixpkgs {
+        system = "x86_64-linux";
+      };
+      ctx = {
+        componentCatalog = flake.lib.components;
+        envName = "python";
+        envSpec = {
+          pythonVersion = "3.10";
+        };
+        lib = flake.inputs.nixpkgs.lib;
+        inherit pkgs;
+        nixpkgsPythonPackages = flake.inputs.nixpkgs-python.packages.x86_64-linux;
+        pkgsRos = pkgs;
+        runtimeLibPath = "";
+        runtimeLibs = [];
+        system = "x86_64-linux";
+      };
+      component = flake.lib.components."python-uv" ctx;
+    in
+      assert flake.inputs.nixpkgs.lib.hasInfix "pybind11" component.shellInit;
+      assert flake.inputs.nixpkgs.lib.hasInfix "nanobind" component.shellInit;
+      assert flake.inputs.nixpkgs.lib.hasInfix "CMAKE_PREFIX_PATH" component.shellInit;
       true
   '
 	assert_expr "$expr"
@@ -725,6 +760,7 @@ assert_profile_metadata_contract
 assert_runtime_inference_contract
 assert_cuda_toolkit_uses_requested_wheel_version
 assert_python_uv_exports_native_build_prefixes
+assert_python_uv_seeds_project_cmake_helper_prefixes
 assert_native_build_reasserts_tool_path
 assert_x11_gl_exports_matching_egl_vendor
 assert_mujoco_exports_offscreen_gl_default

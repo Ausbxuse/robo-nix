@@ -152,6 +152,11 @@ fn materialize_host_graphics_bridge(
     }
     if let Some(cache) = ldconfig {
         if let Some(glx) = find_ldconfig_library_path(cache, "libGLX_nvidia.so.0") {
+            if let Some(driver_version) = nvidia_driver_version(&glx) {
+                for library in find_versioned_host_graphics_libraries(cache, &driver_version) {
+                    libraries.insert(library);
+                }
+            }
             libraries.insert(glx);
         }
     }
@@ -253,6 +258,37 @@ fn host_graphics_library_dependencies(library: &str) -> Vec<String> {
         .filter_map(|line| line.rsplit_once(" => ").map(|(_, path)| path.trim()))
         .filter_map(|path| path.split_whitespace().next())
         .filter(|path| host_graphics_library_name(Path::new(path)))
+        .map(str::to_string)
+        .collect()
+}
+
+fn nvidia_driver_version(library: &str) -> Option<String> {
+    let path = fs::canonicalize(library).ok()?;
+    let name = path.file_name()?.to_str()?;
+    for prefix in ["libGLX_nvidia.so.", "libEGL_nvidia.so."] {
+        if let Some(version) = name.strip_prefix(prefix)
+            && version != "0"
+        {
+            return Some(version.to_string());
+        }
+    }
+    None
+}
+
+fn find_versioned_host_graphics_libraries(cache: &str, driver_version: &str) -> Vec<String> {
+    cache
+        .lines()
+        .filter_map(|line| line.rsplit_once(" => ").map(|(_, path)| path.trim()))
+        .filter_map(|path| path.split_whitespace().next())
+        .filter(|path| {
+            let canonical = fs::canonicalize(path).unwrap_or_else(|_| Path::new(path).to_path_buf());
+            canonical
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| {
+                    name.contains(driver_version) && host_graphics_library_name(Path::new(name))
+                })
+        })
         .map(str::to_string)
         .collect()
 }

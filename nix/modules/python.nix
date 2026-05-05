@@ -93,6 +93,13 @@
           *) export LD_LIBRARY_PATH="$torch_lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" ;;
         esac
 
+        for cmake_prefix in "$site_packages" "$site_packages"/pybind11 "$site_packages"/nanobind; do
+          case ":''${CMAKE_PREFIX_PATH:-}:" in
+            *":$cmake_prefix:"*) ;;
+            *) export CMAKE_PREFIX_PATH="$cmake_prefix''${CMAKE_PREFIX_PATH:+:$CMAKE_PREFIX_PATH}" ;;
+          esac
+        done
+
         if [ -d "$site_packages" ]; then
           for cmake_prefix in "$site_packages" "$site_packages"/*; do
             if [ -d "$cmake_prefix/share/cmake" ]; then

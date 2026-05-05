@@ -116,7 +116,7 @@ Project Python dependency policy.
 
 Try:
 
-Use the uv command documented by the project. If you maintain the project, make sure build requirements and uv groups are declared clearly.
+Use the uv command documented by the project. If you maintain the project, declare the helper package in `pyproject.toml`, for example `pybind11` or `nanobind`. If the failing local package uses old `setup.py`/CMake build code without build-system requirements, add that package to `tool.uv.no-build-isolation-package` so it can see the helper installed in the project environment.
 
 ## CUDA Driver Not Visible
 

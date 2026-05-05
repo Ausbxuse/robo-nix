@@ -30,6 +30,7 @@
   in {
     packages = [
       pkgs.cmake
+      pkgs.gmp
       pkgs.gnumake
       pkgs.ninja
       pkgs.openssl
@@ -40,6 +41,7 @@
       common.exportVars {
         CC = "${pkgs.stdenv.cc.targetPrefix}cc";
         CXX = "${pkgs.stdenv.cc.targetPrefix}c++";
+        GMP_ROOT = pkgs.gmp;
         OPENSSL_ROOT_DIR = pkgs.openssl.out;
         OPENSSL_INCLUDE_DIR = "${pkgs.openssl.dev}/include";
         OPENSSL_CRYPTO_LIBRARY = "${pkgs.openssl.out}/lib/libcrypto.so";
@@ -48,6 +50,8 @@
       }
       + "\n"
       + common.prependPath "PATH" "${pkgs.cmake}/bin"
+      + "\n"
+      + common.prependPath "LD_LIBRARY_PATH" "${pkgs.gmp}/lib"
       + "\n"
       + common.prependPath "PATH" "${pkgs.gnumake}/bin"
       + "\n"

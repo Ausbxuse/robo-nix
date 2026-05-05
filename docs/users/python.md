@@ -63,9 +63,9 @@ The intended setup is:
 - uv installs Python build helpers declared by the project.
 - Nix provides compilers, CMake, pkg-config, headers, and native shared libraries.
 - `robo shell` avoids forcing Nix-managed Python include/library flags into setuptools or PyTorch extension builds.
-- `robo shell` exposes CMake package prefixes from `.venv` packages when they provide `share/cmake`.
+- `robo shell` exposes CMake package prefixes from `.venv` packages when they provide `share/cmake`. It also seeds common project-owned helper prefixes such as `.venv/.../site-packages/pybind11` and `nanobind` before those directories exist, so a first `uv sync` can build local packages after uv installs the declared helper.
 
-If CMake cannot find `pybind11`, `nanobind`, or another Python-owned helper, the usual fix is project-owned: declare the helper package in the correct uv group and configure build isolation appropriately.
+If CMake cannot find `pybind11`, `nanobind`, or another Python-owned helper, the fix is project-owned: declare the helper package in the correct dependency group. If the failing local package has an old `setup.py`/CMake build and no build-system requirements, also add that package to `tool.uv.no-build-isolation-package`.
 
 ## Tool Shims in `.venv`
 
