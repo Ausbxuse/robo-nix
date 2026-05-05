@@ -184,7 +184,7 @@ robo run <command>
    Catch and explain common robotics failures such as missing `libstdc++.so.6`, `libGL.so.1`, FFmpeg libraries, CUDA driver/runtime mismatch, and native extension build failures.
 
 5. Tighten graphics support without overstating it.
-   Current `x11-gl` handling bridges detected host NVIDIA GLVND libraries for desktop OpenGL, but AMD/Intel edge cases, PRIME/offload policy, Wayland-specific failures, headless/remote rendering modes, and a nixGL-style one-command launcher are not solved product surfaces yet. Keep these gaps explicit in docs and diagnostics.
+   Current `x11-gl` handling bridges detected host NVIDIA GLVND libraries for desktop OpenGL, but AMD/Intel edge cases, PRIME/offload policy, Wayland-specific failures, headless/remote rendering modes, and a nixGL-style one-command launcher are not solved product surfaces yet. Keep these gaps explicit in docs and diagnostics. When expanding graphics support, prefer learning from nixGL's provider detection and command-wrapper model over mutating the whole development shell.
 
 6. Keep templates non-product until explicit maintainer approval.
    Use `robo up` / `robo init` as the onboarding path. Placeholder template files may exist to define layout, but do not expose them as a public workflow until real usage proves them.

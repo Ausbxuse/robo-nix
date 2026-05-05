@@ -93,6 +93,8 @@ Known gaps:
   host setup.
 - There is no nixGL-style one-command wrapper yet. If a command needs launcher
   behavior instead of shell-wide runtime setup, that is still future work.
+  A future wrapper should learn from nixGL's provider detection and launch-time
+  environment model, but should still document what remains host policy.
 
 ## Debugging
 

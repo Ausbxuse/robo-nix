@@ -18,6 +18,7 @@ This roadmap is intentionally conservative. `robo-nix` should become easier to u
 - package the CLI through normal distribution paths without making Python packaging depend on Nix
 - evolve runtime inference toward the capability model
 - add explicit proprietary NVIDIA graphics support only if it can be documented and diagnosed as a clear opt-in mode
+- consider a nixGL-style graphics command wrapper for cases where launch-time host graphics setup is safer than changing the whole runtime shell
 
 ## Not Current Goals
 
