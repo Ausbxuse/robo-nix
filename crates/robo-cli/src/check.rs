@@ -270,7 +270,11 @@ fn run_graphics_check(config: Config, runtime: &ProjectRuntime, verbose: bool) -
         return ExitCode::SUCCESS;
     }
 
-    if let Some(mujoco_gl) = forced_mujoco_gl(runtime, env::var_os("MUJOCO_GL").as_deref()) {
+    if let Some(mujoco_gl) = forced_mujoco_gl(
+        runtime,
+        env::var_os("MUJOCO_GL").as_deref(),
+        env::var_os("ROBO_NIX_MUJOCO_GL_DEFAULT").as_deref(),
+    ) {
         println!("Graphics runtime is blocked by MUJOCO_GL.\n");
         println!("Found MUJOCO_GL={mujoco_gl}.");
         println!("Desktop GLFW viewers usually need this unset.");
@@ -649,7 +653,11 @@ fn runtime_has_component(runtime: &ProjectRuntime, component: &str) -> bool {
 }
 
 fn check_graphics_environment(config: Config, runtime: &ProjectRuntime, warnings: &mut usize) {
-    let Some(mujoco_gl) = forced_mujoco_gl(runtime, env::var_os("MUJOCO_GL").as_deref()) else {
+    let Some(mujoco_gl) = forced_mujoco_gl(
+        runtime,
+        env::var_os("MUJOCO_GL").as_deref(),
+        env::var_os("ROBO_NIX_MUJOCO_GL_DEFAULT").as_deref(),
+    ) else {
         return;
     };
 
@@ -937,15 +945,27 @@ mod tests {
     #[test]
     fn mujoco_gl_override_is_reported_for_mujoco_runtimes() {
         assert_eq!(
-            forced_mujoco_gl(&runtime(&["mujoco"], None), Some(OsStr::new("egl"))),
-            Some("egl".to_string())
+            forced_mujoco_gl(&runtime(&["mujoco"], None), Some(OsStr::new("glfw")), None),
+            Some("glfw".to_string())
         );
         assert_eq!(
-            forced_mujoco_gl(&runtime(&["mujoco"], None), Some(OsStr::new(""))),
+            forced_mujoco_gl(
+                &runtime(&["mujoco"], None),
+                Some(OsStr::new("egl")),
+                Some(OsStr::new("egl"))
+            ),
             None
         );
         assert_eq!(
-            forced_mujoco_gl(&runtime(&[], None), Some(OsStr::new("egl"))),
+            forced_mujoco_gl(&runtime(&["mujoco"], None), Some(OsStr::new("egl")), None),
+            Some("egl".to_string())
+        );
+        assert_eq!(
+            forced_mujoco_gl(&runtime(&["mujoco"], None), Some(OsStr::new("")), None),
+            None
+        );
+        assert_eq!(
+            forced_mujoco_gl(&runtime(&[], None), Some(OsStr::new("egl")), None),
             None
         );
     }

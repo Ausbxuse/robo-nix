@@ -243,7 +243,11 @@ fn summarize_graphics_environment(
     warnings: &mut usize,
     attention: &mut Vec<Attention>,
 ) {
-    let Some(mujoco_gl) = forced_mujoco_gl(runtime, env::var_os("MUJOCO_GL").as_deref()) else {
+    let Some(mujoco_gl) = forced_mujoco_gl(
+        runtime,
+        env::var_os("MUJOCO_GL").as_deref(),
+        env::var_os("ROBO_NIX_MUJOCO_GL_DEFAULT").as_deref(),
+    ) else {
         return;
     };
 
@@ -256,11 +260,18 @@ fn summarize_graphics_environment(
     );
 }
 
-pub(super) fn forced_mujoco_gl(runtime: &ProjectRuntime, mujoco_gl: Option<&OsStr>) -> Option<String> {
+pub(super) fn forced_mujoco_gl(
+    runtime: &ProjectRuntime,
+    mujoco_gl: Option<&OsStr>,
+    default_mujoco_gl: Option<&OsStr>,
+) -> Option<String> {
     if !runtime.components.iter().any(|item| item == "mujoco") {
         return None;
     }
     let value = mujoco_gl?.to_string_lossy();
+    if default_mujoco_gl.is_some_and(|default| default.to_string_lossy() == value) {
+        return None;
+    }
     (!value.is_empty()).then(|| value.into_owned())
 }
 

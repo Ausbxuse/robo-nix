@@ -275,6 +275,38 @@ assert_x11_gl_exports_matching_egl_vendor() {
 	assert_expr "$expr"
 }
 
+assert_mujoco_exports_offscreen_gl_default() {
+	local expr
+	expr='
+    let
+      flake = builtins.getFlake "'"git+file://${repo_root}"'";
+      pkgs = import flake.inputs.nixpkgs {
+        system = "x86_64-linux";
+      };
+      ctx = {
+        componentCatalog = flake.lib.components;
+        envName = "mujoco";
+        envSpec = {};
+        lib = flake.inputs.nixpkgs.lib;
+        inherit pkgs;
+        pkgsRos = pkgs;
+        runtimeLibPath = "";
+        runtimeLibs = [];
+        system = "x86_64-linux";
+      };
+      component = flake.lib.components."mujoco" ctx;
+      shellInit = builtins.unsafeDiscardStringContext component.shellInit;
+    in
+      assert builtins.elem pkgs.mujoco.name (builtins.map (package: package.name) component.packages);
+      assert flake.inputs.nixpkgs.lib.hasInfix "MUJOCO_PATH" shellInit;
+      assert flake.inputs.nixpkgs.lib.hasInfix "ROBO_NIX_MUJOCO_GL_DEFAULT" shellInit;
+      assert flake.inputs.nixpkgs.lib.hasInfix "MUJOCO_GL" shellInit;
+      assert flake.inputs.nixpkgs.lib.hasInfix ":-egl}" shellInit;
+      true
+  '
+	assert_expr "$expr"
+}
+
 assert_qt6_exports_standard_cmake_prefixes() {
 	local expr
 	expr='
@@ -696,6 +728,7 @@ assert_cuda_toolkit_uses_requested_wheel_version
 assert_python_uv_exports_native_build_prefixes
 assert_native_build_reasserts_tool_path
 assert_x11_gl_exports_matching_egl_vendor
+assert_mujoco_exports_offscreen_gl_default
 assert_qt6_exports_standard_cmake_prefixes
 assert_matplotlib_qt_selects_qtagg_backend
 assert_manifest_helpers_contract

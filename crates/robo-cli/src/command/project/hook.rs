@@ -15,6 +15,7 @@ const HOOK_STATE_VARS: &[&str] = &[
     "CUDA_HOME",
     "CUDA_PATH",
     "MUJOCO_GL",
+    "ROBO_NIX_MUJOCO_GL_DEFAULT",
     "NIX_CFLAGS_COMPILE",
     "NIX_LDFLAGS",
     "ROBO_NIX_PYTHON",
