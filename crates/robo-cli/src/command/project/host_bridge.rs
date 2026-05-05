@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::env;
 use std::fs;
 use std::path::Path;
@@ -94,8 +95,26 @@ fn apply_host_graphics_bridge_with_parent_env(
     parent_egl_vendor_set: bool,
     parent_vulkan_icd_set: bool,
 ) {
+    let workspace = env::current_dir().unwrap_or_else(|_| Path::new(".").to_path_buf());
+    apply_host_graphics_bridge_in_workspace(
+        envs,
+        egl_vendor_file,
+        vulkan_icd_file,
+        parent_egl_vendor_set,
+        parent_vulkan_icd_set,
+        &workspace,
+    );
+}
+
+fn apply_host_graphics_bridge_in_workspace(
+    envs: &mut Vec<(String, String)>,
+    egl_vendor_file: Option<&str>,
+    vulkan_icd_file: Option<&str>,
+    parent_egl_vendor_set: bool,
+    parent_vulkan_icd_set: bool,
+    workspace: &Path,
+) {
     let mut applied = Vec::new();
-    let mut applied_lib_dirs = Vec::new();
     if !parent_egl_vendor_set
         && (shell_env_value(envs, "__EGL_VENDOR_LIBRARY_FILENAMES").is_none()
             || egl_vendor_is_nix_mesa(shell_env_value(envs, "__EGL_VENDOR_LIBRARY_FILENAMES")))
@@ -114,20 +133,16 @@ fn apply_host_graphics_bridge_with_parent_env(
 
     if !applied.is_empty() {
         let ldconfig = ldconfig_cache();
-        for manifest in &applied {
-            for dir in manifest_library_dirs(manifest, ldconfig.as_deref()) {
-                if !applied_lib_dirs.iter().any(|applied| applied == &dir) {
-                    applied_lib_dirs.push(dir);
-                }
-            }
-        }
-        append_library_path_dirs(envs, &applied_lib_dirs);
         set_shell_env(envs, "ROBO_NIX_HOST_GRAPHICS_AUTO", applied.join(":"));
-        if !applied_lib_dirs.is_empty() {
+        if let Some(bridge_dir) =
+            materialize_host_graphics_bridge(workspace, &applied, ldconfig.as_deref())
+        {
+            let bridge_dir = bridge_dir.display().to_string();
+            append_library_path_dirs(envs, &[bridge_dir.clone()]);
             set_shell_env(
                 envs,
                 "ROBO_NIX_HOST_GRAPHICS_LIB_DIRS_AUTO",
-                applied_lib_dirs.join(":"),
+                bridge_dir,
             );
         }
     }
@@ -137,7 +152,7 @@ fn runtime_needs_host_nvidia_graphics(runtime: &crate::runtime::ProjectRuntime) 
     runtime
         .components
         .iter()
-        .any(|component| component == "isaac-sim")
+        .any(|component| matches!(component.as_str(), "x11-gl" | "isaac-sim"))
 }
 
 fn host_cuda_auto_disabled() -> bool {
@@ -188,7 +203,39 @@ fn append_library_path_dirs(envs: &mut Vec<(String, String)>, dirs: &[String]) {
     set_shell_env(envs, "LD_LIBRARY_PATH", library_path);
 }
 
-fn manifest_library_dirs(path: &str, ldconfig: Option<&str>) -> Vec<String> {
+fn materialize_host_graphics_bridge(
+    workspace: &Path,
+    manifests: &[String],
+    ldconfig: Option<&str>,
+) -> Option<std::path::PathBuf> {
+    let mut libraries = BTreeSet::new();
+    for manifest in manifests {
+        for library in manifest_library_paths(manifest, ldconfig) {
+            libraries.insert(library);
+        }
+    }
+    if let Some(cache) = ldconfig {
+        if let Some(glx) = find_ldconfig_library_path(cache, "libGLX_nvidia.so.0") {
+            libraries.insert(glx);
+        }
+    }
+    if libraries.is_empty() {
+        return None;
+    }
+
+    let bridge_dir = workspace.join(".robo-nix").join("host-graphics").join("lib");
+    fs::create_dir_all(&bridge_dir).ok()?;
+    for library in libraries {
+        symlink_host_graphics_library(&bridge_dir, &library).ok()?;
+        for dependency in host_graphics_library_dependencies(&library) {
+            let _ = symlink_host_graphics_library(&bridge_dir, &dependency);
+        }
+    }
+
+    Some(bridge_dir)
+}
+
+fn manifest_library_paths(path: &str, ldconfig: Option<&str>) -> Vec<String> {
     let Ok(text) = fs::read_to_string(path) else {
         return Vec::new();
     };
@@ -196,18 +243,18 @@ fn manifest_library_dirs(path: &str, ldconfig: Option<&str>) -> Vec<String> {
         return Vec::new();
     };
 
-    let mut dirs = Vec::new();
-    for library in manifest_library_paths(&json) {
-        if let Some(dir) = resolve_manifest_library_dir(&library, ldconfig)
-            && !dirs.iter().any(|existing| existing == &dir)
+    let mut libraries = Vec::new();
+    for library in manifest_library_names(&json) {
+        if let Some(path) = resolve_manifest_library_path(&library, ldconfig)
+            && !libraries.iter().any(|existing| existing == &path)
         {
-            dirs.push(dir);
+            libraries.push(path);
         }
     }
-    dirs
+    libraries
 }
 
-fn manifest_library_paths(json: &serde_json::Value) -> Vec<String> {
+fn manifest_library_names(json: &serde_json::Value) -> Vec<String> {
     let mut paths = Vec::new();
     collect_manifest_library_paths(json, &mut paths);
     paths
@@ -235,19 +282,16 @@ fn collect_manifest_library_paths(json: &serde_json::Value, paths: &mut Vec<Stri
     }
 }
 
-fn resolve_manifest_library_dir(library: &str, ldconfig: Option<&str>) -> Option<String> {
+fn resolve_manifest_library_path(library: &str, ldconfig: Option<&str>) -> Option<String> {
     let path = Path::new(library);
     if path.is_absolute() {
-        return path
-            .is_file()
-            .then(|| path.parent().map(|dir| dir.display().to_string()))
-            .flatten();
+        return path.is_file().then(|| path.display().to_string());
     }
 
-    ldconfig.and_then(|cache| find_ldconfig_library(cache, library))
+    ldconfig.and_then(|cache| find_ldconfig_library_path(cache, library))
 }
 
-fn find_ldconfig_library(cache: &str, library: &str) -> Option<String> {
+fn find_ldconfig_library_path(cache: &str, library: &str) -> Option<String> {
     cache.lines().find_map(|line| {
         let line = line.trim();
         if line
@@ -258,10 +302,50 @@ fn find_ldconfig_library(cache: &str, library: &str) -> Option<String> {
         }
         let (_, path) = line.rsplit_once(" => ")?;
         let path = Path::new(path.trim());
-        path.is_file()
-            .then(|| path.parent().map(|dir| dir.display().to_string()))
-            .flatten()
+        path.is_file().then(|| path.display().to_string())
     })
+}
+
+fn host_graphics_library_dependencies(library: &str) -> Vec<String> {
+    let output = Command::new("ldd").arg(library).output().ok();
+    let Some(output) = output.filter(|output| output.status.success()) else {
+        return Vec::new();
+    };
+
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter_map(|line| line.rsplit_once(" => ").map(|(_, path)| path.trim()))
+        .filter_map(|path| path.split_whitespace().next())
+        .filter(|path| host_graphics_library_name(Path::new(path)))
+        .map(str::to_string)
+        .collect()
+}
+
+fn host_graphics_library_name(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| {
+            name.contains("nvidia")
+                || name.starts_with("libGLX_")
+                || name.starts_with("libEGL_")
+                || name.starts_with("libGLES")
+        })
+}
+
+#[cfg(unix)]
+fn symlink_host_graphics_library(bridge_dir: &Path, library: &str) -> std::io::Result<()> {
+    let library = Path::new(library);
+    let Some(name) = library.file_name() else {
+        return Ok(());
+    };
+    let link = bridge_dir.join(name);
+    let _ = fs::remove_file(&link);
+    std::os::unix::fs::symlink(library, link)
+}
+
+#[cfg(not(unix))]
+fn symlink_host_graphics_library(_bridge_dir: &Path, _library: &str) -> std::io::Result<()> {
+    Ok(())
 }
 
 fn ldconfig_cache() -> Option<String> {
@@ -374,9 +458,43 @@ mod tests {
     }
 
     #[test]
+    fn x11_gl_and_isaac_runtime_require_host_nvidia_graphics_bridge() {
+        let x11_gl_runtime = crate::runtime::ProjectRuntime {
+            schema_version: None,
+            env_name: "test".to_string(),
+            python_version: "3.11".to_string(),
+            cuda_wheel_version: None,
+            components: vec!["x11-gl".to_string()],
+            suggestions: Vec::new(),
+        };
+        let isaac_runtime = crate::runtime::ProjectRuntime {
+            schema_version: None,
+            env_name: "test".to_string(),
+            python_version: "3.11".to_string(),
+            cuda_wheel_version: None,
+            components: vec!["isaac-sim".to_string()],
+            suggestions: Vec::new(),
+        };
+        let base_runtime = crate::runtime::ProjectRuntime {
+            schema_version: None,
+            env_name: "test".to_string(),
+            python_version: "3.11".to_string(),
+            cuda_wheel_version: None,
+            components: vec!["base".to_string()],
+            suggestions: Vec::new(),
+        };
+
+        assert!(runtime_needs_host_nvidia_graphics(&x11_gl_runtime));
+        assert!(runtime_needs_host_nvidia_graphics(&isaac_runtime));
+        assert!(!runtime_needs_host_nvidia_graphics(&base_runtime));
+    }
+
+    #[test]
     fn host_graphics_bridge_replaces_nix_mesa_for_isaac_nvidia_runtime() {
+        let workspace = temp_dir("graphics-bridge-workspace");
         let temp = temp_dir("graphics-bridge-absolute");
         let lib_dir = temp.join("lib");
+        let bridge_dir = workspace.join(".robo-nix").join("host-graphics").join("lib");
         fs::create_dir_all(&lib_dir).unwrap();
         fs::write(lib_dir.join("libEGL_nvidia.so.0"), "").unwrap();
         let manifest = temp.join("10_nvidia.json");
@@ -397,10 +515,17 @@ mod tests {
             ("LD_LIBRARY_PATH".to_string(), "/nix/store/lib".to_string()),
         ];
         let manifest = manifest.display().to_string();
-        let lib_dir = lib_dir.display().to_string();
-        let expected_library_path = format!("/nix/store/lib:{lib_dir}");
+        let bridge_dir_value = bridge_dir.display().to_string();
+        let expected_library_path = format!("/nix/store/lib:{bridge_dir_value}");
 
-        apply_host_graphics_bridge(&mut env, Some(&manifest), None);
+        apply_host_graphics_bridge_in_workspace(
+            &mut env,
+            Some(&manifest),
+            None,
+            false,
+            false,
+            &workspace,
+        );
 
         assert_eq!(
             shell_env_value(&env, "__EGL_VENDOR_LIBRARY_FILENAMES").map(String::as_str),
@@ -412,14 +537,16 @@ mod tests {
         );
         assert_eq!(
             shell_env_value(&env, "ROBO_NIX_HOST_GRAPHICS_LIB_DIRS_AUTO").map(String::as_str),
-            Some(lib_dir.as_str())
+            Some(bridge_dir_value.as_str())
         );
         assert_eq!(
             shell_env_value(&env, "LD_LIBRARY_PATH").map(String::as_str),
             Some(expected_library_path.as_str())
         );
+        assert!(bridge_dir.join("libEGL_nvidia.so.0").is_symlink());
 
         let _ = fs::remove_dir_all(temp);
+        let _ = fs::remove_dir_all(workspace);
     }
 
     #[test]
@@ -463,12 +590,16 @@ mod tests {
     }
 
     #[test]
-    fn manifest_library_dirs_resolves_relative_vendor_library_from_ldconfig() {
+    fn host_graphics_bridge_materializes_relative_vendor_library_from_ldconfig() {
+        let workspace = temp_dir("graphics-bridge-workspace");
         let temp = temp_dir("graphics-bridge-relative");
         let lib_dir = temp.join("nvidia");
+        let bridge_dir = workspace.join(".robo-nix").join("host-graphics").join("lib");
         fs::create_dir_all(&lib_dir).unwrap();
         let lib = lib_dir.join("libEGL_nvidia.so.0");
+        let glx = lib_dir.join("libGLX_nvidia.so.0");
         fs::write(&lib, "").unwrap();
+        fs::write(&glx, "").unwrap();
         let manifest = temp.join("10_nvidia.json");
         fs::write(
             &manifest,
@@ -476,16 +607,24 @@ mod tests {
         )
         .unwrap();
         let ldconfig = format!(
-            "libEGL_nvidia.so.0 (libc6,x86-64) => {}\n",
-            lib.display()
+            "libEGL_nvidia.so.0 (libc6,x86-64) => {}\nlibGLX_nvidia.so.0 (libc6,x86-64) => {}\n",
+            lib.display(),
+            glx.display()
         );
 
-        assert_eq!(
-            manifest_library_dirs(&manifest.display().to_string(), Some(&ldconfig)),
-            vec![lib_dir.display().to_string()]
-        );
+        let bridge = materialize_host_graphics_bridge(
+            &workspace,
+            &[manifest.display().to_string()],
+            Some(&ldconfig),
+        )
+        .expect("bridge should be materialized");
+
+        assert_eq!(bridge, bridge_dir);
+        assert!(bridge_dir.join("libEGL_nvidia.so.0").is_symlink());
+        assert!(bridge_dir.join("libGLX_nvidia.so.0").is_symlink());
 
         let _ = fs::remove_dir_all(temp);
+        let _ = fs::remove_dir_all(workspace);
     }
 
     #[test]
@@ -505,7 +644,7 @@ mod tests {
         });
 
         assert_eq!(
-            manifest_library_paths(&json),
+            manifest_library_names(&json),
             vec![
                 "libGLX_nvidia.so.0".to_string(),
                 "/opt/nvidia/lib/libnvidia-egl-gbm.so.1".to_string()

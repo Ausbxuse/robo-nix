@@ -183,13 +183,16 @@ robo run <command>
 4. Improve native/runtime diagnostics.
    Catch and explain common robotics failures such as missing `libstdc++.so.6`, `libGL.so.1`, FFmpeg libraries, CUDA driver/runtime mismatch, and native extension build failures.
 
-5. Keep templates non-product until explicit maintainer approval.
+5. Tighten graphics support without overstating it.
+   Current `x11-gl` handling bridges detected host NVIDIA GLVND libraries for desktop OpenGL, but AMD/Intel edge cases, PRIME/offload policy, Wayland-specific failures, headless/remote rendering modes, and a nixGL-style one-command launcher are not solved product surfaces yet. Keep these gaps explicit in docs and diagnostics.
+
+6. Keep templates non-product until explicit maintainer approval.
    Use `robo up` / `robo init` as the onboarding path. Placeholder template files may exist to define layout, but do not expose them as a public workflow until real usage proves them.
 
-6. Keep docs split by audience.
+7. Keep docs split by audience.
    User docs live under [docs/users](./docs/users/getting-started.md:1) and should assume zero Nix background. Developer docs live under [docs/developers](./docs/developers/overview.md:1) and can explain flakes, components, metadata, and maintainer workflows.
 
-7. Keep verification strict for AI-assisted changes.
+8. Keep verification strict for AI-assisted changes.
    Follow the AI-usage contract in [CONTRIBUTING.md](./CONTRIBUTING.md:1).
 
 ## Existing Verification Workflow

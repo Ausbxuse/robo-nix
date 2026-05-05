@@ -19,18 +19,14 @@ That default prevents a common broken state: loading Nix `libEGL.so.1` while EGL
 
 Users may still override `__EGL_VENDOR_LIBRARY_FILENAMES` when a host-specific EGL vendor is required, but that should be a deliberate host fix.
 
-On hybrid NVIDIA systems, commands such as `nvidia-offload` select the discrete
-GPU for rendering. That is separate from CUDA driver library visibility:
-`robo` can bridge `libcuda.so.1` for CUDA projects, while PRIME/offload remains a
-launcher choice for workloads that need NVIDIA rendering.
-
-Isaac Sim is stricter than many OpenGL viewers: it often needs the NVIDIA EGL
-vendor file and Vulkan ICD to be selected before startup. For runtimes with the
-`isaac-sim` component, `robo` probes common host manifest locations and, when it
-finds NVIDIA manifests, materializes those paths into `robo run` and `robo shell`.
+On NVIDIA systems, desktop OpenGL viewers often need the host NVIDIA GLVND
+provider rather than Nix Mesa. For runtimes with `x11-gl`, `robo` probes common
+host manifest locations and, when it finds NVIDIA manifests, materializes those
+paths into `robo run` and `robo shell`.
 If those manifests point at host NVIDIA vendor libraries by soname, `robo`
-resolves them through the host linker cache and appends only the required vendor
-library directories to the runtime library path.
+resolves them through the host linker cache and creates a project-local bridge
+directory containing only those vendor libraries and their NVIDIA graphics
+dependencies.
 This is not an offload launcher; use the host's normal launch policy, such as
 `nvidia-offload`, when the machine needs PRIME render offload.
 
@@ -72,11 +68,31 @@ The `robo-nix` default keeps the boundary explicit:
 
 - Nix components expose coherent runtime libraries.
 - The host owns GPU kernel drivers, display sockets, GPU devices, PRIME/offload, and `libcuda.so.1`.
-- For Isaac Sim, `robo` may bridge detected host NVIDIA EGL/Vulkan manifests and the vendor library directories required by those manifests without owning the offload launcher.
+- For `x11-gl`, `robo` may bridge detected host NVIDIA EGL/Vulkan manifests and a small project-local vendor library directory without owning the offload launcher.
 - uv owns Python packages and Python CUDA wheels.
 - `robo check graphics --verbose` reports observed graphics and driver state.
 
-If proprietary NVIDIA OpenGL/EGL support becomes a common requirement, it should be added as an explicit component or mode with its own diagnostics, not as hidden default shell setup.
+This behavior is tied to the explicit graphics component. Non-graphics shells do
+not receive host graphics manifests by default.
+
+## Current Limits
+
+The host NVIDIA bridge fixes the common case where an `x11-gl` runtime needs the
+host NVIDIA GLVND provider to create a desktop OpenGL context. It does not mean
+all graphics setups are solved.
+
+Known gaps:
+
+- AMD and Intel hosts currently rely on the Nix Mesa path. There is no separate
+  host-provider bridge for unusual AMD or Intel setups.
+- PRIME/offload remains host policy. `robo` may expose NVIDIA libraries, but it
+  does not decide whether a command should run on the integrated or discrete GPU.
+- Wayland issues are diagnosed, not automatically repaired.
+- Headless and remote rendering modes such as EGL-only rendering, OSMesa,
+  VirtualGL, and container display forwarding still need explicit project or
+  host setup.
+- There is no nixGL-style one-command wrapper yet. If a command needs launcher
+  behavior instead of shell-wide runtime setup, that is still future work.
 
 ## Debugging
 
@@ -96,4 +112,4 @@ For graphics projects, deep diagnostics report:
 - whether EGL vendor files exist
 - warnings when Nix `libEGL.so.1` is paired with non-Nix vendor files
 
-This is diagnostic. For runtimes that need a host NVIDIA graphics provider, `robo` only materializes detected manifest files from known host locations plus the library directories named by those manifests, and leaves user-provided graphics variables unchanged.
+This is diagnostic. For runtimes that need a host NVIDIA graphics provider, `robo` only materializes detected manifest files from known host locations plus a project-local bridge for the resolved vendor libraries, and leaves user-provided graphics variables unchanged.
