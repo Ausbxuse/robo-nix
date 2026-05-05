@@ -15,4 +15,4 @@ bash tests/robo-init-validation.sh
 bash tests/contract-validation.sh
 bash tests/output-consistency.sh
 bash tests/diagnose-validation.sh
-bash tests/tricky-runtime-smoke.sh
+bash tests/tricky-runtime-validation.sh

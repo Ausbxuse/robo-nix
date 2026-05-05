@@ -6,24 +6,24 @@ set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
 
 image="${ROBO_NIX_UBUNTU_IMAGE:-ubuntu:24.04}"
-container="${ROBO_NIX_UBUNTU_CONTAINER:-robo-nix-ubuntu-smoke}"
+container="${ROBO_NIX_UBUNTU_CONTAINER:-robo-nix-ubuntu-validation}"
 keep=0
 run_gui=0
 projects=()
 
 usage() {
 	cat >&2 <<'EOF'
-usage: tests/ubuntu-downstream-smoke.sh [--keep] [--gui] PROJECT...
+usage: tests/ubuntu-downstream-validation.sh [--keep] [--gui] PROJECT...
 
-Run downstream project smoke tests inside an Ubuntu Podman container.
+Run downstream project validation checks inside an Ubuntu Podman container.
 
 Environment:
   ROBO_NIX_UBUNTU_IMAGE       Ubuntu image to use, default ubuntu:24.04
-  ROBO_NIX_UBUNTU_CONTAINER   Container name, default robo-nix-ubuntu-smoke
+  ROBO_NIX_UBUNTU_CONTAINER   Container name, default robo-nix-ubuntu-validation
 
 Examples:
-  tests/ubuntu-downstream-smoke.sh ~/src/dev/dexmate ~/src/dev/py-learn
-  tests/ubuntu-downstream-smoke.sh --gui ~/src/dev/dexmate
+  tests/ubuntu-downstream-validation.sh ~/src/dev/dexmate ~/src/dev/py-learn
+  tests/ubuntu-downstream-validation.sh --gui ~/src/dev/dexmate
 EOF
 }
 
@@ -65,7 +65,7 @@ if [ "${#projects[@]}" -eq 0 ]; then
 fi
 
 if ! command -v podman >/dev/null 2>&1; then
-	echo "podman is required for Ubuntu downstream smoke tests" >&2
+	echo "podman is required for Ubuntu downstream validation checks" >&2
 	exit 1
 fi
 
@@ -80,9 +80,9 @@ for project in "${projects[@]}"; do
 	fi
 	name="$(basename "$host_project")"
 	input_project="/workspace/inputs/${index}-${name}"
-	smoke_project="/workspace/projects/${index}-${name}"
+	validation_project="/workspace/projects/${index}-${name}"
 	mount_args+=(-v "${host_project}:${input_project}:ro")
-	container_project_args+=("$input_project" "$smoke_project")
+	container_project_args+=("$input_project" "$validation_project")
 	index=$((index + 1))
 done
 
@@ -139,7 +139,10 @@ nix --version
 '
 
 podman exec \
-	-e NIX_CONFIG="experimental-features = nix-command flakes" \
+	-e NIX_CONFIG="experimental-features = nix-command flakes
+accept-flake-config = true
+extra-substituters = https://nixpkgs-python.cachix.org https://ros.cachix.org
+extra-trusted-public-keys = nixpkgs-python.cachix.org-1:hxjI7pFxTyuTHn2NkvWCrAUcNZLNS3ZAvfYNuYifcEU= ros.cachix.org-1:dSyZxI8geDCJrwgvCOHDoAfOm5sV1wCPjBkKL+38Rvo=" \
 	-e ROBO_NIX_UBUNTU_GUI="$run_gui" \
 	"$container" \
 	bash -lc '
@@ -155,7 +158,7 @@ while [ "$#" -gt 0 ]; do
 	project="$2"
 	shift 2
 
-	echo "ubuntu-smoke: project=$project"
+	echo "ubuntu-validation: project=$project"
 	rm -rf "$project"
 	mkdir -p "$(dirname "$project")"
 	cp -a "$input_project" "$project"
@@ -166,12 +169,12 @@ while [ "$#" -gt 0 ]; do
 	nix run /workspace/robo-nix#robo -- shell -c "uv sync"
 
 	if [ "${ROBO_NIX_UBUNTU_GUI:-0}" = "1" ]; then
-		bash /workspace/robo-nix/tests/gui-runtime-smoke.sh "$project"
+		bash /workspace/robo-nix/tests/gui-runtime-validation.sh "$project"
 	fi
 done
 ' bash "${container_project_args[@]}"
 
 if [ "$keep" -eq 1 ]; then
-	echo "kept Ubuntu smoke container: $container"
+	echo "kept Ubuntu validation container: $container"
 	echo "enter with: podman exec -it $container bash"
 fi

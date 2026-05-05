@@ -2,7 +2,7 @@
 
 # robo-nix
 
-Reproducible robotics environments without the setup ritual.
+Robot-learning environments that keep Python normal.
 
 <a href="https://ausbxuse.github.io/robo-nix/">
   <img alt="Docs" src="https://img.shields.io/badge/docs-online-6fb0f4?style=for-the-badge&labelColor=2c3144&color=6fb0f4">
@@ -19,18 +19,32 @@ Reproducible robotics environments without the setup ritual.
 
 </div>
 
-`robo-nix` helps robot-learning projects keep normal Python packaging while getting the system runtime pieces that robotics work usually needs: CUDA, graphics libraries, ROS tooling, simulators, compilers, media stacks, and debuggable shell environments.
+`robo-nix` is for robotics projects that already use Python, but still need the native runtime pieces Python packaging does not provide: CUDA, OpenGL, ROS tooling, simulators, compilers, FFmpeg, and other shared libraries.
 
-Use `uv` for Python packages. Use `robo` to prepare the robotics runtime, run commands, open shells, and explain setup failures.
+Use `uv` for Python. Use `robo` for the runtime around it.
 
 ## Why
 
-Robotics projects often fail before the first experiment runs. One repo needs a CUDA runtime, another needs OpenGL, another needs ROS, MuJoCo, FFmpeg, native build tools, or a particular shared library that a Python wheel assumes already exists.
+Robotics setup usually fails at the boundary between Python and the host system. A wheel imports fine on one machine and fails on another because `libGL.so.1`, CUDA, FFmpeg, a compiler, ROS, or a simulator dependency is missing.
 
-`robo-nix` makes that system layer explicit and repeatable without asking every contributor to learn a new environment stack first.
+`robo-nix` makes that boundary explicit. Python dependencies stay in `pyproject.toml` and `uv.lock`; runtime dependencies live in Nix-backed project files that `robo` can generate, enter, and diagnose.
 
 > [!WARNING]
 > `robo-nix` is early beta software. Expect CLI wording, generated runtime files, diagnostics, runtime coverage, and installer behavior to change while the project is validated against real robotics repositories. Review generated project files before committing them, and pin versions for shared team workflows.
+
+## Tested Platforms
+
+This table describes the checks run by CI and scheduled validation jobs. Container-based checks cover clean-image setup plus `robo init`, `robo check`, and `robo status`; they do not prove desktop graphics, host GPU drivers, hardware access, shell entry, or ROS networking on that distribution.
+
+| Platform | CI targets | Install / Nix setup | `robo init/check/status` | `robo shell` | GPU / graphics | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| Ubuntu Linux | runners: 22.04, 24.04; containers: 22.04, 24.04 | ✓ | ✓ | ✓ | ✗ | Runner jobs cover shell validation; containers cover clean-image setup. |
+| Debian Linux | `debian:12`, `debian:13` | ✓ | ✓ | ✗ | ✗ | Clean container validation. |
+| Fedora Linux | `fedora:latest` | ✓ | ✓ | ✗ | ✗ | Clean container validation. |
+| Arch Linux | `archlinux:latest` | ✓ | ✓ | ✗ | ✗ | Clean container validation. |
+| NixOS / Nix image | `nixos/nix:latest` | ✓ | ✓ | ✗ | ✗ | Starts from an image with Nix already available. |
+| macOS | `macos-latest` | ✓ | partial | ✗ | ✗ | Evaluates library APIs and flake outputs; Linux runtime shells are not exercised. |
+| NVIDIA Linux host | self-hosted runner with `linux`, `x64`, `gpu`, `nvidia` labels | ✓ | ✓ | ✓ | ✓ | Scheduled CUDA and GPU validation. |
 
 ## Key Features
 
@@ -95,7 +109,7 @@ Then install Python packages with `uv`:
 uv sync
 ```
 
-Run a quick smoke test:
+Run a quick validation check:
 
 ```bash
 python -c "import sys; print(sys.executable)"

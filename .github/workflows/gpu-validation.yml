@@ -1,4 +1,4 @@
-name: GPU Smoke
+name: GPU Validation
 
 on:
   workflow_dispatch:
@@ -6,7 +6,7 @@ on:
     - cron: "0 8 * * 1"
 
 jobs:
-  gpu-smoke:
+  gpu-validation:
     runs-on:
       - self-hosted
       - linux

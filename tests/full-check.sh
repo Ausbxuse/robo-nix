@@ -36,7 +36,7 @@ start_check robo-init-full bash tests/robo-init-validation.sh --full
 start_check contract bash tests/contract-validation.sh
 start_check output-consistency bash tests/output-consistency.sh
 start_check diagnose bash tests/diagnose-validation.sh
-start_check tricky-runtime-smoke bash tests/tricky-runtime-smoke.sh
+start_check tricky-runtime-validation bash tests/tricky-runtime-validation.sh
 
 failed=0
 

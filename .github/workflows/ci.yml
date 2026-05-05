@@ -47,24 +47,29 @@ jobs:
       - name: Run Shell Validation
         run: bash tests/shell-validation.sh
 
-  container-smoke:
-    name: Container Smoke (${{ matrix.image }})
+  container-validation:
+    name: Container Validation (${{ matrix.image }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         image:
+          - debian:12
+          - debian:13
+          - fedora:latest
+          - archlinux:latest
+          - nixos/nix:latest
           - ubuntu:22.04
           - ubuntu:24.04
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Run Container Smoke
+      - name: Run Container Validation
         env:
           ROBO_NIX_CONTAINER_IMAGE: ${{ matrix.image }}
           ROBO_NIX_CONTAINER_RUNTIME: docker
-        run: bash tests/container-smoke.sh
+        run: bash tests/container-validation.sh
 
   eval-darwin:
     runs-on: macos-latest
