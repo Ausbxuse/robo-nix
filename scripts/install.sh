@@ -41,6 +41,7 @@ install_nix() {
 
 install_robo() {
 	info "installing robo from $robo_nix_flake"
+	nix profile remove robo >/dev/null 2>&1 || true
 	nix --extra-experimental-features nix-command \
 		--extra-experimental-features flakes \
 		--accept-flake-config \

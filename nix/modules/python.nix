@@ -14,7 +14,9 @@
     pythonMajorMinor = "${pythonMajor}.${pythonMinor}";
     pythonAttr = "python${pythonMajor}${pythonMinor}";
     python =
-      if builtins.hasAttr envSpec.pythonVersion nixpkgsPythonPackages
+      if envSpec.pythonVersion == pythonMajorMinor && builtins.hasAttr pythonAttr pkgs
+      then builtins.getAttr pythonAttr pkgs
+      else if builtins.hasAttr envSpec.pythonVersion nixpkgsPythonPackages
       then builtins.getAttr envSpec.pythonVersion nixpkgsPythonPackages
       else if builtins.hasAttr pythonMajorMinor nixpkgsPythonPackages
       then builtins.getAttr pythonMajorMinor nixpkgsPythonPackages

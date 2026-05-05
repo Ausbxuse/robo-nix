@@ -928,8 +928,9 @@ pub(super) fn runtime_command<const N: usize, const M: usize>(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::ffi::OsStr;
+
+    use super::*;
 
     fn runtime(components: &[&str], cuda_wheel_version: Option<&str>) -> ProjectRuntime {
         ProjectRuntime {

@@ -1,6 +1,8 @@
 use std::env;
 use std::ffi::OsString;
 use std::fs;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -16,7 +18,14 @@ impl ShellLaunch {
     }
 }
 
-pub(crate) fn normalize_shell_args(mut args: Vec<OsString>) -> ShellLaunch {
+pub(crate) fn normalize_shell_args(args: Vec<OsString>) -> ShellLaunch {
+    normalize_shell_args_with(args, default_command_shell())
+}
+
+fn normalize_shell_args_with(
+    mut args: Vec<OsString>,
+    command_shell: Option<PathBuf>,
+) -> ShellLaunch {
     if args.is_empty() {
         return default_interactive_shell_args();
     }
@@ -29,12 +38,16 @@ pub(crate) fn normalize_shell_args(mut args: Vec<OsString>) -> ShellLaunch {
         return ShellLaunch::args(args);
     }
 
-    let mut normalized = Vec::with_capacity(4);
-    normalized.push(OsString::from("-c"));
-    normalized.push(OsString::from("bash"));
-    normalized.push(OsString::from("-lc"));
-    normalized.push(args.swap_remove(1));
-    ShellLaunch::args(normalized)
+    let Some(shell) = command_shell else {
+        return ShellLaunch::args(args);
+    };
+    shell_command_args_for(shell, args.swap_remove(1))
+}
+
+fn default_command_shell() -> Option<PathBuf> {
+    default_interactive_shell()
+        .or_else(|| find_shell_in_path("bash"))
+        .or_else(|| find_shell_in_path("sh"))
 }
 
 pub(crate) fn shell_launch_label(launch: &ShellLaunch) -> String {
@@ -149,7 +162,7 @@ fn resolve_shell_path_with(
     shell: PathBuf,
     find_in_path: &impl Fn(&str) -> Option<PathBuf>,
 ) -> Option<PathBuf> {
-    if shell.is_file() {
+    if is_executable_file(&shell) {
         return Some(shell);
     }
     shell
@@ -165,8 +178,24 @@ fn find_shell_in_path(name: &str) -> Option<PathBuf> {
     env::var_os("PATH").and_then(|paths| {
         env::split_paths(&paths)
             .map(|dir| dir.join(name))
-            .find(|candidate| candidate.is_file())
+            .find(|candidate| is_executable_file(candidate))
     })
+}
+
+fn is_executable_file(path: &Path) -> bool {
+    if !path.is_file() {
+        return false;
+    }
+    #[cfg(unix)]
+    {
+        fs::metadata(path)
+            .map(|metadata| metadata.permissions().mode() & 0o111 != 0)
+            .unwrap_or(false)
+    }
+    #[cfg(not(unix))]
+    {
+        true
+    }
 }
 
 fn parent_interactive_shell() -> Option<PathBuf> {
@@ -174,7 +203,7 @@ fn parent_interactive_shell() -> Option<PathBuf> {
     let after_comm = stat.rsplit_once(") ")?.1;
     let ppid = after_comm.split_whitespace().nth(1)?;
     let shell = fs::read_link(format!("/proc/{ppid}/exe")).ok()?;
-    shell.is_file().then_some(shell)
+    is_executable_file(&shell).then_some(shell)
 }
 
 fn is_nix_bash(shell: &Path) -> bool {
@@ -219,6 +248,29 @@ fn shell_args_for(shell: &str) -> ShellLaunch {
     }
 }
 
+fn shell_command_args_for(shell: PathBuf, command: OsString) -> ShellLaunch {
+    let shell_name = shell
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or_default();
+    ShellLaunch {
+        args: vec![
+            OsString::from("-c"),
+            shell.clone().into_os_string(),
+            OsString::from(command_shell_flag(shell_name)),
+            command,
+        ],
+        env: vec![("SHELL".to_string(), shell.into_os_string())],
+    }
+}
+
+fn command_shell_flag(shell_name: &str) -> &'static str {
+    match shell_name {
+        "bash" | "zsh" | "fish" | "ksh" | "mksh" => "-lc",
+        _ => "-c",
+    }
+}
+
 fn clean_interactive_shell_args(shell_name: &str) -> Vec<&'static str> {
     match shell_name {
         "bash" | "zsh" | "fish" => vec!["-i"],
@@ -233,14 +285,48 @@ mod tests {
     #[test]
     fn shell_command_with_single_quoted_string_uses_shell() {
         let args = vec![OsString::from("-c"), OsString::from("python test.py")];
-        let normalized = normalize_shell_args(args);
+        let normalized = normalize_shell_args_with(
+            args,
+            Some(PathBuf::from("/run/current-system/sw/bin/zsh")),
+        );
         let values: Vec<_> = normalized
             .args
             .iter()
             .map(|arg| arg.to_string_lossy().into_owned())
             .collect();
 
-        assert_eq!(values, vec!["-c", "bash", "-lc", "python test.py"]);
+        assert_eq!(
+            values,
+            vec!["-c", "/run/current-system/sw/bin/zsh", "-lc", "python test.py"]
+        );
+        assert_eq!(
+            normalized.env,
+            vec![(
+                "SHELL".to_string(),
+                OsString::from("/run/current-system/sw/bin/zsh")
+            )]
+        );
+    }
+
+    #[test]
+    fn shell_command_with_posix_sh_uses_plain_command_flag() {
+        let args = vec![OsString::from("-c"), OsString::from("echo test")];
+        let normalized = normalize_shell_args_with(args, Some(PathBuf::from("/bin/sh")));
+        let values: Vec<_> = normalized
+            .args
+            .iter()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect();
+
+        assert_eq!(values, vec!["-c", "/bin/sh", "-c", "echo test"]);
+    }
+
+    #[test]
+    fn shell_command_without_resolved_shell_is_left_unchanged() {
+        let args = vec![OsString::from("-c"), OsString::from("python test.py")];
+        let normalized = normalize_shell_args_with(args.clone(), None);
+
+        assert_eq!(normalized, ShellLaunch::args(args));
     }
 
     #[test]

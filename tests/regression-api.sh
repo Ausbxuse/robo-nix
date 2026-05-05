@@ -118,7 +118,7 @@ assert_runtime_inference_contract() {
       assert builtins.any (rule: builtins.elem [ "matplotlib" ] rule.dependenciesAll && builtins.elem [ "pyside6" "pyqt6" "pyqt5" ] rule.dependenciesAll && builtins.elem "matplotlib-qt" rule.components) inference.compoundDependencyRules;
       assert builtins.any (rule: builtins.elem "cuda-python" rule.dependencies && builtins.elem "cuda-toolkit" rule.components) inference.dependencyRules;
       assert builtins.any (rule: builtins.elem "cupy-cuda12x" rule.dependencies && builtins.elem "cuda-toolkit" rule.components) inference.dependencyRules;
-      assert builtins.any (rule: builtins.elem "isaacsim" rule.dependencies && builtins.elem "isaac-sim" rule.components && builtins.elem "cuda-toolkit" rule.components && builtins.elem "x11-gl" rule.components) inference.dependencyRules;
+      assert builtins.any (rule: builtins.elem "isaacsim" rule.dependencies && builtins.elem "isaac-sim" rule.components && builtins.elem "x11-gl" rule.components && !(builtins.elem "cuda-toolkit" rule.components)) inference.dependencyRules;
       assert builtins.any (rule: builtins.elem "flash-attn" rule.dependencies && builtins.elem "cuda-toolkit" rule.components) inference.dependencyRules;
       assert builtins.any (rule: builtins.elem "flash-attn" rule.dependencies && builtins.elem "native-build" rule.components) inference.dependencyRules;
       assert builtins.any (rule: builtins.elem "pytorch3d" rule.dependencies && builtins.elem "cuda-toolkit" rule.components) inference.dependencyRules;
@@ -175,7 +175,6 @@ assert_python_uv_exports_native_build_prefixes() {
       pkgs = import flake.inputs.nixpkgs {
         system = "x86_64-linux";
       };
-      nixpkgsPythonPackages = flake.inputs.nixpkgs-python.packages.x86_64-linux;
       ctx = {
         componentCatalog = flake.lib.components;
         envName = "python";
@@ -184,7 +183,7 @@ assert_python_uv_exports_native_build_prefixes() {
         };
         lib = flake.inputs.nixpkgs.lib;
         inherit pkgs;
-        inherit nixpkgsPythonPackages;
+        nixpkgsPythonPackages = flake.inputs.nixpkgs-python.packages.x86_64-linux;
         pkgsRos = pkgs;
         runtimeLibPath = "";
         runtimeLibs = [];
@@ -192,7 +191,7 @@ assert_python_uv_exports_native_build_prefixes() {
       };
       component = flake.lib.components."python-uv" ctx;
     in
-      assert builtins.elem nixpkgsPythonPackages."3.10" component.packages;
+      assert builtins.elem pkgs.python310 component.packages;
       assert component.shellInit == builtins.replaceStrings ["/bin//nix/store"] ["unexpected"] component.shellInit;
       assert flake.inputs.nixpkgs.lib.hasInfix "ROBO_NIX_PYTHON" component.shellInit;
       assert flake.inputs.nixpkgs.lib.hasInfix "UV_PYTHON_DOWNLOADS" component.shellInit;

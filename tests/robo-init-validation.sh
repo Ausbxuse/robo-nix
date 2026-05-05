@@ -278,7 +278,6 @@ EOF
 	assert_file_contains "$tmpdir/probed-project/robo.nix" '"mujoco"'
 	assert_file_contains "$tmpdir/probed-project/robo.nix" '"x11-gl"'
 	assert_file_contains "$tmpdir/probed-project/robo.nix" '"media"'
-	assert_file_contains "$tmpdir/probed-project/robo.nix" '"cuda-toolkit"'
 	assert_file_contains "$tmpdir/probed-project/robo.nix" '"isaac-sim"'
 	assert_file_contains "$tmpdir/probed-project/robo.nix" '"matplotlib-qt"'
 	assert_file_contains "$tmpdir/probed-project/robo.nix" '"qt6"'

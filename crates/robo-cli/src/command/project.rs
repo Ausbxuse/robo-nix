@@ -9,9 +9,7 @@ use crate::{Config, LabelKind, error, field, hint, label, section, status};
 
 use super::bootstrap::run_bootstrap;
 use super::cuda_compat::ensure_runtime_cuda_compat;
-use super::nix::{
-    add_runtime_source_override, check_command, nix_command, run_status,
-};
+use super::nix::{add_runtime_source_override, check_command, nix_command, run_status};
 use super::python::ensure_python_version_files;
 
 mod flake_repair;
@@ -45,7 +43,6 @@ pub(crate) fn ensure_project_runtime(config: Config) -> Result<(), ExitCode> {
         hint(config, "install Nix, then rerun this command.");
         return Err(ExitCode::from(1));
     }
-
     Ok(())
 }
 

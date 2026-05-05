@@ -18,7 +18,8 @@ if rg -n 'println!\("contract:|eprintln!\("contract:' crates/robo-cli/src; then
 fi
 
 if command -v script >/dev/null 2>&1; then
-	help_output="$(script -q -e -c 'env -u NO_COLOR cargo run -q -p robo-cli -- help' /dev/null)"
+	robo_bin="$(nix build --no-link --print-out-paths "${repo_flake_url}#robo")/bin/robo"
+	help_output="$(script -q -e -c "env -u NO_COLOR '$robo_bin' help" /dev/null)"
 	if ! grep "$(printf '\033')" <<<"$help_output" >/dev/null; then
 		echo "custom help sections must keep terminal color styling" >&2
 		exit 1

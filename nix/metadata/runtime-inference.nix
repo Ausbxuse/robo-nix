@@ -111,10 +111,9 @@
       dependencies = ["isaacsim"];
       components = [
         "isaac-sim"
-        "cuda-toolkit"
         "x11-gl"
       ];
-      note = "Isaac Sim Python wheels need NVIDIA CUDA and graphics runtime support";
+      note = "Isaac Sim Python wheels need host NVIDIA CUDA and graphics runtime support";
     }
     {
       dependencies = ["flash-attn"];

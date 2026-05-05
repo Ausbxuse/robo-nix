@@ -4,66 +4,15 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
-use super::shell_env::{set_shell_env, shell_env_value};
+use super::super::shell_env::{set_shell_env, shell_env_value};
 
-pub(super) fn append_host_cuda_driver_bridge(envs: &mut Vec<(String, String)>) {
+pub(in crate::command::project) fn append_host_graphics_bridge(
+    envs: &mut Vec<(String, String)>,
+) {
     let runtime = crate::runtime::read_project_runtime();
-    if !runtime_needs_host_cuda_driver(&runtime) || host_cuda_auto_disabled() {
-        return;
-    }
-
-    if shell_env_value(envs, "ROBO_NIX_LIBCUDA_PATH").is_some()
-        || env::var_os("ROBO_NIX_LIBCUDA_PATH").is_some()
+    if !runtime_needs_host_nvidia_graphics(&runtime)
+        || env_flag_enabled("ROBO_NIX_DISABLE_HOST_GRAPHICS_AUTO")
     {
-        return;
-    }
-
-    let Some(libcuda) = crate::runtime::find_host_libcuda() else {
-        return;
-    };
-    apply_host_cuda_driver_bridge(envs, &libcuda);
-}
-
-fn apply_host_cuda_driver_bridge(envs: &mut Vec<(String, String)>, libcuda: &str) {
-    let Some(driver_dir) = Path::new(&libcuda).parent() else {
-        return;
-    };
-    let driver_dir = driver_dir.display().to_string();
-
-    set_shell_env(envs, "ROBO_NIX_LIBCUDA_PATH", libcuda.to_string());
-    set_shell_env(envs, "ROBO_NIX_HOST_LIBCUDA_AUTO", driver_dir.clone());
-
-    if shell_env_value(envs, "TRITON_LIBCUDA_PATH").is_none()
-        && env::var_os("TRITON_LIBCUDA_PATH").is_none()
-    {
-        set_shell_env(envs, "TRITON_LIBCUDA_PATH", driver_dir.clone());
-    }
-
-    let library_path = shell_env_value(envs, "LD_LIBRARY_PATH")
-        .cloned()
-        .or_else(|| env::var("LD_LIBRARY_PATH").ok())
-        .unwrap_or_default();
-    if !path_list_contains(&library_path, &driver_dir) {
-        let value = if library_path.is_empty() {
-            driver_dir
-        } else {
-            format!("{library_path}:{driver_dir}")
-        };
-        set_shell_env(envs, "LD_LIBRARY_PATH", value);
-    }
-}
-
-fn runtime_needs_host_cuda_driver(runtime: &crate::runtime::ProjectRuntime) -> bool {
-    runtime.cuda_wheel_version.is_some()
-        || runtime
-            .components
-            .iter()
-            .any(|component| matches!(component.as_str(), "isaac-sim"))
-}
-
-pub(super) fn append_host_graphics_bridge(envs: &mut Vec<(String, String)>) {
-    let runtime = crate::runtime::read_project_runtime();
-    if !runtime_needs_host_nvidia_graphics(&runtime) || host_graphics_auto_disabled() {
         return;
     }
 
@@ -139,11 +88,7 @@ fn apply_host_graphics_bridge_in_workspace(
         {
             let bridge_dir = bridge_dir.display().to_string();
             append_library_path_dirs(envs, &[bridge_dir.clone()]);
-            set_shell_env(
-                envs,
-                "ROBO_NIX_HOST_GRAPHICS_LIB_DIRS_AUTO",
-                bridge_dir,
-            );
+            set_shell_env(envs, "ROBO_NIX_HOST_GRAPHICS_LIB_DIRS_AUTO", bridge_dir);
         }
     }
 }
@@ -155,30 +100,17 @@ fn runtime_needs_host_nvidia_graphics(runtime: &crate::runtime::ProjectRuntime) 
         .any(|component| matches!(component.as_str(), "x11-gl" | "isaac-sim"))
 }
 
-fn host_cuda_auto_disabled() -> bool {
-    env::var("ROBO_NIX_DISABLE_HOST_CUDA_AUTO").is_ok_and(|value| {
-        matches!(
-            value.trim().to_ascii_lowercase().as_str(),
-            "1" | "true" | "yes" | "on"
-        )
-    })
-}
-
-fn host_graphics_auto_disabled() -> bool {
-    env::var("ROBO_NIX_DISABLE_HOST_GRAPHICS_AUTO").is_ok_and(|value| {
-        matches!(
-            value.trim().to_ascii_lowercase().as_str(),
-            "1" | "true" | "yes" | "on"
-        )
-    })
-}
-
 fn egl_vendor_is_nix_mesa(value: Option<&String>) -> bool {
     value.is_some_and(|value| value.starts_with("/nix/store/") && value.contains("mesa-"))
 }
 
-fn path_list_contains(paths: &str, needle: &str) -> bool {
-    paths.split(':').any(|path| path == needle)
+fn env_flag_enabled(name: &str) -> bool {
+    env::var(name).is_ok_and(|value| {
+        matches!(
+            value.trim().to_ascii_lowercase().as_str(),
+            "1" | "true" | "yes" | "on"
+        )
+    })
 }
 
 fn append_library_path_dirs(envs: &mut Vec<(String, String)>, dirs: &[String]) {
@@ -201,6 +133,10 @@ fn append_library_path_dirs(envs: &mut Vec<(String, String)>, dirs: &[String]) {
         };
     }
     set_shell_env(envs, "LD_LIBRARY_PATH", library_path);
+}
+
+fn path_list_contains(paths: &str, needle: &str) -> bool {
+    paths.split(':').any(|path| path == needle)
 }
 
 fn materialize_host_graphics_bridge(
@@ -226,9 +162,9 @@ fn materialize_host_graphics_bridge(
     let bridge_dir = workspace.join(".robo-nix").join("host-graphics").join("lib");
     fs::create_dir_all(&bridge_dir).ok()?;
     for library in libraries {
-        symlink_host_graphics_library(&bridge_dir, &library).ok()?;
+        link_host_graphics_library(&bridge_dir, &library).ok()?;
         for dependency in host_graphics_library_dependencies(&library) {
-            let _ = symlink_host_graphics_library(&bridge_dir, &dependency);
+            let _ = link_host_graphics_library(&bridge_dir, &dependency);
         }
     }
 
@@ -333,7 +269,7 @@ fn host_graphics_library_name(path: &Path) -> bool {
 }
 
 #[cfg(unix)]
-fn symlink_host_graphics_library(bridge_dir: &Path, library: &str) -> std::io::Result<()> {
+fn link_host_graphics_library(bridge_dir: &Path, library: &str) -> std::io::Result<()> {
     let library = Path::new(library);
     let Some(name) = library.file_name() else {
         return Ok(());
@@ -344,7 +280,7 @@ fn symlink_host_graphics_library(bridge_dir: &Path, library: &str) -> std::io::R
 }
 
 #[cfg(not(unix))]
-fn symlink_host_graphics_library(_bridge_dir: &Path, _library: &str) -> std::io::Result<()> {
+fn link_host_graphics_library(_bridge_dir: &Path, _library: &str) -> std::io::Result<()> {
     Ok(())
 }
 
@@ -356,15 +292,15 @@ fn ldconfig_cache() -> Option<String> {
         .then(|| String::from_utf8_lossy(&output.stdout).to_string())
 }
 
-pub(super) fn auto_host_cuda_driver_path(envs: &[(String, String)]) -> Option<&str> {
-    shell_env_value(envs, "ROBO_NIX_HOST_LIBCUDA_AUTO").map(String::as_str)
-}
-
-pub(super) fn auto_host_graphics_manifests(envs: &[(String, String)]) -> Option<&str> {
+pub(in crate::command::project) fn auto_host_graphics_manifests(
+    envs: &[(String, String)],
+) -> Option<&str> {
     shell_env_value(envs, "ROBO_NIX_HOST_GRAPHICS_AUTO").map(String::as_str)
 }
 
-pub(super) fn auto_host_graphics_library_dirs(envs: &[(String, String)]) -> Option<&str> {
+pub(in crate::command::project) fn auto_host_graphics_library_dirs(
+    envs: &[(String, String)],
+) -> Option<&str> {
     shell_env_value(envs, "ROBO_NIX_HOST_GRAPHICS_LIB_DIRS_AUTO").map(String::as_str)
 }
 
@@ -373,89 +309,6 @@ mod tests {
     use super::*;
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
-
-    #[test]
-    fn host_cuda_driver_bridge_sets_minimal_runtime_vars() {
-        let mut env = vec![("LD_LIBRARY_PATH".to_string(), "/nix/store/lib".to_string())];
-
-        apply_host_cuda_driver_bridge(&mut env, "/run/opengl-driver/lib/libcuda.so.1");
-
-        assert_eq!(
-            shell_env_value(&env, "ROBO_NIX_LIBCUDA_PATH").map(String::as_str),
-            Some("/run/opengl-driver/lib/libcuda.so.1")
-        );
-        assert_eq!(
-            shell_env_value(&env, "TRITON_LIBCUDA_PATH").map(String::as_str),
-            Some("/run/opengl-driver/lib")
-        );
-        assert_eq!(
-            shell_env_value(&env, "ROBO_NIX_HOST_LIBCUDA_AUTO").map(String::as_str),
-            Some("/run/opengl-driver/lib")
-        );
-        assert_eq!(
-            shell_env_value(&env, "LD_LIBRARY_PATH").map(String::as_str),
-            Some("/nix/store/lib:/run/opengl-driver/lib")
-        );
-    }
-
-    #[test]
-    fn host_cuda_driver_bridge_does_not_duplicate_library_path() {
-        let mut env = vec![
-            (
-                "LD_LIBRARY_PATH".to_string(),
-                "/nix/store/lib:/run/opengl-driver/lib".to_string(),
-            ),
-            ("TRITON_LIBCUDA_PATH".to_string(), "/custom/triton".to_string()),
-        ];
-
-        apply_host_cuda_driver_bridge(&mut env, "/run/opengl-driver/lib/libcuda.so.1");
-
-        assert_eq!(
-            shell_env_value(&env, "LD_LIBRARY_PATH").map(String::as_str),
-            Some("/nix/store/lib:/run/opengl-driver/lib")
-        );
-        assert_eq!(
-            shell_env_value(&env, "TRITON_LIBCUDA_PATH").map(String::as_str),
-            Some("/custom/triton")
-        );
-    }
-
-    #[test]
-    fn toolkit_only_runtime_does_not_require_host_cuda_driver_bridge() {
-        let runtime = crate::runtime::ProjectRuntime {
-            schema_version: None,
-            env_name: "test".to_string(),
-            python_version: "3.11".to_string(),
-            cuda_wheel_version: None,
-            components: vec!["cuda-toolkit".to_string()],
-            suggestions: Vec::new(),
-        };
-
-        assert!(!runtime_needs_host_cuda_driver(&runtime));
-    }
-
-    #[test]
-    fn cuda_wheels_and_isaac_runtime_require_host_cuda_driver_bridge() {
-        let cuda_wheel_runtime = crate::runtime::ProjectRuntime {
-            schema_version: None,
-            env_name: "test".to_string(),
-            python_version: "3.11".to_string(),
-            cuda_wheel_version: Some("12.8".to_string()),
-            components: Vec::new(),
-            suggestions: Vec::new(),
-        };
-        let isaac_runtime = crate::runtime::ProjectRuntime {
-            schema_version: None,
-            env_name: "test".to_string(),
-            python_version: "3.11".to_string(),
-            cuda_wheel_version: None,
-            components: vec!["isaac-sim".to_string()],
-            suggestions: Vec::new(),
-        };
-
-        assert!(runtime_needs_host_cuda_driver(&cuda_wheel_runtime));
-        assert!(runtime_needs_host_cuda_driver(&isaac_runtime));
-    }
 
     #[test]
     fn x11_gl_and_isaac_runtime_require_host_nvidia_graphics_bridge() {

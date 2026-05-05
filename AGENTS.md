@@ -92,6 +92,7 @@ Host runtime path handling:
 - Do not add package-specific environment variables, path probes, or compatibility workarounds to generic runtime modules just because one downstream Python package fails. Prefer narrow downstream workarounds while debugging, then promote only a documented, product-level contract.
 - For host GPU/driver discovery, prefer explicit diagnostics that report observed facts and ownership boundaries over expanding generated shell behavior. If a generic exported fact is needed, first design the contract, document it, and add focused validation; do not introduce it opportunistically during a playground bring-up.
 - Keep host-driver path logic local to the component or CLI diagnostic that actually owns the behavior. Avoid duplicating or “deduplicating” path lists unless the new shape demonstrably reduces product surface area and has tests.
+- Do not use `bwrap`, `proot`, ad hoc chroot wrappers, or alternate-store execution wrappers as a robo-nix workaround for daemon cache trust or store execution issues. If Nix cannot use the intended cache or execute the prepared runtime directly, diagnose that host/Nix boundary instead of adding a container-like execution layer.
 
 Comment style:
 
