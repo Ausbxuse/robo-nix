@@ -5,8 +5,7 @@
 Native runtime environments for uv-based robotics projects.
 
 <a href="https://ausbxuse.github.io/robo-nix/"><img alt="Docs" src="https://img.shields.io/badge/docs-online-6fb0f4?style=for-the-badge&labelColor=2c3144&color=6fb0f4"></a>
-<a href="https://ausbxuse.github.io/robo-nix/users/getting-started"><img alt="Get Started" src="https://img.shields.io/badge/get_started-user_guide-8ac48a?style=for-the-badge&labelColor=2c3144&color=8ac48a"></a>
-<a href="https://github.com/ausbxuse/robo-nix/releases"><img alt="Release" src="https://img.shields.io/github/v/release/ausbxuse/robo-nix?include_prereleases&display_name=tag&style=for-the-badge&label=release&labelColor=2c3144&color=62bcc6"></a>
+<a href="https://github.com/ausbxuse/robo-nix/releases"><img alt="Version" src="https://img.shields.io/github/v/tag/ausbxuse/robo-nix?sort=semver&style=for-the-badge&label=version&labelColor=2c3144&color=62bcc6"></a>
 <a href="./LICENSE"><img alt="License" src="https://img.shields.io/badge/license-GPL%20v3.0-5d6784?style=for-the-badge&labelColor=2c3144&color=5d6784"></a>
 
 </div>
