@@ -1,6 +1,6 @@
 # Contributing
 
-`robo-nix` is infrastructure for downstream robotics projects. Changes should make projects easier to enter, run, and debug; they should not push extra environment knowledge, workflow policy, or maintenance burden onto users.
+`robo-nix` is infrastructure for downstream robot-learning projects. Changes should make projects easier to enter, run, and debug; they should not push extra environment knowledge, workflow policy, or maintenance burden onto users.
 
 ## Contribution Standard
 
@@ -47,7 +47,7 @@ Good AI-assisted tasks are bounded and verifiable:
 - doing repetitive rename or wording cleanup
 - comparing a proposed change against the project boundaries
 
-Use extra care when asking agents to propose product modes, add broad abstractions, infer package policy from one downstream project, or change generated project files by hand.
+Use extra care when asking agents to propose new modes, add broad abstractions, infer package policy from one downstream project, or change generated project files by hand.
 
 Pull requests that used AI should say so briefly:
 
@@ -88,10 +88,11 @@ Do not add every project-specific environment combination to the central preset 
 
 If behavior changes, update the relevant docs:
 
-- [README.md](./README.md:1)
-- [docs/users/getting-started.md](./docs/users/getting-started.md:1)
-- [docs/users/diagnostics.md](./docs/users/diagnostics.md:1)
-- [docs/developers/architecture.md](./docs/developers/architecture.md:1)
+- [README.md](./README.md)
+- [docs/users/index.md](./docs/users/index.md)
+- [docs/users/troubleshooting.md](./docs/users/troubleshooting.md)
+- [docs/users/runtime.md](./docs/users/runtime.md)
+- [docs/developers/architecture.md](./docs/developers/architecture.md)
 - the nearest runtime, CLI, or developer page when documenting a limit or TODO
 
 Documentation should describe verified behavior, not intended behavior.

@@ -18,7 +18,7 @@ Even when the setup eventually works, it is hard to know whether you reproduced 
 
 `uv` is a major improvement over older Python workflows. It is fast, reliable, and good at the part Python tooling can own.
 
-But robotics environments are not only Python environments.
+But robot-learning environments are not only Python environments.
 
 They often need:
 
@@ -55,7 +55,7 @@ The goal is not to hide reality. The goal is to make reality easier to see and e
 
 ## Where It Fits
 
-`robo-nix` is not trying to win every environment category. It is for uv-managed robotics projects that need host-integrated native runtime support without asking every contributor to become a Nix user.
+`robo-nix` is not trying to win every environment category. It is for uv-managed robot-learning projects that need host-integrated native runtime support without asking every contributor to become a Nix user.
 
 <div class="fit-matrix">
 
@@ -82,7 +82,7 @@ The goal is not to hide reality. The goal is to make reality easier to see and e
 - Use `uv2nix` when you want Nix to own Python packages too.
 - Use devenv when you want a general Nix development shell.
 - Use raw flakes when your users are comfortable working directly in Nix.
-- Use `robo-nix` when the project should stay normal Python, but robotics-native dependencies and diagnostics need to be reproducible.
+- Use `robo-nix` when the project should stay normal Python, but native dependencies and diagnostics need to be reproducible for robot-learning work.
 
 ## Why Not Just Docker?
 
@@ -94,7 +94,7 @@ For day-to-day robot-learning development, containers can become awkward. GPU ac
 
 ## Why Not Just uv, Conda, or Poetry?
 
-Those tools solve important Python problems. They do not solve the full robotics runtime problem.
+Those tools solve important Python problems. They do not solve the full robot-learning runtime problem.
 
 `robo-nix` is not trying to replace good Python tooling. It is designed to let Python tooling stay normal while Nix supplies the native layer Python cannot safely own.
 

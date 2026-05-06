@@ -1,4 +1,4 @@
-const fitMatrixStyles = `
+const docsStyles = `
 .fit-matrix table {
   display: table;
   width: 100%;
@@ -46,13 +46,15 @@ const fitMatrixStyles = `
 
 export default {
   title: 'robo-nix',
-  description: 'Robotics runtime environments powered by Nix and uv',
+  description: 'Robot-learning runtime environments powered by Nix and uv',
   base: process.env.ROBO_NIX_DOCS_BASE || '/',
   cleanUrls: true,
-  head: [['style', {}, fitMatrixStyles]],
+  head: [
+    ['link', { rel: 'icon', type: 'image/png', href: '/favicon.png' }],
+    ['style', {}, docsStyles]
+  ],
 
   themeConfig: {
-    logo: '/logo.svg',
     outline: [2, 3],
     nav: [
       { text: 'Why', link: '/blog' },
@@ -94,8 +96,8 @@ export default {
       { icon: 'github', link: 'https://github.com/ausbxuse/robo-nix' }
     ],
     footer: {
-      message: 'Released under GPL-3.0-or-later.',
-      copyright: 'Copyright © robo-nix contributors'
+      message: 'Licensed under <a href="https://github.com/ausbxuse/robo-nix/blob/develop/LICENSE">GPL-3.0</a>.',
+      copyright: 'Copyright © Zhenyu Zhao (<a href="https://github.com/ausbxuse">@ausbxuse</a>)'
     }
   }
 }

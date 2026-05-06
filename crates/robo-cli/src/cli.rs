@@ -18,7 +18,7 @@ use crate::{Config, LabelKind, check, contract, cuda, diagnose, error, init, lab
 #[command(
     name = "robo",
     about = "robo-nix project runtime helper",
-    long_about = "Make pyproject.toml + uv work with the native robotics libraries they need, without requiring users to learn flakes first.",
+    long_about = "Make pyproject.toml + uv work with the native robot-learning libraries they need, without requiring users to learn flakes first.",
     styles = clap_styles(),
     disable_help_subcommand = true
 )]

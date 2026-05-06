@@ -1,6 +1,6 @@
 # Project Boundary
 
-The goal is a clear, reusable native runtime standard for uv-managed robotics projects. If a change makes downstream users learn more Nix, debug more hidden shell behavior, or carry more project-specific policy in `robo-nix`, treat that as a warning sign unless it solves a common problem.
+The goal is a clear, reusable native runtime standard for uv-managed robot-learning projects. If a change makes downstream users learn more Nix, debug more hidden shell behavior, or carry more project-specific policy in `robo-nix`, treat that as a warning sign unless it solves a common problem.
 
 ## Ownership
 
@@ -42,7 +42,7 @@ nix build .#docs
 nix run .#docs-dev
 ```
 
-For CLI behavior changes, read the current [CLI UX contract](/developers/cli-ux) before editing command output. Use [UX design notes](/developers/ux-iteration) for exploratory direction.
+For CLI behavior changes, read the current [CLI UX contract](./cli-ux.md) before editing command output. Use [UX design notes](./ux-iteration.md) for exploratory direction.
 
 For contribution standards and AI-assisted work, read [Contributing](https://github.com/ausbxuse/robo-nix/blob/develop/CONTRIBUTING.md).
 

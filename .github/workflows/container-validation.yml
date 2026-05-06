@@ -1,0 +1,48 @@
+name: Container Validation
+
+on:
+  push:
+    paths:
+      - 'crates/**'
+      - 'nix/metadata/**'
+      - 'nix/modules/**'
+      - 'nix/mk-flake.nix'
+      - 'scripts/**'
+      - 'tests/container-validation.sh'
+      - 'tests/fixtures/**'
+      - 'flake.lock'
+  pull_request:
+    paths:
+      - 'crates/**'
+      - 'nix/metadata/**'
+      - 'nix/modules/**'
+      - 'nix/mk-flake.nix'
+      - 'scripts/**'
+      - 'tests/container-validation.sh'
+      - 'tests/fixtures/**'
+      - 'flake.lock'
+
+jobs:
+  container-validation:
+    name: Container Validation (${{ matrix.image }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - debian:12
+          - debian:13
+          - fedora:latest
+          - archlinux:latest
+          - nixos/nix:latest
+          - ubuntu:22.04
+          - ubuntu:24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run Container Validation
+        env:
+          ROBO_NIX_CONTAINER_IMAGE: ${{ matrix.image }}
+          ROBO_NIX_CONTAINER_RUNTIME: docker
+        run: bash tests/container-validation.sh

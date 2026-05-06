@@ -27,7 +27,7 @@
 
   native-build = {
     category = "core";
-    description = "C/C++ build toolchain for native extensions and robotics libraries.";
+    description = "C/C++ build toolchain for native extensions and robot-learning libraries.";
     scaffoldDirectories = [];
     supportedSystems = [
       "x86_64-linux"
@@ -71,7 +71,7 @@
 
   qt6 = {
     category = "ui";
-    description = "Qt 6 runtime support for robotics desktop tools and services.";
+    description = "Qt 6 runtime support for robot-learning desktop tools and services.";
     scaffoldDirectories = [];
     supportedSystems = [
       "x86_64-linux"

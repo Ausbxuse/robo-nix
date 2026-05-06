@@ -2,7 +2,7 @@
 # implies reusable native runtime support. Keep rules generic: do not encode
 # project-specific uv groups, extras, source pins, package indexes, or install
 # modes here. `note` is shown to users by `robo init`, so write it as concise
-# product text, not internal commentary.
+# public text, not internal commentary.
 #
 # CUDA wheel ABI requirements are inferred from uv.lock by the CLI. Do not add
 # cuda-toolkit just because a wheel is CUDA-enabled; reserve cuda-toolkit for

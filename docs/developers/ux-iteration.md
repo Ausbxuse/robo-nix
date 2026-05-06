@@ -9,7 +9,7 @@ For binding behavior, use:
 
 ## Goal
 
-`robo` should feel obvious to a robotics user who does not want to learn Nix. Commands should answer the user's immediate question with enough structure to scan, debug, and share.
+`robo` should feel obvious to a robot-learning user who does not want to learn Nix. Commands should answer the user's immediate question with enough structure to scan, debug, and share.
 
 The normal command surface should stay small:
 
@@ -25,7 +25,6 @@ Support commands are useful only when the intent is genuinely different from the
 
 ```bash
 robo diagnose [FILE|-]
-robo bundle
 ```
 
 ## Project Boundaries
@@ -70,7 +69,6 @@ Use command intent to keep diagnostics understandable:
 - `robo status` gives a short health read.
 - `robo check` probes the current project and host runtime.
 - `robo diagnose` classifies an existing error log.
-- `robo bundle` may collect support context, but should avoid secrets and avoid pretending to prove host-specific behavior it did not test.
 
 When a diagnosis is uncertain, say so. A useful uncertain result names the likely owner and the facts needed next.
 
