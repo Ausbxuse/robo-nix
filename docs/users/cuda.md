@@ -1,5 +1,7 @@
 # CUDA
 
+Use this page when a project uses Python CUDA wheels, builds native CUDA extensions, or fails because the host NVIDIA driver is missing or too old.
+
 CUDA support is split across uv, Nix, and the host.
 
 This split is important because no single layer owns the whole CUDA stack.

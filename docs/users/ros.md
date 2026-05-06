@@ -1,6 +1,17 @@
 # ROS
 
-ROS support currently centers on reusable runtime components, especially `ros2-jazzy` and `ros-workspace`.
+Use this page when a project uses the current ROS 2 Jazzy runtime components in `robo-nix`.
+
+Current support is intentionally narrow:
+
+- `ros2-jazzy` provides a ROS 2 Jazzy underlay, colcon tooling, `vcs`, CycloneDDS defaults, and the ROS setup environment.
+- `ros-workspace` expects a workspace at `ros_ws/src` and exposes `ROBO_NIX_ROS_WS`.
+- The `ros2-workspace` profile combines the base runtime, uv-managed Python, native build tools, `ros2-jazzy`, and `ros-workspace`.
+- Supported systems for ROS 2 Jazzy are Linux only: `x86_64-linux` and `aarch64-linux`.
+
+This is runtime infrastructure. It is not a ROS launcher, rosdep replacement, package registry, networking policy layer, or robot-specific bringup system.
+
+## Basic Shape
 
 The default workspace convention is:
 
@@ -8,28 +19,44 @@ The default workspace convention is:
 ros_ws/src
 ```
 
-`robo-nix` supports ROS as native runtime infrastructure. It is not a project-specific ROS launcher or package policy layer.
+In a ROS project, `robo-nix` can provide:
 
-## What Nix Should Provide
+- ROS 2 Jazzy environment setup
+- colcon build tooling
+- native build tools used by ROS packages
+- CycloneDDS defaults
+- predictable shell variables for the workspace path
 
-For ROS projects, Nix can provide:
+The downstream project still owns:
 
-- ROS distribution packages
-- ROS setup environment
-- colcon and native build tools
-- system libraries needed by ROS packages
-- runtime hooks for a predictable shell
-
-## What the Project Owns
-
-The downstream project owns:
-
-- workspace layout beyond the common convention
-- package selection
-- source repositories
-- rosdep policy
+- ROS packages and source repositories
+- `rosdep` policy and package installation choices
 - launch files
-- robot-specific setup scripts
-- simulator-specific orchestration
+- robot-specific scripts
+- ROS_DOMAIN_ID or ROS_LOCALHOST_ONLY choices when the defaults are wrong
+- simulator, hardware, and networking orchestration
 
-Additional ROS distributions should be added only when their component contract is reusable across real downstream projects.
+## Current Limits
+
+Current ROS support has not been validated as a full robot bringup workflow.
+
+Known limits:
+
+- Only ROS 2 Jazzy is modeled as a first-class component.
+- ROS networking behavior is host- and project-specific.
+- `rosdep` flows are not managed by `robo`.
+- Non-`ros_ws/src` layouts need explicit project handling.
+- Cross-platform ROS support is not claimed; the ROS 2 Jazzy component is Linux-only.
+
+TODO:
+
+<div class="todo-list" role="list">
+  <label class="todo-item" role="listitem">
+    <input type="checkbox" disabled>
+    <span>Add focused validation for a real ROS 2 workspace that builds with colcon and runs a simple node inside <code>robo shell</code>.</span>
+  </label>
+  <label class="todo-item" role="listitem">
+    <input type="checkbox" disabled>
+    <span>Document the recommended path for projects that need <code>rosdep</code>, custom DDS configuration, or non-default workspace layouts after those workflows are tested.</span>
+  </label>
+</div>

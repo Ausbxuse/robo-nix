@@ -71,9 +71,9 @@ robo shell
 uv sync
 ```
 
-## Daily Workflow
+## After Setup
 
-After the first successful setup, the normal commands are:
+After the first successful setup, these are the commands most users need:
 
 ```bash
 robo run python -m pytest
@@ -82,12 +82,12 @@ robo check
 robo status
 ```
 
-`robo shell` and `robo run` reuse cached runtime exports from `.robo-nix/` when the runtime files still match. If `robo.nix`, `flake.nix`, `.python-version`, or the runtime lock changes, `robo` refreshes the cache.
+`robo shell` is for interactive work. `robo run` is for one command. `robo check` and `robo status` are for debugging and health checks.
 
 ## What to Read Next
 
 - [Why robo-nix](../blog.md) explains the motivation.
-- [User workflow](./workflow.md) explains `up`, `shell`, `run`, `check`, `diagnose`, and `status`.
+- [Workflow](./workflow.md) is the command reference.
 - [Python boundary](./python.md) explains why uv owns Python and how to avoid ABI mixing.
 - [Diagnostics](./diagnostics.md) explains how to classify failures.
 - [CUDA](./cuda.md), [graphics](./graphics.md), and [ROS](./ros.md) explain runtime-specific expectations.

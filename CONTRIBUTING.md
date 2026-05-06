@@ -39,7 +39,24 @@ Avoid:
 - adding abstractions that cannot be justified beyond “the AI suggested it”
 - documenting behavior that was never validated
 
-For agent prompts, PR disclosure, and review expectations, read [AI-Assisted Contributing](./docs/developers/ai-assisted-contributing.md).
+Good AI-assisted tasks are bounded and verifiable:
+
+- tracing a failure through Rust, Nix, shell, and docs
+- adding or updating a narrow reproducer
+- checking whether docs match current behavior
+- doing repetitive rename or wording cleanup
+- comparing a proposed change against the project boundaries
+
+Use extra care when asking agents to propose product modes, add broad abstractions, infer package policy from one downstream project, or change generated project files by hand.
+
+Pull requests that used AI should say so briefly:
+
+```text
+AI-assisted: yes. Used an agent to trace the failing check and draft the patch.
+Reviewed manually. Verified with `bash tests/dev-check.sh`.
+```
+
+AI may write code and documentation. Humans own the merge. If a change cannot be explained, reviewed, and validated without trusting the model, it needs more work before it is ready for `robo-nix`.
 
 ## Preferred Workflow
 
@@ -75,6 +92,6 @@ If behavior changes, update the relevant docs:
 - [docs/users/getting-started.md](./docs/users/getting-started.md:1)
 - [docs/users/diagnostics.md](./docs/users/diagnostics.md:1)
 - [docs/developers/architecture.md](./docs/developers/architecture.md:1)
-- [docs/developers/roadmap.md](./docs/developers/roadmap.md:1)
+- the nearest runtime, CLI, or developer page when documenting a limit or TODO
 
 Documentation should describe verified behavior, not intended behavior.

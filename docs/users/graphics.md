@@ -1,5 +1,7 @@
 # Graphics
 
+Use this page when a project needs simulator viewers, OpenGL/EGL, Qt, OpenCV GUI paths, or display-related diagnostics.
+
 Graphics support is selected through runtime components such as `x11-gl` and `qt6`.
 
 Use them for:
@@ -92,7 +94,7 @@ Known gaps:
   VirtualGL, and container display forwarding still need explicit project or
   host setup.
 - There is no nixGL-style one-command wrapper yet. If a command needs launcher
-  behavior instead of shell-wide runtime setup, that is still future work.
+  behavior instead of shell-wide runtime setup, that is not implemented.
   A future wrapper should learn from nixGL's provider detection and launch-time
   environment model, but should still document what remains host policy.
 

@@ -1,17 +1,13 @@
 # Developer Guide
 
-This section is for people maintaining `robo-nix` itself.
-
-The project should stay boring internally and friendly externally. Rust owns the CLI and diagnostics, while Nix and metadata own runtime coverage.
+Use this section when you are changing `robo-nix` itself.
 
 ## Orientation
 
-Start with:
-
-1. [Developer Overview](./overview.md) for product boundaries and the repo shape.
-2. [Architecture](./architecture.md) for the implementation layers.
-3. [Repository Workflow](./repository.md) for local checks, docs, and maintenance workflow.
-4. [AI-Assisted Contributing](./ai-assisted-contributing.md) for agent-assisted changes.
+- [Product Boundary](./overview.md): ownership rules, repo shape, and local development loop.
+- [Architecture](./architecture.md): implementation layers and generated project model.
+- [Repository Workflow](./repository.md): docs build, formatting, tests, and failure-mode notes.
+- [Contributing](https://github.com/ausbxuse/robo-nix/blob/develop/CONTRIBUTING.md): contribution standards, AI usage, review expectations, and PR disclosure.
 
 ## Documentation Boundaries
 
@@ -21,11 +17,11 @@ Start with:
 
 ## Design Contracts
 
-Read these before changing behavior:
-
 - [CLI UX Contract](./cli-ux.md) for command output, colors, progress, and wording.
 - [Runtime Capability Model](./runtime-capability-model.md) for scalable runtime inference design.
 
-## Planning
+## Iteration
 
-Use [Roadmap](./roadmap.md) for open direction and release priorities. [UX Design Notes](./ux-iteration.md) records exploratory CLI direction and is not required reading for normal changes.
+`robo-nix` should evolve from validated downstream usage, not from a standing plan. Keep current limits and TODOs next to the page or module they affect.
+
+Use [UX Design Notes](./ux-iteration.md) for durable CLI direction and iteration rules.

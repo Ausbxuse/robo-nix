@@ -1,6 +1,8 @@
 # User Workflow
 
-`robo` is the command users should interact with day to day. Nix should be present, but it should not be the thing most users need to think about.
+This page is the command reference. For first-time setup, start with [Getting Started](./getting-started.md).
+
+Nix should be present, but it should not be the thing most users need to think about.
 
 ## `robo up`
 
@@ -33,24 +35,16 @@ robo up --shell
 
 Use `--yes` for non-interactive defaults.
 
-Run the uv command documented by the project after the runtime is ready:
-
-```bash
-robo shell
-uv sync
-```
+Run the uv command documented by the project after the runtime is ready.
 
 ## `robo shell`
 
 `robo shell` opens an interactive shell with the runtime environment active.
 
-Use it before commands that need native libraries, compilers, CUDA headers, graphics libraries, ROS setup, or simulator runtime state:
+Use it before commands that need native libraries, compilers, CUDA headers, graphics libraries, ROS setup, or simulator runtime state.
 
 ```bash
 robo shell
-uv sync
-python -m my_robot_app
-exit
 ```
 
 The default shell path is a subprocess. To leave it, run `exit`.
@@ -71,7 +65,6 @@ The hook is convenience, not a requirement. The subprocess shell path should sta
 ```bash
 robo run python -m pytest
 robo run python -m teleop
-robo run uv sync
 ```
 
 This is often better than entering a shell in scripts or CI because it keeps the command boundary explicit.

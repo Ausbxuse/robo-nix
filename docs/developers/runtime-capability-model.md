@@ -1,6 +1,6 @@
 # Runtime Capability Model
 
-This is the target design for keeping runtime inference scalable.
+This page records the current design direction for keeping runtime inference scalable. It is not a standing plan; incomplete behavior should stay marked as incomplete near the code or user-facing docs it affects.
 
 The design borrows Pixi's strongest idea, not Pixi's product model: detected machine facts and declared environment requirements should be separate objects that can be compared clearly. In Pixi, those objects are Conda virtual packages such as `__cuda` and `__glibc`. In `robo-nix`, they should be uv/Nix runtime capabilities.
 

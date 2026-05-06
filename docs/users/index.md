@@ -1,35 +1,22 @@
 # User Guide
 
-This section is for people using `robo` in a project.
-
-You do not need to learn Nix first. The important boundary is:
-
-- `uv` owns Python packages, virtual environments, dependency groups, and `uv.lock`.
-- Nix owns native libraries, CUDA, graphics, ROS, compilers, and shell environment.
-- `robo` owns setup commands, runtime shells, command wrapping, and diagnostics.
+Use this section when you want to install `robo`, enter a project runtime, run commands, or debug environment failures.
 
 ## Start Here
 
-If you are setting up a project for the first time:
+- [Getting Started](./getting-started.md): install `robo`, prepare a project, and run the first Python command.
+- [Workflow](./workflow.md): command reference for `robo up`, `robo shell`, `robo run`, `robo check`, `robo diagnose`, and `robo status`.
+- [Python Boundary](./python.md): what uv owns, what Nix owns, and how to avoid Python/native ABI mixing.
 
-1. Read [Getting Started](./getting-started.md).
-2. Use [Workflow](./workflow.md) for daily commands.
-3. Read [Python Boundary](./python.md) before changing virtualenv or lockfile behavior.
+## Troubleshooting
 
-## When Something Breaks
+- [Diagnostics](./diagnostics.md): choose the right diagnostic command.
+- [Runtime Failure Guide](./failure-guide.md): look up distinctive errors such as `GLIBC_2.38 not found`, `Qt6Config.cmake`, or `EGL: Failed to get EGL display`.
 
-Use [Diagnostics](./diagnostics.md) to choose between:
+## Runtime Capabilities
 
-- `robo check` for probing the current project/runtime/host.
-- `robo diagnose` for classifying an existing error log.
-- `robo check --deep` for slower runtime probes.
+These pages explain what `robo-nix` can provide, what the host still owns, and which parts are not solved yet.
 
-Use the [Runtime Failure Guide](./failure-guide.md) when you already have a distinctive error phrase such as `GLIBC_2.38 not found`, `Qt6Config.cmake`, or `EGL: Failed to get EGL display`.
-
-## Runtime Topics
-
-Use these pages when a project needs a specific runtime area:
-
-- [CUDA](./cuda.md)
-- [Graphics](./graphics.md)
-- [ROS](./ros.md)
+- [CUDA](./cuda.md): Python CUDA wheels, native CUDA builds, and host driver visibility.
+- [Graphics](./graphics.md): OpenGL, EGL, Qt, display variables, and current host-driver limits.
+- [ROS](./ros.md): current ROS 2 Jazzy workspace support and unvalidated ROS gaps.

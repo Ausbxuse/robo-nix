@@ -21,7 +21,7 @@ features:
   - title: Built for robotics friction
     details: CUDA, graphics, ROS, simulators, compilers, media libraries, and host-driver diagnostics belong in the environment story.
   - title: Reviewable by design
-    details: Generated files are plain project files, platform coverage is tracked openly, and unsupported host-specific behavior is called out.
+    details: Generated files are plain project files, and host-specific behavior is diagnosed explicitly.
 ---
 
 ## What It Feels Like
@@ -51,4 +51,4 @@ It keeps the contract simple:
 - New to the project: start with the [User Guide](./users/).
 - Debugging setup: read [Diagnostics](./users/diagnostics.md) or the [Runtime Failure Guide](./users/failure-guide.md).
 - Maintaining robo-nix: read the [Developer Guide](./developers/).
-- Contributing with AI assistance: read [AI-Assisted Contributing](./developers/ai-assisted-contributing.md).
+- Contributing: read [Contributing](https://github.com/ausbxuse/robo-nix/blob/develop/CONTRIBUTING.md).

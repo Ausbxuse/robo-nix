@@ -146,6 +146,7 @@ When the user corrects an agent:
 
 - Treat the correction as a signal to re-check assumptions, not as something to defend against.
 - Verify the correction against local code, docs, tests, or primary sources when practical; users can be right, partially right, or mistaken.
+- When the user provides clear evidence of weakness in one part of the code or docs, scan for the same weakness elsewhere before stopping at the exact reported spot. Fix nearby instances when they are the same class of issue and the fix stays scoped.
 - If the correction is right and reveals a reusable lesson, write the durable takeaway into `AGENTS.md` or a focused `.failure-modes/` note before continuing.
 - If the correction is mistaken, explain the evidence briefly and keep the product goal in view.
 - Do not repeat a corrected mistake after the takeaway has been recorded.
@@ -170,7 +171,9 @@ robo shell
 robo run <command>
 ```
 
-## High-Priority TODO
+## Current Focus Areas
+
+These are not a standing plan. Revisit them as downstream usage proves or disproves assumptions, and keep concrete limits or TODOs next to the docs or modules they affect.
 
 1. Grow the Rust `robo` CLI into the primary UX.
    It should wrap Nix commands, hide `--extra-experimental-features`, detect missing Nix/flakes support, and print plain-language fixes.

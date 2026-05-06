@@ -6,7 +6,6 @@ For binding behavior, use:
 
 - [CLI UX Contract](./cli-ux.md) for command output, colors, progress, and wording.
 - [Runtime Capability Model](./runtime-capability-model.md) for runtime inference and metadata boundaries.
-- [Roadmap](./roadmap.md) for release direction.
 
 ## Goal
 

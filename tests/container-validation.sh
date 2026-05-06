@@ -33,6 +33,8 @@ esac
 	-e ROBO_NIX_CONTAINER_RUN_SHELL="${ROBO_NIX_CONTAINER_RUN_SHELL:-0}" \
 	-e NIX_CONFIG="experimental-features = nix-command flakes
 accept-flake-config = true
+download-attempts = 10
+http-connections = 1
 extra-substituters = https://nixpkgs-python.cachix.org https://ros.cachix.org
 extra-trusted-public-keys = nixpkgs-python.cachix.org-1:hxjI7pFxTyuTHn2NkvWCrAUcNZLNS3ZAvfYNuYifcEU= ros.cachix.org-1:dSyZxI8geDCJrwgvCOHDoAfOm5sV1wCPjBkKL+38Rvo=" \
 	"$image" \

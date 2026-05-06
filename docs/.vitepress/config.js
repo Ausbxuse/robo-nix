@@ -41,6 +41,36 @@ const fitMatrixStyles = `
   color: var(--vp-c-text-2);
   font-size: 14px;
 }
+
+.todo-list {
+  display: grid;
+  gap: 10px;
+  margin: 16px 0 24px;
+  padding: 14px 16px;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 8px;
+  background: var(--vp-c-bg-soft);
+}
+
+.todo-item {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  line-height: 1.6;
+  color: var(--vp-c-text-1);
+}
+
+.todo-item input {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-top: 0.32em;
+  accent-color: var(--vp-c-brand-1);
+}
+
+.todo-item span {
+  min-width: 0;
+}
 `
 
 export default {
@@ -69,7 +99,7 @@ export default {
       {
         text: 'User Guide',
         items: [
-          { text: 'User Guide Home', link: '/users/' },
+          { text: 'Overview', link: '/users/' },
           { text: 'Getting Started', link: '/users/getting-started' },
           { text: 'Workflow', link: '/users/workflow' },
           { text: 'Python Boundary', link: '/users/python' }
@@ -83,7 +113,7 @@ export default {
         ]
       },
       {
-        text: 'Runtime Topics',
+        text: 'Runtime Capabilities',
         items: [
           { text: 'CUDA', link: '/users/cuda' },
           { text: 'Graphics', link: '/users/graphics' },
@@ -93,19 +123,12 @@ export default {
       {
         text: 'Developer Guide',
         items: [
-          { text: 'Developer Guide Home', link: '/developers/' },
-          { text: 'Developer Overview', link: '/developers/overview' },
+          { text: 'Overview', link: '/developers/' },
+          { text: 'Product Boundary', link: '/developers/overview' },
           { text: 'Architecture', link: '/developers/architecture' },
           { text: 'Repository Workflow', link: '/developers/repository' },
-          { text: 'AI-Assisted Contributing', link: '/developers/ai-assisted-contributing' },
-          { text: 'Roadmap', link: '/developers/roadmap' }
-        ]
-      },
-      {
-        text: 'Design Internals',
-        items: [
-          { text: 'Runtime Capability Model', link: '/developers/runtime-capability-model' },
           { text: 'CLI UX Contract', link: '/developers/cli-ux' },
+          { text: 'Runtime Capability Model', link: '/developers/runtime-capability-model' },
           { text: 'UX Design Notes', link: '/developers/ux-iteration' }
         ]
       }

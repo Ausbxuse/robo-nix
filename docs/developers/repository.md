@@ -59,7 +59,7 @@ Do not treat GPU, Isaac, or broad Nix checks as cheap inner-loop tests.
 
 ## AI-Assisted Work
 
-Use [AI-Assisted Contributing](./ai-assisted-contributing.md) for agent workflow, review expectations, and pull request disclosure.
+Use [Contributing](https://github.com/ausbxuse/robo-nix/blob/develop/CONTRIBUTING.md) for contribution standards, AI usage, review expectations, and pull request disclosure.
 
 ## Failure Modes
 
