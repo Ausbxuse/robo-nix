@@ -149,8 +149,8 @@ in rec {
       '';
     };
 
-    docs-serve = pkgs.writeShellApplication {
-      name = "docs-serve";
+    docs-dev = pkgs.writeShellApplication {
+      name = "docs-dev";
       runtimeInputs = [
         pkgs.nodejs_20
         vitepressTool

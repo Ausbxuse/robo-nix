@@ -96,13 +96,13 @@ Read the documentation site at <https://ausbxuse.github.io/robo-nix/>.
 
 Useful entry points:
 
-- [Get started](https://ausbxuse.github.io/robo-nix/users/getting-started)
+- [User guide](https://ausbxuse.github.io/robo-nix/users/)
 - [Why robo-nix](https://ausbxuse.github.io/robo-nix/blog)
-- [Diagnostics](https://ausbxuse.github.io/robo-nix/users/diagnostics)
-- [Python boundary](https://ausbxuse.github.io/robo-nix/users/python)
-- [Developer overview](https://ausbxuse.github.io/robo-nix/developers/overview)
+- [Troubleshooting](https://ausbxuse.github.io/robo-nix/users/troubleshooting)
+- [Runtime support](https://ausbxuse.github.io/robo-nix/users/runtime)
+- [Developer guide](https://ausbxuse.github.io/robo-nix/developers/)
 
-Contributor setup, repository layout, and local documentation commands live in the [Developer overview](https://ausbxuse.github.io/robo-nix/developers/overview).
+Contributor setup, repository layout, and local documentation commands live in the [Developer guide](https://ausbxuse.github.io/robo-nix/developers/).
 
 ## Related Projects
 

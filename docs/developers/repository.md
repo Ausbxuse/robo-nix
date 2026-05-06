@@ -8,12 +8,12 @@ The VitePress site is the maintained documentation surface.
 
 ```bash
 nix build .#docs
-nix run .#docs-serve
+nix run .#docs-dev
 ```
 
 GitHub Pages deployment is handled by `.github/workflows/docs.yml`. The workflow builds from `docs/` with Node and sets `ROBO_NIX_DOCS_BASE=/robo-nix/`.
 
-The docs site owns its Node toolchain under `docs/package.json` and `docs/package-lock.json`. Keep root `package.json` out of the repo unless the root gains a real Node product surface.
+The docs site owns its Node toolchain under `docs/package.json` and `docs/package-lock.json`. Keep root `package.json` out of the repo unless the root gains a real Node surface.
 
 ## Formatting and Linting
 

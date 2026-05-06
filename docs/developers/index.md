@@ -4,9 +4,10 @@ Use this section when you are changing `robo-nix` itself.
 
 ## Orientation
 
-- [Product Boundary](./overview.md): ownership rules, repo shape, and local development loop.
+- [Project Boundary](./project-boundary.md): ownership rules, repo shape, and local development loop.
 - [Architecture](./architecture.md): implementation layers and generated project model.
 - [Repository Workflow](./repository.md): docs build, formatting, tests, and failure-mode notes.
+- [Release Process](./release.md): tags, release notes, and publishing checks.
 - [Contributing](https://github.com/ausbxuse/robo-nix/blob/develop/CONTRIBUTING.md): contribution standards, AI usage, review expectations, and PR disclosure.
 
 ## Documentation Boundaries

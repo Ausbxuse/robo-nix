@@ -1,6 +1,6 @@
 # UX Design Notes
 
-This page records durable CLI direction. It is not a product contract, a release checklist, or required reading for normal changes.
+This page records durable CLI direction. It is not a user contract, a release checklist, or required reading for normal changes.
 
 For binding behavior, use:
 
@@ -28,7 +28,7 @@ robo diagnose [FILE|-]
 robo bundle
 ```
 
-## Product Boundaries
+## Project Boundaries
 
 Keep ownership explicit:
 

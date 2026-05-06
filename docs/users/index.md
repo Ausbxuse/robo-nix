@@ -1,22 +1,23 @@
-# User Guide
+# Start Here
 
 Use this section when you want to install `robo`, enter a project runtime, run commands, or debug environment failures.
 
-## Start Here
+Most users only need this flow:
 
-- [Getting Started](./getting-started.md): install `robo`, prepare a project, and run the first Python command.
-- [Workflow](./workflow.md): command reference for `robo up`, `robo shell`, `robo run`, `robo check`, `robo diagnose`, and `robo status`.
-- [Python Boundary](./python.md): what uv owns, what Nix owns, and how to avoid Python/native ABI mixing.
+```bash
+robo up --shell
+uv sync
+robo run python -m pytest
+```
 
-## Troubleshooting
+`robo` prepares the runtime around Python. `uv` still owns Python packages, dependency groups, indexes, editable sources, and `uv.lock`.
 
-- [Diagnostics](./diagnostics.md): choose the right diagnostic command.
-- [Runtime Failure Guide](./failure-guide.md): look up distinctive errors such as `GLIBC_2.38 not found`, `Qt6Config.cmake`, or `EGL: Failed to get EGL display`.
+## Pages
 
-## Runtime Capabilities
+- [Usage](./usage.md): install `robo`, start a new project, enter an existing repo, and run daily commands.
+- [Troubleshooting](./troubleshooting.md): use `robo check`, classify common errors, and decide what owns the fix.
+- [Runtime Support](./runtime.md): CUDA, graphics, ROS, simulator tooling, compilers, FFmpeg, and host-owned limits.
 
-These pages explain what `robo-nix` can provide, what the host still owns, and which parts are not solved yet.
-
-- [CUDA](./cuda.md): Python CUDA wheels, native CUDA builds, and host driver visibility.
-- [Graphics](./graphics.md): OpenGL, EGL, Qt, display variables, and current host-driver limits.
-- [ROS](./ros.md): current ROS 2 Jazzy workspace support and unvalidated ROS gaps.
+::: warning Early beta
+`robo-nix` is early beta software. CLI wording, generated files, diagnostics, runtime coverage, and installer behavior may change. Review generated `robo.nix` and `flake.nix` before committing them, and pin versions before depending on it for a shared team workflow.
+:::

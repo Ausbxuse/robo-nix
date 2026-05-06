@@ -76,10 +76,10 @@
             program = "${repoPackages.${system}.cuda-check}/bin/cuda-check";
             meta.description = "Validate host CUDA and NVIDIA prerequisites";
           };
-          docs-serve = {
+          docs-dev = {
             type = "app";
-            program = "${repoPackages.${system}.docs-serve}/bin/docs-serve";
-            meta.description = "Preview the robo-nix documentation site";
+            program = "${repoPackages.${system}.docs-dev}/bin/docs-dev";
+            meta.description = "Run the robo-nix documentation dev server";
           };
           robo = {
             type = "app";

@@ -7,8 +7,8 @@ hero:
   tagline: Start quickly with normal Python. Let Nix handle native runtime libraries. Use robo for the workflow.
   actions:
     - theme: brand
-      text: Get Started
-      link: /users/getting-started
+      text: Start Here
+      link: /users/
     - theme: alt
       text: Why robo-nix
       link: /blog
@@ -49,6 +49,7 @@ It keeps the contract simple:
 ## Where to Go
 
 - New to the project: start with the [User Guide](./users/).
-- Debugging setup: read [Diagnostics](./users/diagnostics.md) or the [Runtime Failure Guide](./users/failure-guide.md).
+- Debugging setup: read [Troubleshooting](./users/troubleshooting.md).
+- Runtime details: read [Runtime Support](./users/runtime.md).
 - Maintaining robo-nix: read the [Developer Guide](./developers/).
 - Contributing: read [Contributing](https://github.com/ausbxuse/robo-nix/blob/develop/CONTRIBUTING.md).

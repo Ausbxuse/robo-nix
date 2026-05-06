@@ -1,6 +1,6 @@
-# Product Boundary
+# Project Boundary
 
-The goal is a clear, reusable native runtime standard for uv-managed robotics projects. If a change makes downstream users learn more Nix, debug more hidden shell behavior, or carry more project-specific policy in `robo-nix`, treat that as a product smell unless it solves a common problem.
+The goal is a clear, reusable native runtime standard for uv-managed robotics projects. If a change makes downstream users learn more Nix, debug more hidden shell behavior, or carry more project-specific policy in `robo-nix`, treat that as a warning sign unless it solves a common problem.
 
 ## Ownership
 
@@ -11,12 +11,12 @@ Keep the boundary strict:
 - The Rust `robo` CLI owns user-facing workflow, diagnostics, command wrapping, and generated runtime files.
 - Runtime inference coverage should live in metadata, not compiled Rust logic.
 
-Do not make Nix-managed Python a first-class product mode unless real users prove that need.
+Do not make Nix-managed Python a first-class mode unless real users prove that need.
 
 ## Repository Shape
 
 ```text
-crates/robo-cli/       Rust CLI and product UX
+crates/robo-cli/       Rust CLI and user-facing workflow
 nix/modules/           reusable runtime components
 nix/metadata/          component docs, starter profiles, inference rules
 nix/mk-flake.nix       downstream flake generator
@@ -39,7 +39,7 @@ For docs:
 
 ```bash
 nix build .#docs
-nix run .#docs-serve
+nix run .#docs-dev
 ```
 
 For CLI behavior changes, read the current [CLI UX contract](/developers/cli-ux) before editing command output. Use [UX design notes](/developers/ux-iteration) for exploratory direction.
