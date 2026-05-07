@@ -2,7 +2,7 @@
 
 set -eu
 
-robo_nix_flake="${ROBO_NIX_FLAKE:-github:ausbxuse/robo-nix}"
+robo_nix_flake="${ROBO_NIX_FLAKE:-github:ausbxuse/robo-nix/develop}"
 nix_installer_url="${ROBO_NIX_NIX_INSTALLER_URL:-https://install.determinate.systems/nix}"
 
 info() {

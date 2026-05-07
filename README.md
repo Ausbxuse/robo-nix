@@ -10,9 +10,9 @@ Native runtime environments for uv-based robot-learning projects.
 
 </div>
 
-`robo-nix` gives uv-managed robot-learning projects the native runtime layer Python packaging does not own.
+`robo-nix` gives uv-based robot-learning projects the Nix-managed Python interpreter and native runtime layer Python packaging does not own.
 
-Use `uv` for Python packages. Use `robo` for the native runtime.
+Use `uv` for the Python dependency workflow. Use `robo` for the Nix-managed interpreter and native runtime.
 
 Example: instead of asking every Ubuntu user to install the right CUDA, OpenGL, FFmpeg, compiler, and simulator dependencies by hand, a repo can keep PyTorch, MuJoCo, and project code in `uv.lock` while `robo` prepares the native runtime. New contributors enter it with `robo up --shell`, then run the project's normal `uv sync`.
 
@@ -24,7 +24,7 @@ Install `robo` on Linux:
 curl -fsSL https://raw.githubusercontent.com/ausbxuse/robo-nix/develop/scripts/install.sh | sh
 ```
 
-The installer reuses what is already on your machine when it can. On a fresh machine, it installs the pieces `robo` needs, then adds the `robo` command.
+The installer reuses what is already on your machine when it can. On a fresh machine, it installs the pieces `robo` needs, then adds the `robo` command. By default it installs from the current `develop` branch commit, not from the latest release tag.
 
 Create a project and enter its runtime shell:
 
@@ -53,6 +53,9 @@ robo run python your_script.py
 # Stay inside the runtime for interactive work.
 robo shell
 
+# Leave the runtime shell.
+exit
+
 # Diagnose setup, Python, CUDA, graphics, and native build issues.
 robo check
 ```
@@ -79,7 +82,7 @@ python -m pytest
 
 Robot-learning setup usually fails where Python wheels meet host runtime requirements: graphics libraries, CUDA drivers, FFmpeg, compilers, ROS, and simulator tooling.
 
-`robo-nix` keeps Python in `uv.lock`, generates reviewable Nix runtime files for the native layer, then runs commands through that prepared environment. Diagnostics report which layer failed: Python, Nix runtime, host driver, graphics, CUDA, or native builds.
+`robo-nix` keeps Python version and package policy in uv-managed files, generates reviewable Nix runtime files for the interpreter and native layer, then runs commands through that prepared environment. Diagnostics report which layer failed: Python, Nix runtime, host driver, graphics, CUDA, or native builds.
 
 For the deeper design, read the [developer architecture](https://ausbxuse.github.io/robo-nix/developers/architecture) and [runtime capability model](https://ausbxuse.github.io/robo-nix/developers/runtime-capability-model).
 
@@ -110,9 +113,9 @@ Contributor setup, repository layout, and local documentation commands live in t
 
 | Project                                                          | Relationship                                                                   |
 | ---------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| [Nix](https://nixos.org/)                                        | Reproducible native runtime dependencies and isolated project environments.    |
-| [uv](https://github.com/astral-sh/uv)                            | Python packages, virtual environments, lockfiles, and interpreter workflow.    |
-| [nixpkgs-python](https://github.com/cachix/nixpkgs-python)       | Cached CPython coverage for uv-managed projects.                               |
+| [Nix](https://nixos.org/)                                        | Reproducible Python interpreter, native runtime dependencies, and environments. |
+| [uv](https://github.com/astral-sh/uv)                            | Python version requests, packages, virtual environments, and lockfiles.         |
+| [nixpkgs-python](https://github.com/cachix/nixpkgs-python)       | Cached CPython interpreter coverage for uv-managed projects.                    |
 | [nix-ros-overlay](https://github.com/lopsided98/nix-ros-overlay) | ROS package coverage for ROS-facing runtime components.                        |
 | [nixGL](https://github.com/nix-community/nixGL)                  | Reference point for host graphics driver bridging.                             |
 | [uv2nix](https://github.com/pyproject-nix/uv2nix)                | Nix-native Python packaging for projects that want Nix to own Python packages. |
