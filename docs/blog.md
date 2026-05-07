@@ -48,7 +48,7 @@ That gives users a small command surface while keeping the underlying environmen
 ```bash
 robo shell
 uv sync
-robo run python -m pytest
+python -m pytest
 ```
 
 The goal is not to hide reality. The goal is to make reality easier to see and easier to reproduce.

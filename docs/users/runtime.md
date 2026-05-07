@@ -58,7 +58,7 @@ export ROBO_NIX_DISABLE_HOST_CUDA_AUTO=1
 
 ## Graphics
 
-Graphics support is selected through named runtime pieces such as `x11-gl` and `qt6`. You may see these names in `robo.nix`, `robo check`, or `robo add` commands.
+Graphics support is selected through named runtime pieces such as `x11-gl` and `qt6`. You may see these names in `robo.nix` or `robo check` output.
 
 Select graphics support when the project uses:
 

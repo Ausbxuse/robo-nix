@@ -57,4 +57,4 @@ fi
 
 install_robo
 info "done"
-info "try: robo up --shell"
+info "try: robo init robot-learning && cd robot-learning && robo shell"

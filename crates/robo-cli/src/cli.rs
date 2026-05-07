@@ -42,7 +42,7 @@ enum CliCommand {
     #[command(about = "Initialize robo-nix runtime files")]
     Init(init::InitArgs),
 
-    #[command(about = "Build the project runtime")]
+    #[command(about = "Prebuild the project runtime cache")]
     Build(BuildArgs),
 
     #[command(about = "Prepare the project runtime", hide = true)]
@@ -117,7 +117,7 @@ struct UpArgs {
 
 #[derive(Args)]
 struct BuildArgs {
-    #[arg(default_value = ".", help = "Project directory to build")]
+    #[arg(default_value = ".", help = "Project directory to prebuild")]
     target: PathBuf,
 }
 

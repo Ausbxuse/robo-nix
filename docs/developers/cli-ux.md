@@ -38,7 +38,7 @@ Do not mix heading styles such as `Project:`, `ok: Generated:`, and `next steps:
 
 `robo shell` should launch a child runtime shell without requiring shell setup, dotfile edits, or hook installation. The shell prompt should show the `[robo]` marker by default, and plain `exit` should leave the runtime shell.
 
-`robo shell` should prepare the runtime on demand when the shell cache is missing or stale. `robo init --build` may create runtime files and prebuild the runtime in one first-time setup command, but docs should keep `robo shell` as the normal path.
+`robo shell` should prepare the runtime on demand when the shell cache is missing or stale. If runtime files are missing and stdin is interactive, it should ask before running `robo init` behavior and then continue into the shell. Non-interactive shell launches should fail clearly and point to `robo init .`. `robo init --build` may create runtime files and prebuild the runtime in one first-time setup command, but docs should keep `robo shell` as the normal path.
 
 `uv sync` should be explicit:
 

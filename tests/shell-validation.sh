@@ -70,7 +70,7 @@ printf 'shell=%s\n' "${SHELL:-}"
 printf 'prompt-prefix=%s\n' "${ROBO_NIX_PROMPT_PREFIX:-}"
 
 test "${ROBO_NIX_ACTIVE:-}" = "1"
-test "${ROBO_NIX_ENV_NAME:-}" = "shell-shell-project"
+test "${ROBO_NIX_ENV_NAME:-}" = "${EXPECTED_ENV:-shell-shell-project}"
 test "${SHELL:-}" = "${EXPECTED_SHELL:?}"
 test "${ROBO_NIX_PROMPT_PREFIX:-}" = "[robo]"
 command -v robo >/dev/null
@@ -93,6 +93,22 @@ for shell_name in sh bash zsh fish nu; do
 	assert_file_contains "$output" "shell=$fake_shell"
 	assert_file_contains "$output" "prompt-prefix=[robo]"
 done
+
+prompt_init_project="$tmpdir/prompt-init-project"
+prompt_init_shell="$(make_fake_shell prompt-init-shell)"
+prompt_init_output="$tmpdir/prompt-init-shell.txt"
+mkdir -p "$prompt_init_project"
+if command -v script >/dev/null 2>&1; then
+	printf '\n' | script -q -e -c \
+		"cd '$prompt_init_project' && env ROBO_NIX_SHELL='$prompt_init_shell' EXPECTED_SHELL='$prompt_init_shell' EXPECTED_ENV=project '$robo' shell" \
+		/dev/null >"$prompt_init_output"
+	test -s "$prompt_init_project/flake.nix"
+	test -s "$prompt_init_project/robo.nix"
+	test -s "$prompt_init_project/pyproject.toml"
+	assert_file_contains "$prompt_init_output" "No robo runtime files were found"
+	assert_file_contains "$prompt_init_output" "active=1"
+	assert_file_contains "$prompt_init_output" "env=project"
+fi
 
 build_shell="$(make_fake_shell build-shell)"
 build_shell_output="$tmpdir/build-shell.txt"
@@ -161,6 +177,18 @@ esac
 case "$PS1" in
   *"<shell-shell-project>"*) echo "old zsh prompt prefix still present: $PS1" >&2; exit 1 ;;
 esac
+ansi_robo_prefix=$'\e[90m[\e[39m\e[37mro\e[39m\e[36mbo\e[39m\e[90m]\e[39m'
+robo_prompt_prefix='%F{8}[%f%F{white}ro%f%F{cyan}bo%f%F{8}]%f'
+PROMPT="${ansi_robo_prefix}${PROMPT}"
+PS1="$PROMPT"
+precmd
+case "$PS1" in
+  "$robo_prompt_prefix$ansi_robo_prefix"*) echo "rendered zsh prompt prefix duplicated: $PS1" >&2; exit 1 ;;
+esac
+precmd
+case "$PS1" in
+  "$robo_prompt_prefix$robo_prompt_prefix"*) echo "zsh prompt prefix duplicated after redraw: $PS1" >&2; exit 1 ;;
+esac
 test "${ROBO_NIX_ENV_NAME:-}" = "shell-shell-project"
 robo status
 exit
@@ -168,6 +196,26 @@ EOF
 		} | ROBO_NIX_SHELL="$(command -v zsh)" "$robo" shell >"$zsh_prompt_status"
 	)
 	assert_file_contains "$zsh_prompt_status" "checked shell-shell-project"
+
+	if command -v script >/dev/null 2>&1; then
+		zsh_blank_prompt_output="$tmpdir/zsh-blank-prompts.txt"
+		zsh_blank_prompt_visible="$tmpdir/zsh-blank-prompts-visible.txt"
+		(
+			cd "$project"
+			{
+				printf '\n\n\nexit\n'
+			} | script -q -e -c \
+				"env ROBO_NIX_SHELL='$(command -v zsh)' '$robo' shell" \
+				/dev/null >"$zsh_blank_prompt_output"
+		)
+		perl -pe 's/\e\[[0-9;?]*[ -\/]*[@-~]//g; s/\e\][^\a]*(\a|\e\\)//g; s/\r/\n/g' \
+			"$zsh_blank_prompt_output" >"$zsh_blank_prompt_visible"
+		if grep -F "[robo][robo]" "$zsh_blank_prompt_visible" >/dev/null; then
+			printf 'zsh prompt prefix duplicated after blank prompts\n' >&2
+			cat "$zsh_blank_prompt_visible" >&2
+			exit 1
+		fi
+	fi
 fi
 
 if command -v fish >/dev/null 2>&1; then

@@ -18,13 +18,13 @@ Example: instead of asking every Ubuntu user to install the right CUDA, OpenGL, 
 
 ## Quick Start
 
-Install `robo` on Linux:
+Install `robo` on Linux, macOS, or WSL:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/ausbxuse/robo-nix/develop/scripts/install.sh | sh
 ```
 
-The installer reuses what is already on your machine when it can. On a fresh machine, it installs the pieces `robo` needs, then adds the `robo` command. By default it installs from the current `develop` branch commit, not from the latest release tag.
+The installer reuses what is already on your machine when it can. On a fresh machine, it installs the pieces `robo` needs, then adds the `robo` command. Linux is the regularly validated path today; macOS and WSL support are intended but not covered by the same validation yet. By default it installs from the current `develop` branch commit, not from the latest release tag.
 
 Create a project, enter its runtime shell, and sync Python packages:
 
@@ -78,14 +78,15 @@ uv sync
 python -m pytest
 ```
 
-For an existing Python repository without robo runtime files, initialize it first:
+For an existing Python repository without robo runtime files, `robo shell` asks before creating them:
 
 ```bash
 cd existing-python-project
-robo init .
 robo shell
 uv sync
 ```
+
+Run `robo init .` first when you want to review the generated files before entering the runtime.
 
 `uv sync` is separate on purpose: each project controls its own dependency groups, extras, private indexes, and editable sources.
 
@@ -94,6 +95,13 @@ Use `robo build` only when you want to prebuild the runtime without entering a s
 ```bash
 robo build
 ```
+
+## Tips & Tricks
+
+- `uv` is available inside `robo shell`, so you do not have to install `uv` manually. Run `uv sync`, `uv add`, `uv lock`, and other project Python commands there so packages build and import against the robo runtime.
+- Use `robo run <command>` for one-off commands from your normal shell, and `robo shell` when you want to run several commands interactively.
+- If a `.venv` was created before entering `robo shell`, recreate it inside the runtime with `uv venv --python "$ROBO_NIX_PYTHON" --clear`, then run `uv sync`.
+- If native packages fail because a library, compiler, CUDA, graphics, ROS, or simulator dependency is missing, update `components` in `robo.nix`, then run `robo build` or re-enter `robo shell`.
 
 ## How It Works
 
@@ -140,6 +148,7 @@ Contributor setup, repository layout, and local documentation commands live in t
 ## TODO
 
 - [ ] Cache well-known Python versions and the `robo-nix` binary for faster first setup.
+- [ ] Add `robo add <component...>` as a narrow helper for adding known runtime components to `robo.nix`
 
 ## License
 

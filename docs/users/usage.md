@@ -6,7 +6,7 @@ Install `robo` on Linux, macOS, or WSL:
 curl -fsSL https://raw.githubusercontent.com/ausbxuse/robo-nix/develop/scripts/install.sh | sh
 ```
 
-The installer uses an existing `nix` when it can. If Nix is missing, it installs Determinate Nix, then installs `robo` into the user's Nix profile. By default it installs from the current `develop` branch commit, not from the latest release tag.
+The installer uses an existing `nix` when it can. If Nix is missing, it installs Determinate Nix, then installs `robo` into the user's Nix profile. Linux is the regularly validated path today; macOS and WSL support are intended but not covered by the same validation yet. By default it installs from the current `develop` branch commit, not from the latest release tag.
 
 ## New Project
 
@@ -43,14 +43,15 @@ uv sync
 python -m pytest
 ```
 
-For an existing Python repository without robo runtime files, initialize it first:
+For an existing Python repository without robo runtime files, `robo shell` asks before creating them:
 
 ```bash
 cd existing-python-project
-robo init .
 robo shell
 uv sync
 ```
+
+Run `robo init .` first when you want to review the generated files before entering the runtime.
 
 `uv sync` is separate on purpose. Each project controls its own dependency groups, optional extras, private indexes, editable sources, and install policy.
 
@@ -100,10 +101,11 @@ After `robo init`, a project usually contains:
 robo.nix          project runtime choices, such as CUDA, graphics, ROS, or native tools
 flake.nix         generated Nix entry point used by robo
 .python-version   Python version selected by uv
+pyproject.toml    Python package metadata owned by the project and uv
 .robo-nix/        runtime cache and implementation details
 ```
 
-Commit `robo.nix`, `flake.nix`, and `.python-version` when the team should share that runtime. Treat `.robo-nix/` as generated cache.
+Commit `robo.nix`, `flake.nix`, `.python-version`, and `pyproject.toml` when the team should share that runtime and Python project metadata. Treat `.robo-nix/` as generated cache.
 
 ## Python Boundary
 

@@ -78,11 +78,12 @@ Upgrade the NVIDIA driver, or regenerate the project's lockfile with CUDA wheels
 
 Usually means a native CMake build needs Qt development/runtime files that are not in the runtime.
 
-From the project directory, add Qt to the runtime and rebuild the shell:
+From the project directory, add `qt6` to `components` in `robo.nix`, then prebuild or re-enter the runtime:
 
 ```bash
-robo add qt6
 robo build
+# or enter the runtime again with:
+robo shell
 ```
 
 ### `pybind11Config.cmake` or `nanobindConfig.cmake` missing
@@ -142,11 +143,12 @@ linux/joystick.h: No such file or directory
 
 Usually means a native extension includes Linux kernel userspace headers.
 
-From the project directory, add those headers to the runtime and rebuild the shell:
+From the project directory, add `linux-headers` to `components` in `robo.nix`, then prebuild or re-enter the runtime:
 
 ```bash
-robo add linux-headers
 robo build
+# or enter the runtime again with:
+robo shell
 ```
 
 ## Failure Ownership

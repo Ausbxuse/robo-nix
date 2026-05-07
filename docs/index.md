@@ -37,6 +37,12 @@ For an initialized project, run commands from the project directory:
 ```bash
 robo shell
 uv sync
+python -m pytest
+```
+
+For a one-off command without opening a shell:
+
+```bash
 robo run python -m pytest
 ```
 

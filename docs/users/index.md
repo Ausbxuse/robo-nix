@@ -7,8 +7,10 @@ Most users only need this flow from an initialized project directory:
 ```bash
 robo shell
 uv sync
-robo run python -m pytest
+python -m pytest
 ```
+
+Use `robo run <command>` instead when you only need one command inside the runtime.
 
 `robo` prepares the Nix-managed Python interpreter and runtime. `uv` still selects the Python version and owns Python packages, dependency groups, indexes, editable sources, and `uv.lock`.
 

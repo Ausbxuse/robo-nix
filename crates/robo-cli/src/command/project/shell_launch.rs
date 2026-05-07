@@ -308,6 +308,8 @@ fn prompted_bash_args() -> Option<(Vec<OsString>, Vec<(String, OsString)>)> {
         r#"if [ -f "$HOME/.bashrc" ]; then . "$HOME/.bashrc"; fi
 __robo_prompt_prefix() {
   __robo_prompt_color="\[\033[90m\][\[\033[37m\]ro\[\033[36m\]bo\[\033[90m\]]\[\033[0m\]"
+  __robo_prompt_ansi_39="$(printf '\033[90m[\033[39m\033[37mro\033[39m\033[36mbo\033[39m\033[90m]\033[39m')"
+  __robo_prompt_ansi_0="$(printf '\033[90m[\033[0m\033[37mro\033[0m\033[36mbo\033[0m\033[90m]\033[0m')"
   __robo_prompt_plain="[robo]"
   __robo_prompt_env_diamond="◆ ${ROBO_NIX_ENV_NAME:-robo} "
   __robo_prompt_env_star="✦ ${ROBO_NIX_ENV_NAME:-robo} "
@@ -315,13 +317,20 @@ __robo_prompt_prefix() {
   __robo_prompt_arrow="▸ robo "
   __robo_prompt_old="<${ROBO_NIX_ENV_NAME:-robo}> "
   __robo_prompt_base="${PS1-}"
-  case "$__robo_prompt_base" in "$__robo_prompt_color"*) __robo_prompt_base="${__robo_prompt_base#"$__robo_prompt_color"}" ;; esac
-  case "$__robo_prompt_base" in "$__robo_prompt_plain"*) __robo_prompt_base="${__robo_prompt_base#"$__robo_prompt_plain"}" ;; esac
-  case "$__robo_prompt_base" in "$__robo_prompt_env_diamond"*) __robo_prompt_base="${__robo_prompt_base#"$__robo_prompt_env_diamond"}" ;; esac
-  case "$__robo_prompt_base" in "$__robo_prompt_env_star"*) __robo_prompt_base="${__robo_prompt_base#"$__robo_prompt_env_star"}" ;; esac
-  case "$__robo_prompt_base" in "$__robo_prompt_env_arrow"*) __robo_prompt_base="${__robo_prompt_base#"$__robo_prompt_env_arrow"}" ;; esac
-  case "$__robo_prompt_base" in "$__robo_prompt_arrow"*) __robo_prompt_base="${__robo_prompt_base#"$__robo_prompt_arrow"}" ;; esac
-  case "$__robo_prompt_base" in "$__robo_prompt_old"*) __robo_prompt_base="${__robo_prompt_base#"$__robo_prompt_old"}" ;; esac
+  while true; do
+    __robo_prompt_stripped="$__robo_prompt_base"
+    case "$__robo_prompt_base" in "$__robo_prompt_color"*) __robo_prompt_stripped="${__robo_prompt_base#"$__robo_prompt_color"}" ;; esac
+    case "$__robo_prompt_base" in "$__robo_prompt_ansi_39"*) __robo_prompt_stripped="${__robo_prompt_base#"$__robo_prompt_ansi_39"}" ;; esac
+    case "$__robo_prompt_base" in "$__robo_prompt_ansi_0"*) __robo_prompt_stripped="${__robo_prompt_base#"$__robo_prompt_ansi_0"}" ;; esac
+    case "$__robo_prompt_base" in "$__robo_prompt_plain"*) __robo_prompt_stripped="${__robo_prompt_base#"$__robo_prompt_plain"}" ;; esac
+    case "$__robo_prompt_base" in "$__robo_prompt_env_diamond"*) __robo_prompt_stripped="${__robo_prompt_base#"$__robo_prompt_env_diamond"}" ;; esac
+    case "$__robo_prompt_base" in "$__robo_prompt_env_star"*) __robo_prompt_stripped="${__robo_prompt_base#"$__robo_prompt_env_star"}" ;; esac
+    case "$__robo_prompt_base" in "$__robo_prompt_env_arrow"*) __robo_prompt_stripped="${__robo_prompt_base#"$__robo_prompt_env_arrow"}" ;; esac
+    case "$__robo_prompt_base" in "$__robo_prompt_arrow"*) __robo_prompt_stripped="${__robo_prompt_base#"$__robo_prompt_arrow"}" ;; esac
+    case "$__robo_prompt_base" in "$__robo_prompt_old"*) __robo_prompt_stripped="${__robo_prompt_base#"$__robo_prompt_old"}" ;; esac
+    [ "$__robo_prompt_stripped" = "$__robo_prompt_base" ] && break
+    __robo_prompt_base="$__robo_prompt_stripped"
+  done
   PS1="${__robo_prompt_color}${__robo_prompt_base}"
 }
 if [ -n "${ROBO_NIX_PROMPT_PREFIX:-}" ]; then PROMPT_COMMAND="${PROMPT_COMMAND:+${PROMPT_COMMAND}; }__robo_prompt_prefix"; __robo_prompt_prefix; fi
@@ -357,6 +366,9 @@ export ZDOTDIR={}
         r#"if [ -n "${ROBO_NIX_PARENT_ZDOTDIR:-}" ] && [ -f "${ROBO_NIX_PARENT_ZDOTDIR}/.zshrc" ]; then source "${ROBO_NIX_PARENT_ZDOTDIR}/.zshrc"; elif [ -f "$HOME/.zshrc" ]; then source "$HOME/.zshrc"; fi
 __robo_prompt_prefix() {
   local color_prefix="%F{8}[%f%F{white}ro%f%F{cyan}bo%f%F{8}]%f"
+  local prompt_start_marker=$'%{\e]133;A;cl=line\a%}'
+  local ansi_prefix_39=$'\e[90m[\e[39m\e[37mro\e[39m\e[36mbo\e[39m\e[90m]\e[39m'
+  local ansi_prefix_0=$'\e[90m[\e[0m\e[37mro\e[0m\e[36mbo\e[0m\e[90m]\e[0m'
   local plain_prefix="[robo]"
   local env_diamond_prefix="◆ ${ROBO_NIX_ENV_NAME:-robo} "
   local env_star_prefix="✦ ${ROBO_NIX_ENV_NAME:-robo} "
@@ -364,13 +376,21 @@ __robo_prompt_prefix() {
   local arrow_prefix="▸ robo "
   local old_prefix="<${ROBO_NIX_ENV_NAME:-robo}> "
   local base="${PROMPT-}"
-  [[ "$base" == "$color_prefix"* ]] && base="${base#"$color_prefix"}"
-  [[ "$base" == "$plain_prefix"* ]] && base="${base#"$plain_prefix"}"
-  [[ "$base" == "$env_diamond_prefix"* ]] && base="${base#"$env_diamond_prefix"}"
-  [[ "$base" == "$env_star_prefix"* ]] && base="${base#"$env_star_prefix"}"
-  [[ "$base" == "$env_arrow_prefix"* ]] && base="${base#"$env_arrow_prefix"}"
-  [[ "$base" == "$arrow_prefix"* ]] && base="${base#"$arrow_prefix"}"
-  [[ "$base" == "$old_prefix"* ]] && base="${base#"$old_prefix"}"
+  while true; do
+    local stripped="$base"
+    [[ "$base" == "$color_prefix"* ]] && stripped="${base#"$color_prefix"}"
+    [[ "$base" == "$prompt_start_marker$color_prefix"* ]] && stripped="${base#"$prompt_start_marker$color_prefix"}"
+    [[ "$base" == "$ansi_prefix_39"* ]] && stripped="${base#"$ansi_prefix_39"}"
+    [[ "$base" == "$ansi_prefix_0"* ]] && stripped="${base#"$ansi_prefix_0"}"
+    [[ "$base" == "$plain_prefix"* ]] && stripped="${base#"$plain_prefix"}"
+    [[ "$base" == "$env_diamond_prefix"* ]] && stripped="${base#"$env_diamond_prefix"}"
+    [[ "$base" == "$env_star_prefix"* ]] && stripped="${base#"$env_star_prefix"}"
+    [[ "$base" == "$env_arrow_prefix"* ]] && stripped="${base#"$env_arrow_prefix"}"
+    [[ "$base" == "$arrow_prefix"* ]] && stripped="${base#"$arrow_prefix"}"
+    [[ "$base" == "$old_prefix"* ]] && stripped="${base#"$old_prefix"}"
+    [[ "$stripped" == "$base" ]] && break
+    base="$stripped"
+  done
   PROMPT="${color_prefix}${base}"
   PS1="$PROMPT"
 }

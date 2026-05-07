@@ -29,7 +29,7 @@ use shell_launch::{
 };
 
 pub(crate) fn ensure_project_runtime(config: Config) -> Result<(), ExitCode> {
-    if !Path::new("flake.nix").exists() || !Path::new("robo.nix").exists() {
+    if !runtime_files_exist() {
         error(config, "this directory is not initialized for robo-nix.");
         hint(config, "run `robo init .` from the project checkout first.");
         return Err(ExitCode::from(1));
@@ -42,6 +42,29 @@ pub(crate) fn ensure_project_runtime(config: Config) -> Result<(), ExitCode> {
         return Err(ExitCode::from(1));
     }
     Ok(())
+}
+
+fn ensure_shell_project_runtime(config: Config) -> Result<(), ExitCode> {
+    if runtime_files_exist() {
+        return ensure_project_runtime(config);
+    }
+    if !confirm_init_runtime_files(config) {
+        hint(config, "run `robo init .` first, then `robo shell`.");
+        return Err(ExitCode::from(1));
+    }
+    status(config, "init: writing runtime files");
+    let code = crate::init::run_quiet(
+        crate::init::InitArgs::generated(PathBuf::from("."), false, false),
+        config,
+    );
+    if code != ExitCode::SUCCESS {
+        return Err(code);
+    }
+    ensure_project_runtime(config)
+}
+
+fn runtime_files_exist() -> bool {
+    Path::new("flake.nix").exists() && Path::new("robo.nix").exists()
 }
 
 pub(crate) fn run_project_build(target: PathBuf, config: Config) -> ExitCode {
@@ -112,11 +135,10 @@ pub(crate) fn run_project_up(
         return ExitCode::from(1);
     }
 
-    let initialized = Path::new("flake.nix").exists() && Path::new("robo.nix").exists();
-    if !initialized {
+    if !runtime_files_exist() {
         if open_shell {
             status(config, "init: writing runtime files");
-        } else if !implicit_yes && !confirm_up_init(config) {
+        } else if !implicit_yes && !confirm_init_runtime_files(config) {
             hint(config, "run `robo init . --build` to initialize non-interactively.");
             return ExitCode::from(1);
         }
@@ -227,9 +249,12 @@ fn confirm_create_dir(config: Config, target: &Path) -> bool {
     matches!(answer.trim().to_ascii_lowercase().as_str(), "" | "y" | "yes")
 }
 
-fn confirm_up_init(config: Config) -> bool {
+fn confirm_init_runtime_files(config: Config) -> bool {
     if !io::stdin().is_terminal() {
-        error(config, "no robo.nix found and stdin is not interactive.");
+        error(
+            config,
+            "no robo runtime files were found and stdin is not interactive.",
+        );
         return false;
     }
     println!("No robo runtime files were found in this project.\n");
@@ -256,7 +281,7 @@ pub(crate) fn run_project_shell(args: Vec<OsString>, config: Config) -> ExitCode
         return ExitCode::SUCCESS;
     }
 
-    if let Err(code) = ensure_project_runtime(config) {
+    if let Err(code) = ensure_shell_project_runtime(config) {
         return code;
     }
 
