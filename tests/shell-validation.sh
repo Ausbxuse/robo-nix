@@ -65,11 +65,9 @@ printf 'prompt-prefix=%s\n' "${ROBO_NIX_PROMPT_PREFIX:-}"
 test "${ROBO_NIX_ACTIVE:-}" = "1"
 test "${ROBO_NIX_ENV_NAME:-}" = "shell-shell-project"
 test "${SHELL:-}" = "${EXPECTED_SHELL:?}"
-test "${ROBO_NIX_PROMPT_PREFIX:-}" = "<shell-shell-project> "
+test "${ROBO_NIX_PROMPT_PREFIX:-}" = "[robo]"
 command -v robo >/dev/null
 robo status >/dev/null
-test "$#" -eq 1
-test "$1" = "-i"
 EOF
 	chmod +x "$path"
 	printf '%s\n' "$path"
@@ -86,7 +84,7 @@ for shell_name in sh bash zsh fish nu; do
 	assert_file_contains "$output" "active=1"
 	assert_file_contains "$output" "env=shell-shell-project"
 	assert_file_contains "$output" "shell=$fake_shell"
-	assert_file_contains "$output" "prompt-prefix=<shell-shell-project> "
+	assert_file_contains "$output" "prompt-prefix=[robo]"
 done
 
 up_shell="$(make_fake_shell up-shell)"
@@ -110,61 +108,74 @@ active_status="$tmpdir/active-status.txt"
 		ROBO_NIX_ENV_NAME=shell-shell-project \
 		ROBO_NIX_PYTHON_VERSION=3.11 \
 		WORKSPACE_ROOT="$project" \
-		ROBO_NIX_PROMPT_PREFIX="<shell-shell-project> " \
+		ROBO_NIX_PROMPT_PREFIX="[robo]" \
 		"$robo" status >"$active_status"
 )
 assert_file_contains "$active_status" "checked shell-shell-project"
 assert_file_contains "$active_status" "uv.lock missing"
 assert_file_contains "$active_status" "Python environment missing"
 
-hook_output="$tmpdir/hook.txt"
-"$robo" hook bash >"$hook_output"
-assert_file_contains "$hook_output" "__shell-env"
-assert_file_contains "$hook_output" "robo()"
-
-hook_status="$tmpdir/hook-status.txt"
+bash_prompt_status="$tmpdir/bash-prompt-status.txt"
 (
 	cd "$project"
-	# shellcheck disable=SC2016,SC2046
-	ROBO_BIN="$robo" bash -lc '
-set -euo pipefail
-eval $("$ROBO_BIN" hook bash)
-PS1="$ "
-robo shell >/dev/null
-test "${ROBO_NIX_ACTIVE:-}" = "1"
-test "${ROBO_NIX_ENV_NAME:-}" = "shell-shell-project"
+	{
+		cat <<'EOF'
 case "$PS1" in
-  "<shell-shell-project> "*) ;;
+  *"90m"*'['*"37m"*ro*"36m"*bo*"90m"*']'*) ;;
   *) echo "missing prompt prefix: $PS1" >&2; exit 1 ;;
 esac
+case "$PS1" in
+  *"◆ shell-shell-project"*) echo "env prompt prefix still present: $PS1" >&2; exit 1 ;;
+esac
+case "$PS1" in
+  *"<shell-shell-project>"*) echo "old prompt prefix still present: $PS1" >&2; exit 1 ;;
+esac
+test "${ROBO_NIX_ENV_NAME:-}" = "shell-shell-project"
 robo status
-robo deactivate
-test -z "${ROBO_NIX_ACTIVE:-}"
-test "$PS1" = "$ "
-' >"$hook_status"
+exit
+EOF
+	} | ROBO_NIX_SHELL="$(command -v bash)" "$robo" shell >"$bash_prompt_status"
 )
-assert_file_contains "$hook_status" "checked shell-shell-project"
+assert_file_contains "$bash_prompt_status" "checked shell-shell-project"
 
 if command -v zsh >/dev/null 2>&1; then
-	zsh_hook_status="$tmpdir/zsh-hook-status.txt"
+	zsh_prompt_status="$tmpdir/zsh-prompt-status.txt"
 	(
 		cd "$project"
-		ROBO_BIN="$robo" zsh -lc '
-set -e
-eval $("$ROBO_BIN" hook zsh)
-PS1="$ "
-robo shell >/dev/null
-test "${ROBO_NIX_ACTIVE:-}" = "1"
-test "${ROBO_NIX_ENV_NAME:-}" = "shell-shell-project"
+		{
+			cat <<'EOF'
 case "$PS1" in
-  "<shell-shell-project> "*) ;;
+  *"%F{8}["*"%F{white}ro"*"%F{cyan}bo"*"%F{8}]"*) ;;
   *) echo "missing zsh prompt prefix: $PS1" >&2; exit 1 ;;
 esac
+case "$PS1" in
+  *"◆ shell-shell-project"*) echo "env zsh prompt prefix still present: $PS1" >&2; exit 1 ;;
+esac
+case "$PS1" in
+  *"<shell-shell-project>"*) echo "old zsh prompt prefix still present: $PS1" >&2; exit 1 ;;
+esac
+test "${ROBO_NIX_ENV_NAME:-}" = "shell-shell-project"
 robo status
-robo deactivate
-test -z "${ROBO_NIX_ACTIVE:-}"
-test "$PS1" = "$ "
-' >"$zsh_hook_status"
+exit
+EOF
+		} | ROBO_NIX_SHELL="$(command -v zsh)" "$robo" shell >"$zsh_prompt_status"
 	)
-	assert_file_contains "$zsh_hook_status" "checked shell-shell-project"
+	assert_file_contains "$zsh_prompt_status" "checked shell-shell-project"
+fi
+
+if command -v fish >/dev/null 2>&1; then
+	fish_prompt_status="$tmpdir/fish-prompt-status.txt"
+	(
+		cd "$project"
+		{
+			cat <<'EOF'
+string match -q "*ro*bo*" (fish_prompt)
+or begin; echo "missing fish prompt prefix" >&2; exit 1; end
+test "$ROBO_NIX_ENV_NAME" = "shell-shell-project"
+robo status
+exit
+EOF
+		} | ROBO_NIX_SHELL="$(command -v fish)" "$robo" shell >"$fish_prompt_status"
+	)
+	assert_file_contains "$fish_prompt_status" "checked shell-shell-project"
 fi

@@ -47,14 +47,14 @@ mod shell {
 
         #[test]
         fn requested_shell_name_accepts_shell_path() {
-            let shell = requested_shell_name(Some(&OsString::from("/usr/bin/zsh")), "robo hook")
+            let shell = requested_shell_name(Some(&OsString::from("/usr/bin/zsh")), "robo")
                 .expect("shell path should parse");
 
             assert_eq!(shell, "zsh");
         }
 
         #[test]
-        fn supported_shells_are_the_interactive_hook_shells() {
+        fn supported_shells_are_the_interactive_shells() {
             for shell in ["bash", "zsh", "fish"] {
                 assert!(supports_interactive_shell(shell));
             }

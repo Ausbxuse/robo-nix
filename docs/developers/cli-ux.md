@@ -36,7 +36,7 @@ Do not mix heading styles such as `Project:`, `ok: Generated:`, and `next steps:
 
 ## Shell Workflow
 
-Shell should enter the user's current interactive shell when possible. The default `robo shell` path must work without shell setup by launching a runtime shell.
+`robo shell` should launch a child runtime shell without requiring shell setup, dotfile edits, or hook installation. The shell prompt should show the `[robo]` marker by default, and plain `exit` should leave the runtime shell.
 
 `robo up --shell` should prepare the project and then enter that same shell path so first-time setup can be one command.
 

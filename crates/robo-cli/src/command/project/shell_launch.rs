@@ -237,14 +237,26 @@ fn shell_args_for(shell: &str) -> ShellLaunch {
         .file_name()
         .and_then(|name| name.to_str())
         .unwrap_or_default();
-    let interactive_args = clean_interactive_shell_args(shell_name);
+    let (interactive_args, mut env) =
+        prompted_interactive_shell_args(shell_name).unwrap_or_else(|| {
+            (
+                clean_interactive_shell_args(shell_name)
+                    .into_iter()
+                    .map(OsString::from)
+                    .collect(),
+                vec![],
+            )
+        });
 
     ShellLaunch {
         args: std::iter::once(OsString::from("-c"))
             .chain(std::iter::once(shell.clone().into_os_string()))
-            .chain(interactive_args.into_iter().map(OsString::from))
+            .chain(interactive_args)
             .collect(),
-        env: vec![("SHELL".to_string(), shell.clone().into_os_string())],
+        env: {
+            env.push(("SHELL".to_string(), shell.clone().into_os_string()));
+            env
+        },
     }
 }
 
@@ -276,6 +288,135 @@ fn clean_interactive_shell_args(shell_name: &str) -> Vec<&'static str> {
         "bash" | "zsh" | "fish" => vec!["-i"],
         _ => vec!["-i"],
     }
+}
+
+fn prompted_interactive_shell_args(
+    shell_name: &str,
+) -> Option<(Vec<OsString>, Vec<(String, OsString)>)> {
+    match shell_name {
+        "bash" => prompted_bash_args(),
+        "zsh" => prompted_zsh_args(),
+        "fish" => Some(prompted_fish_args()),
+        _ => None,
+    }
+}
+
+fn prompted_bash_args() -> Option<(Vec<OsString>, Vec<(String, OsString)>)> {
+    let path = prompt_startup_dir()?.join("bashrc");
+    fs::write(
+        &path,
+        r#"if [ -f "$HOME/.bashrc" ]; then . "$HOME/.bashrc"; fi
+__robo_prompt_prefix() {
+  __robo_prompt_color="\[\033[90m\][\[\033[37m\]ro\[\033[36m\]bo\[\033[90m\]]\[\033[0m\]"
+  __robo_prompt_plain="[robo]"
+  __robo_prompt_env_diamond="◆ ${ROBO_NIX_ENV_NAME:-robo} "
+  __robo_prompt_env_star="✦ ${ROBO_NIX_ENV_NAME:-robo} "
+  __robo_prompt_env_arrow="▸ ${ROBO_NIX_ENV_NAME:-robo} "
+  __robo_prompt_arrow="▸ robo "
+  __robo_prompt_old="<${ROBO_NIX_ENV_NAME:-robo}> "
+  __robo_prompt_base="${PS1-}"
+  case "$__robo_prompt_base" in "$__robo_prompt_color"*) __robo_prompt_base="${__robo_prompt_base#"$__robo_prompt_color"}" ;; esac
+  case "$__robo_prompt_base" in "$__robo_prompt_plain"*) __robo_prompt_base="${__robo_prompt_base#"$__robo_prompt_plain"}" ;; esac
+  case "$__robo_prompt_base" in "$__robo_prompt_env_diamond"*) __robo_prompt_base="${__robo_prompt_base#"$__robo_prompt_env_diamond"}" ;; esac
+  case "$__robo_prompt_base" in "$__robo_prompt_env_star"*) __robo_prompt_base="${__robo_prompt_base#"$__robo_prompt_env_star"}" ;; esac
+  case "$__robo_prompt_base" in "$__robo_prompt_env_arrow"*) __robo_prompt_base="${__robo_prompt_base#"$__robo_prompt_env_arrow"}" ;; esac
+  case "$__robo_prompt_base" in "$__robo_prompt_arrow"*) __robo_prompt_base="${__robo_prompt_base#"$__robo_prompt_arrow"}" ;; esac
+  case "$__robo_prompt_base" in "$__robo_prompt_old"*) __robo_prompt_base="${__robo_prompt_base#"$__robo_prompt_old"}" ;; esac
+  PS1="${__robo_prompt_color}${__robo_prompt_base}"
+}
+if [ -n "${ROBO_NIX_PROMPT_PREFIX:-}" ]; then PROMPT_COMMAND="${PROMPT_COMMAND:+${PROMPT_COMMAND}; }__robo_prompt_prefix"; __robo_prompt_prefix; fi
+"#,
+    )
+    .ok()?;
+
+    Some((
+        vec![
+            OsString::from("--rcfile"),
+            path.into_os_string(),
+            OsString::from("-i"),
+        ],
+        vec![],
+    ))
+}
+
+fn prompted_zsh_args() -> Option<(Vec<OsString>, Vec<(String, OsString)>)> {
+    let dir = prompt_startup_dir()?.join("zsh");
+    fs::create_dir_all(&dir).ok()?;
+    fs::write(
+        dir.join(".zshenv"),
+        format!(
+            r#"if [ -n "${{ROBO_NIX_PARENT_ZDOTDIR:-}}" ] && [ -f "${{ROBO_NIX_PARENT_ZDOTDIR}}/.zshenv" ]; then source "${{ROBO_NIX_PARENT_ZDOTDIR}}/.zshenv"; elif [ -f "$HOME/.zshenv" ]; then source "$HOME/.zshenv"; fi
+export ZDOTDIR={}
+"#,
+            shell_quote(&dir.display().to_string())
+        ),
+    )
+    .ok()?;
+    fs::write(
+        dir.join(".zshrc"),
+        r#"if [ -n "${ROBO_NIX_PARENT_ZDOTDIR:-}" ] && [ -f "${ROBO_NIX_PARENT_ZDOTDIR}/.zshrc" ]; then source "${ROBO_NIX_PARENT_ZDOTDIR}/.zshrc"; elif [ -f "$HOME/.zshrc" ]; then source "$HOME/.zshrc"; fi
+__robo_prompt_prefix() {
+  local color_prefix="%F{8}[%f%F{white}ro%f%F{cyan}bo%f%F{8}]%f"
+  local plain_prefix="[robo]"
+  local env_diamond_prefix="◆ ${ROBO_NIX_ENV_NAME:-robo} "
+  local env_star_prefix="✦ ${ROBO_NIX_ENV_NAME:-robo} "
+  local env_arrow_prefix="▸ ${ROBO_NIX_ENV_NAME:-robo} "
+  local arrow_prefix="▸ robo "
+  local old_prefix="<${ROBO_NIX_ENV_NAME:-robo}> "
+  local base="${PROMPT-}"
+  [[ "$base" == "$color_prefix"* ]] && base="${base#"$color_prefix"}"
+  [[ "$base" == "$plain_prefix"* ]] && base="${base#"$plain_prefix"}"
+  [[ "$base" == "$env_diamond_prefix"* ]] && base="${base#"$env_diamond_prefix"}"
+  [[ "$base" == "$env_star_prefix"* ]] && base="${base#"$env_star_prefix"}"
+  [[ "$base" == "$env_arrow_prefix"* ]] && base="${base#"$env_arrow_prefix"}"
+  [[ "$base" == "$arrow_prefix"* ]] && base="${base#"$arrow_prefix"}"
+  [[ "$base" == "$old_prefix"* ]] && base="${base#"$old_prefix"}"
+  PROMPT="${color_prefix}${base}"
+  PS1="$PROMPT"
+}
+if [ -n "${ROBO_NIX_PROMPT_PREFIX:-}" ]; then if (( $+functions[precmd] )); then functions -c precmd __robo_user_precmd; fi; precmd() { if (( $+functions[__robo_user_precmd] )); then __robo_user_precmd "$@"; fi; __robo_prompt_prefix; }; __robo_prompt_prefix; fi
+"#,
+    )
+    .ok()?;
+
+    Some((
+        vec![OsString::from("-i")],
+        vec![
+            ("ZDOTDIR".to_string(), dir.into_os_string()),
+            (
+                "ROBO_NIX_PARENT_ZDOTDIR".to_string(),
+                env::var_os("ZDOTDIR").unwrap_or_else(|| {
+                    env::var_os("HOME")
+                        .map(PathBuf::from)
+                        .unwrap_or_else(|| PathBuf::from("."))
+                        .into_os_string()
+                }),
+            ),
+        ],
+    ))
+}
+
+fn prompted_fish_args() -> (Vec<OsString>, Vec<(String, OsString)>) {
+    (
+        vec![
+            OsString::from("--init-command"),
+            OsString::from(
+                r#"if test -n "$ROBO_NIX_PROMPT_PREFIX"; functions -q fish_prompt; and functions -c fish_prompt __robo_fish_prompt_orig; function fish_prompt --description 'robo prompt prefix'; set_color brblack; printf '['; set_color white; printf 'ro'; set_color cyan; printf 'bo'; set_color brblack; printf ']'; set_color normal; functions -q __robo_fish_prompt_orig; and __robo_fish_prompt_orig; end; end"#,
+            ),
+            OsString::from("-i"),
+        ],
+        vec![],
+    )
+}
+
+fn prompt_startup_dir() -> Option<PathBuf> {
+    let dir = PathBuf::from(".robo-nix").join("shell-startup");
+    fs::create_dir_all(&dir).ok()?;
+    Some(dir)
+}
+
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
 }
 
 #[cfg(test)]

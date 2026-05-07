@@ -14,13 +14,11 @@ use super::python::ensure_python_version_files;
 
 mod flake_repair;
 mod host_bridge;
-mod hook;
 mod shell_card;
 mod shell_env;
 mod shell_launch;
 
 use flake_repair::repair_managed_flake_source;
-pub(crate) use hook::run_project_hook;
 use shell_card::print_shell_card;
 use shell_env::{
     ShellProgress, load_cached_or_refresh_shell_env, load_shell_env_script, materialize_shell_env,
@@ -310,29 +308,6 @@ fn print_exports(env: &[(String, String)]) {
     for (name, value) in env {
         println!("export {name}={}", shell_quote(&value));
     }
-}
-
-pub(crate) fn run_project_deactivate(config: Config) -> ExitCode {
-    let state = RuntimeState::read();
-    if state.active {
-        section(config, "action");
-        action_row(config, "exit", "leave this runtime shell");
-        println!(
-            "  {}",
-            label(
-                config,
-                "A child process cannot exit its parent shell directly.",
-                LabelKind::Hint
-            )
-        );
-    } else {
-        section(config, "status");
-        println!("  {}", label(config, "inactive", LabelKind::Hint));
-        println!();
-        section(config, "action");
-        action_row(config, "robo shell", "enter the Nix runtime shell");
-    }
-    ExitCode::SUCCESS
 }
 
 pub(crate) fn run_project_command(args: Vec<OsString>, config: Config) -> ExitCode {

@@ -197,7 +197,7 @@ fn append_shell_state(envs: &mut Vec<(String, String)>) {
     set_shell_env(
         envs,
         "ROBO_NIX_PROMPT_PREFIX",
-        format!("<{}> ", state.env_name),
+        "[robo]".to_string(),
     );
 
     if let Ok(current_exe) = env::current_exe() {
@@ -394,7 +394,7 @@ fn shell_env_exports(script: &[u8]) -> Result<Vec<(String, String)>, String> {
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("shell hook failed: {}", stderr.trim()));
+        return Err(format!("shell setup failed: {}", stderr.trim()));
     }
 
     Ok(String::from_utf8_lossy(&output.stdout)

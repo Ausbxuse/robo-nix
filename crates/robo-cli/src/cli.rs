@@ -9,7 +9,7 @@ use std::process::ExitCode;
 
 use crate::command::{
     run_internal_exec, run_internal_shell_env, run_project_app, run_project_command,
-    run_project_deactivate, run_project_hook, run_project_shell, run_project_up,
+    run_project_shell, run_project_up,
 };
 use crate::shell::{SUPPORTED_INTERACTIVE_SHELLS, requested_shell_name};
 use crate::{Config, LabelKind, check, contract, cuda, diagnose, error, init, label};
@@ -56,21 +56,6 @@ enum CliCommand {
 
     #[command(about = "Classify an existing runtime error log")]
     Diagnose(diagnose::DiagnoseArgs),
-
-    #[command(about = "Show how to leave the active runtime shell")]
-    Deactivate,
-
-    #[command(
-        about = "Print shell integration for prompt-aware runtime shells",
-        after_help = "Examples:
-  eval \"$(robo hook)\"       install the hook for the current shell
-  eval \"$(robo hook zsh)\"   print the zsh hook explicitly
-
-After installing the hook:
-  robo shell                 enter the runtime in-place and show <env> in the prompt
-  robo deactivate            restore the previous prompt and environment"
-    )]
-    Hook(HookArgs),
 
     #[command(about = "Run project bootstrap scripts")]
     Bootstrap(PassthroughArgs),
@@ -133,15 +118,6 @@ struct CompletionArgs {
     args: Vec<OsString>,
 }
 
-#[derive(Args)]
-struct HookArgs {
-    #[arg(
-        value_name = "SHELL",
-        help = "Shell to print a hook for: bash, zsh, fish"
-    )]
-    shell: Option<OsString>,
-}
-
 pub(crate) fn run() -> ExitCode {
     let cli = match Cli::try_parse() {
         Ok(cli) => cli,
@@ -165,8 +141,6 @@ pub(crate) fn run() -> ExitCode {
         Some(CliCommand::Status) => check::run_status(config),
         Some(CliCommand::Check(args)) => check::run_check(args, config),
         Some(CliCommand::Diagnose(args)) => diagnose::run(args, config),
-        Some(CliCommand::Deactivate) => run_project_deactivate(config),
-        Some(CliCommand::Hook(args)) => run_project_hook(args.shell.into_iter().collect(), config),
         Some(CliCommand::Bootstrap(args)) => run_project_app(None, args.args, config),
         Some(CliCommand::Doctor(args)) => check::run(args, config),
         Some(CliCommand::Contract(args)) => contract::run(args, config),
@@ -216,41 +190,13 @@ fn print_help(config: Config) -> ExitCode {
     help_row(config, "robo shell", "open an interactive runtime shell");
 
     println!();
-    help_section(config, "prompt prefix");
-    help_row(
-        config,
-        "eval \"$(robo hook)\"",
-        "enable Conda-like in-place runtime shells",
-    );
+    help_section(config, "runtime shell");
     help_row(
         config,
         "robo shell",
-        "updates the current prompt, for example <simple>",
+        "open a runtime shell with prompt prefix, for example [robo]",
     );
-    help_row(
-        config,
-        "robo deactivate",
-        "restores the previous prompt and environment",
-    );
-
-    println!();
-    help_section(config, "notes");
-    println!(
-        "  {}",
-        label(
-            config,
-            "Without the hook, `robo shell` still works by opening a child runtime shell.",
-            LabelKind::Hint,
-        )
-    );
-    println!(
-        "  {}",
-        label(
-            config,
-            "Use `robo status` for a quick runtime health summary.",
-            LabelKind::Hint,
-        )
-    );
+    help_row(config, "exit", "leave the active runtime shell");
     ExitCode::SUCCESS
 }
 
