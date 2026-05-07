@@ -26,35 +26,31 @@ curl -fsSL https://raw.githubusercontent.com/ausbxuse/robo-nix/develop/scripts/i
 
 The installer reuses what is already on your machine when it can. On a fresh machine, it installs the pieces `robo` needs, then adds the `robo` command. By default it installs from the current `develop` branch commit, not from the latest release tag.
 
-Create a project and enter its runtime shell:
+Create a project, enter its runtime shell, and sync Python packages:
 
 ```bash
 # Create a project with generated runtime files.
 robo init robot-learning
 cd robot-learning
 
-# Enter the runtime shell. The runtime is built on demand.
+# Enter the runtime shell. The native runtime is built on demand.
 robo shell
-```
 
-Then install Python packages with `uv`:
-
-```bash
 # Sync project-owned Python dependencies.
 uv sync
+
+# Leave the runtime shell when you are done.
+exit
 ```
 
-After setup, use `robo run` for one-off commands or `robo shell` when you want to stay inside the runtime:
+After first-time setup, use these from the project directory:
 
 ```bash
 # Run one command inside the prepared runtime.
 robo run python your_script.py
 
-# Stay inside the runtime for interactive work.
+# Re-enter the runtime for interactive work.
 robo shell
-
-# Leave the runtime shell.
-exit
 
 # Diagnose setup, Python, CUDA, graphics, and native build issues.
 robo check
