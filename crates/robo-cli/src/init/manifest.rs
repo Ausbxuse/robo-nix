@@ -18,6 +18,8 @@ pub(super) struct Manifest {
 pub(super) struct Component {
     pub(super) category: String,
     pub(super) description: String,
+    #[serde(default)]
+    pub(super) provides: Vec<String>,
     pub(super) scaffold_directories: Vec<String>,
     pub(super) supported_systems: Vec<String>,
 }
@@ -48,6 +50,9 @@ pub(super) struct RuntimeInference {
 #[serde(rename_all = "camelCase")]
 pub(super) struct DependencyRule {
     pub(super) dependencies: Vec<String>,
+    #[serde(default)]
+    pub(super) requires: Vec<String>,
+    #[serde(default)]
     pub(super) components: Vec<String>,
     pub(super) note: String,
 }
@@ -56,6 +61,9 @@ pub(super) struct DependencyRule {
 #[serde(rename_all = "camelCase")]
 pub(super) struct CompoundDependencyRule {
     pub(super) dependencies_all: Vec<Vec<String>>,
+    #[serde(default)]
+    pub(super) requires: Vec<String>,
+    #[serde(default)]
     pub(super) components: Vec<String>,
     pub(super) note: String,
 }
@@ -65,6 +73,9 @@ pub(super) struct CompoundDependencyRule {
 pub(super) struct WorkspaceDirectoryRule {
     pub(super) root: String,
     pub(super) name_contains: Vec<String>,
+    #[serde(default)]
+    pub(super) requires: Vec<String>,
+    #[serde(default)]
     pub(super) components: Vec<String>,
     pub(super) note: String,
 }
@@ -84,6 +95,9 @@ pub(super) struct ScriptDiscovery {
 #[serde(rename_all = "camelCase")]
 pub(super) struct ScriptRule {
     pub(super) text_contains: Vec<String>,
+    #[serde(default)]
+    pub(super) requires: Vec<String>,
+    #[serde(default)]
     pub(super) components: Vec<String>,
     pub(super) note: String,
 }
@@ -97,6 +111,8 @@ pub(super) struct CudaMarkerScan {
     pub(super) build_files: Vec<String>,
     pub(super) text_contains: Vec<String>,
     pub(super) skip_names: Vec<String>,
+    #[serde(default)]
+    pub(super) requires: Vec<String>,
     pub(super) component: String,
     pub(super) note: String,
 }
@@ -163,7 +179,11 @@ pub(super) fn validate(manifest: &Manifest, spec: &ProjectSpec) -> Result<(), St
             return Err(format!("unknown component: {component}"));
         }
     }
+    for requirement in &spec.requirements {
+        validate_requirements(manifest, std::slice::from_ref(&requirement.id))?;
+    }
     for rule in &manifest.runtime_inference.dependency_rules {
+        validate_requirements(manifest, &rule.requires)?;
         for component in &rule.components {
             if !manifest.components.contains_key(component) {
                 return Err(format!(
@@ -173,6 +193,7 @@ pub(super) fn validate(manifest: &Manifest, spec: &ProjectSpec) -> Result<(), St
         }
     }
     for rule in &manifest.runtime_inference.compound_dependency_rules {
+        validate_requirements(manifest, &rule.requires)?;
         for component in &rule.components {
             if !manifest.components.contains_key(component) {
                 return Err(format!(
@@ -181,6 +202,27 @@ pub(super) fn validate(manifest: &Manifest, spec: &ProjectSpec) -> Result<(), St
             }
         }
     }
+    for rule in &manifest.runtime_inference.workspace_directory_rules {
+        validate_requirements(manifest, &rule.requires)?;
+        for component in &rule.components {
+            if !manifest.components.contains_key(component) {
+                return Err(format!(
+                    "workspace runtime inference rule references unknown component: {component}"
+                ));
+            }
+        }
+    }
+    for rule in &manifest.runtime_inference.script_rules {
+        validate_requirements(manifest, &rule.requires)?;
+        for component in &rule.components {
+            if !manifest.components.contains_key(component) {
+                return Err(format!(
+                    "script runtime inference rule references unknown component: {component}"
+                ));
+            }
+        }
+    }
+    validate_requirements(manifest, &manifest.runtime_inference.cuda_marker_scan.requires)?;
     if !manifest
         .components
         .contains_key(&manifest.runtime_inference.cuda_marker_scan.component)
@@ -189,6 +231,24 @@ pub(super) fn validate(manifest: &Manifest, spec: &ProjectSpec) -> Result<(), St
             "CUDA marker scan references unknown component: {}",
             manifest.runtime_inference.cuda_marker_scan.component
         ));
+    }
+    Ok(())
+}
+
+fn validate_requirements(manifest: &Manifest, requirements: &[String]) -> Result<(), String> {
+    for requirement in requirements {
+        if requirement.starts_with("host.") {
+            continue;
+        }
+        if !manifest
+            .components
+            .values()
+            .any(|component| component.provides.iter().any(|item| item == requirement))
+        {
+            return Err(format!(
+                "runtime inference rule references unsatisfied requirement: {requirement}"
+            ));
+        }
     }
     Ok(())
 }

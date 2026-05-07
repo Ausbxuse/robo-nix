@@ -49,6 +49,7 @@ pub(crate) struct RuntimeWhy {
     pub(crate) env_name: String,
     pub(crate) python_version: String,
     pub(crate) profile: Option<String>,
+    pub(crate) requirements: Vec<WhyEntry>,
     pub(crate) components: Vec<WhyEntry>,
     pub(crate) required_directories: Vec<WhyEntry>,
     pub(crate) required_files: Vec<WhyEntry>,
@@ -69,9 +70,18 @@ pub(crate) struct WhyEntry {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct RuntimeManifest {
+    #[serde(default)]
+    components: BTreeMap<String, RuntimeComponent>,
     profiles: BTreeMap<String, RuntimeProfile>,
     #[serde(default)]
     runtime_inference: RuntimeInference,
+}
+
+#[derive(Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RuntimeComponent {
+    #[serde(default)]
+    provides: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -91,6 +101,9 @@ struct RuntimeInference {
 #[serde(rename_all = "camelCase")]
 struct DependencyRule {
     dependencies: Vec<String>,
+    #[serde(default)]
+    requires: Vec<String>,
+    #[serde(default)]
     components: Vec<String>,
     note: String,
 }
@@ -122,8 +135,13 @@ struct ProjectManifest {
     env_name: Option<String>,
     python_version: Option<String>,
     cuda_wheel_version: Option<String>,
+    #[serde(default)]
     components: Vec<String>,
+    #[serde(default)]
+    requirements: Vec<ProjectManifestRequirement>,
+    #[serde(default)]
     required_directories: Vec<String>,
+    #[serde(default)]
     required_files: Vec<String>,
     provenance: ProjectManifestProvenance,
 }
@@ -136,6 +154,20 @@ struct ProjectManifestProvenance {
     component_reasons: Vec<ProjectManifestComponentReason>,
     source_scripts: Vec<String>,
     suggestions: Vec<ProjectManifestSuggestion>,
+}
+
+#[derive(Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ProjectManifestRequirement {
+    id: String,
+    #[serde(default = "default_inference_source")]
+    source: String,
+    #[serde(default = "default_requirement_reason")]
+    reason: String,
+    #[serde(default)]
+    evidence: Option<String>,
+    #[serde(default = "default_requirement_severity")]
+    severity: String,
 }
 
 #[derive(Deserialize)]
@@ -550,6 +582,11 @@ pub(crate) fn build_runtime_why(runtime: &ProjectRuntime) -> RuntimeWhy {
             .iter()
             .map(|component| explain_component(component, &provenance, &profile_components))
             .collect(),
+        requirements: manifest
+            .requirements
+            .iter()
+            .map(explain_requirement)
+            .collect(),
         required_directories: provenance
             .required_dirs
             .iter()
@@ -622,7 +659,7 @@ pub(crate) fn expected_components_from_pyproject(text: &str) -> Vec<ExpectedComp
     let mut seen = HashSet::new();
     let mut expected = Vec::new();
 
-    for rule in manifest.runtime_inference.dependency_rules {
+    for rule in &manifest.runtime_inference.dependency_rules {
         if !rule
             .dependencies
             .iter()
@@ -630,7 +667,15 @@ pub(crate) fn expected_components_from_pyproject(text: &str) -> Vec<ExpectedComp
         {
             continue;
         }
-        for component in rule.components {
+        let mut components = rule.components.clone();
+        for requirement in &rule.requires {
+            for provider in providers_for(&manifest, requirement) {
+                if !components.iter().any(|item| item == &provider) {
+                    components.push(provider);
+                }
+            }
+        }
+        for component in components {
             if seen.insert(component.clone()) {
                 expected.push(ExpectedComponent {
                     name: component,
@@ -641,6 +686,48 @@ pub(crate) fn expected_components_from_pyproject(text: &str) -> Vec<ExpectedComp
     }
 
     expected
+}
+
+fn providers_for(manifest: &RuntimeManifest, requirement: &str) -> Vec<String> {
+    if requirement.starts_with("host.") {
+        return Vec::new();
+    }
+    manifest
+        .components
+        .iter()
+        .filter(|(_, component)| component.provides.iter().any(|item| item == requirement))
+        .map(|(name, _)| name.clone())
+        .collect()
+}
+
+fn explain_requirement(requirement: &ProjectManifestRequirement) -> WhyEntry {
+    let mut reason = requirement.reason.clone();
+    if let Some(evidence) = &requirement.evidence {
+        reason = format!("{reason}; evidence: {evidence}");
+    }
+    if requirement.severity != "required" {
+        reason = format!("{reason}; severity: {}", requirement.severity);
+    }
+    WhyEntry {
+        name: requirement.id.clone(),
+        source: requirement.source.clone(),
+        reason,
+        remove_hint: format!(
+            "remove requirement `{}` from requirements in robo.nix if the inference is wrong",
+            requirement.id
+        ),
+        remediation_hint: if requirement.id.starts_with("host.") {
+            format!(
+                "fix host/container visibility for `{}`; Nix components cannot provide host-owned capabilities",
+                requirement.id
+            )
+        } else {
+            format!(
+                "keep a component that provides `{}` or rerun `robo init . --force` after dependency changes",
+                requirement.id
+            )
+        },
+    }
 }
 
 fn explain_component(
@@ -757,6 +844,7 @@ fn read_project_manifest() -> Option<ProjectManifest> {
         envName = spec.envName or null;
         pythonVersion = spec.pythonVersion or null;
         cudaWheelVersion = spec.cudaWheelVersion or null;
+        requirements = spec.requirements or [];
         components = spec.components or [];
         requiredDirectories = spec.requiredDirectories or [];
         requiredFiles = spec.requiredFiles or [];
@@ -821,6 +909,14 @@ fn default_inference_source() -> String {
 
 fn default_component_reason() -> String {
     "listed in provenance.componentReasons".to_string()
+}
+
+fn default_requirement_reason() -> String {
+    "listed in requirements".to_string()
+}
+
+fn default_requirement_severity() -> String {
+    "required".to_string()
 }
 
 fn is_cuda_package_name(name: &str) -> bool {

@@ -75,6 +75,10 @@ assert_component_metadata_contract() {
       metadata = flake.lib.componentMetadata;
     in
       assert metadata.base.category == "core";
+      assert builtins.elem "runtime.shell.base" metadata.base.provides;
+      assert builtins.elem "runtime.graphics.opengl" metadata.x11-gl.provides;
+      assert builtins.elem "runtime.cuda.nvcc" metadata.cuda-toolkit.provides;
+      assert !(builtins.elem "host.cuda.driver" metadata.cuda-toolkit.provides);
       assert metadata.isaac-sim.scaffoldDirectories == [];
       true
   '
@@ -107,11 +111,24 @@ assert_runtime_inference_contract() {
       workspaceRuleComponents = builtins.concatMap (rule: rule.components) inference.workspaceDirectoryRules;
       scriptRuleComponents = builtins.concatMap (rule: rule.components) inference.scriptRules;
       inferredComponents = ruleComponents ++ compoundRuleComponents ++ workspaceRuleComponents ++ scriptRuleComponents;
+      ruleRequirements = builtins.concatMap (rule: rule.requires or []) inference.dependencyRules;
+      compoundRuleRequirements = builtins.concatMap (rule: rule.requires or []) inference.compoundDependencyRules;
+      workspaceRuleRequirements = builtins.concatMap (rule: rule.requires or []) inference.workspaceDirectoryRules;
+      scriptRuleRequirements = builtins.concatMap (rule: rule.requires or []) inference.scriptRules;
+      inferredRequirements = ruleRequirements ++ compoundRuleRequirements ++ workspaceRuleRequirements ++ scriptRuleRequirements;
       knownComponent = name: builtins.hasAttr name flake.lib.componentMetadata;
+      knownRequirement = requirement:
+        builtins.substring 0 5 requirement == "host."
+        || builtins.any
+          (component: builtins.elem requirement (component.provides or []))
+          (builtins.attrValues flake.lib.componentMetadata);
     in
       assert inference.defaultProfile == "minimal";
       assert builtins.length inference.dependencyRules > 0;
       assert builtins.all knownComponent inferredComponents;
+      assert builtins.all knownRequirement inferredRequirements;
+      assert builtins.any (rule: builtins.elem "opencv-python" rule.dependencies && builtins.elem "runtime.media.ffmpeg" rule.requires) inference.dependencyRules;
+      assert builtins.any (rule: builtins.elem "isaacsim" rule.dependencies && builtins.elem "host.cuda.driver" rule.requires && !(builtins.elem "runtime.cuda.toolkit" rule.requires)) inference.dependencyRules;
       assert builtins.any (rule: builtins.elem "opencv-python" rule.dependencies && builtins.elem "media" rule.components) inference.dependencyRules;
       assert builtins.any (rule: builtins.elem "torchcodec" rule.dependencies && builtins.elem "media" rule.components) inference.dependencyRules;
       assert builtins.any (rule: builtins.elem "pyqt6" rule.dependencies && builtins.elem "qt6" rule.components && builtins.elem "x11-gl" rule.components) inference.dependencyRules;
@@ -191,7 +208,7 @@ assert_python_uv_exports_native_build_prefixes() {
       };
       component = flake.lib.components."python-uv" ctx;
     in
-      assert builtins.elem pkgs.python310 component.packages;
+      assert builtins.elem flake.inputs.nixpkgs-python.packages.x86_64-linux."3.10" component.packages;
       assert component.shellInit == builtins.replaceStrings ["/bin//nix/store"] ["unexpected"] component.shellInit;
       assert flake.inputs.nixpkgs.lib.hasInfix "ROBO_NIX_PYTHON" component.shellInit;
       assert flake.inputs.nixpkgs.lib.hasInfix "UV_PYTHON_DOWNLOADS" component.shellInit;

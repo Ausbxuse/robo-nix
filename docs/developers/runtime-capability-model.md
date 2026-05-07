@@ -1,6 +1,6 @@
 # Runtime Capability Model
 
-This page records the current design direction for keeping runtime inference scalable. It is not a standing plan; incomplete behavior should stay marked as incomplete near the code or user-facing docs it affects.
+This page records the current capability model for keeping runtime inference scalable. It is not a standing plan; incomplete behavior should stay marked as incomplete near the code or user-facing docs it affects.
 
 The design borrows Pixi's strongest idea, not Pixi's environment model: detected machine facts and declared environment requirements should be separate objects that can be compared clearly. In Pixi, those objects are Conda virtual packages such as `__cuda` and `__glibc`. In `robo-nix`, they should be uv/Nix runtime capabilities.
 
@@ -22,8 +22,8 @@ Components are an implementation detail. Requirements are the user-facing contra
 
 ## Ownership
 
-- uv owns Python versions, `.venv`, Python packages, and `uv.lock`.
-- Nix owns native/runtime libraries, compilers, CUDA/graphics/ROS/simulator tooling, and shell environment.
+- uv owns Python version selection, `.venv` creation/sync, Python packages, and `uv.lock`.
+- Nix owns the CPython interpreter, native/runtime libraries, compilers, CUDA/graphics/ROS/simulator tooling, and shell environment.
 - The host owns kernel drivers, GPU devices, `libcuda.so.1`, display servers, and system services.
 - `robo` owns fact collection, requirement inference, provider matching, and diagnostics.
 
@@ -121,7 +121,7 @@ mechanism when needed. Disable it with `ROBO_NIX_DISABLE_HOST_GRAPHICS_AUTO=1`.
 
 ## Metadata Shape
 
-The metadata can remain Nix for now. The important change is semantic: rules produce requirements, and components declare capabilities.
+The metadata remains Nix. The important boundary is semantic: rules produce requirements, and components declare capabilities.
 
 Example inference rule:
 
@@ -157,4 +157,14 @@ CUDA Python wheels do not imply `runtime.cuda.toolkit` by themselves. They usual
 4. compare requirements against providers
 5. print grouped diagnostics
 
-The current implementation is moving toward this model. Do not present incomplete capability matching as finished behavior.
+Implemented today:
+
+- `nix/metadata/runtime-inference.nix` rules can emit `requires`.
+- `nix/metadata/components.nix` components declare `provides`.
+- `robo init` records `requirements` in generated `robo.nix` and resolves runtime-owned requirements to components.
+- `robo check --why` and `robo contract` expose the requirement contract.
+
+Still incomplete:
+
+- Host providers are diagnosed by focused checks, but there is not yet one unified provider comparison engine for every host requirement.
+- Low-confidence findings, such as workspace CUDA marker scans, remain suggestions until the user promotes them.

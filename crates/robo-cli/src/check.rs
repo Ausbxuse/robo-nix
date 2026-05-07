@@ -624,6 +624,7 @@ fn print_runtime_why(config: Config, why: &RuntimeWhy) {
             why.profile.as_deref().unwrap_or("manual/unknown")
         ),
     );
+    print_why_group(config, "requirements", &why.requirements);
     print_why_group(config, "components", &why.components);
     print_why_group(config, "required directories", &why.required_directories);
     print_why_group(config, "required files", &why.required_files);

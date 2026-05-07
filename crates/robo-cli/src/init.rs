@@ -55,7 +55,7 @@ pub struct InitArgs {
     #[arg(long, value_name = "LIST", help = "Comma-separated component names")]
     pub components: Option<String>,
 
-    #[arg(long, value_name = "VERSION", help = "Python version for uv")]
+    #[arg(long, value_name = "VERSION", help = "Python version for the Nix interpreter and uv project files")]
     pub python_version: Option<String>,
 
     #[arg(long, value_name = "LIST", help = "Comma-separated Nix systems")]

@@ -459,6 +459,9 @@ pub(super) fn render_project(spec: &ProjectSpec) -> String {
   schemaVersion = 1;
   envName = "{}";
   description = "{}";
+  requirements = [
+{}
+  ];
   components = [
 {}
   ];
@@ -469,6 +472,7 @@ pub(super) fn render_project(spec: &ProjectSpec) -> String {
   workspaceRoot = "{}";"#,
         escape_nix(&spec.env_name),
         escape_nix(&spec.description),
+        render_requirements(&spec.requirements),
         render_list(&spec.components),
         escape_nix(&spec.python_version),
         render_list(&spec.supported_systems),
@@ -600,6 +604,28 @@ fn render_list(items: &[String]) -> String {
     items
         .iter()
         .map(|item| format!("    \"{}\"", escape_nix(item)))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn render_requirements(items: &[super::spec::RuntimeRequirement]) -> String {
+    items
+        .iter()
+        .map(|item| {
+            let evidence = item
+                .evidence
+                .as_ref()
+                .map(|value| format!("\n      evidence = \"{}\";", escape_nix(value)))
+                .unwrap_or_default();
+            format!(
+                "    {{\n      id = \"{}\";\n      source = \"{}\";\n      reason = \"{}\";{}\n      severity = \"{}\";\n    }}",
+                escape_nix(&item.id),
+                escape_nix(&item.source),
+                escape_nix(&item.reason),
+                evidence,
+                escape_nix(&item.severity)
+            )
+        })
         .collect::<Vec<_>>()
         .join("\n")
 }

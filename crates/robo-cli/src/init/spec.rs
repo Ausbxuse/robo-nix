@@ -9,6 +9,7 @@ pub(super) struct ProjectSpec {
     pub(super) profile_name: String,
     pub(super) env_name: String,
     pub(super) description: String,
+    pub(super) requirements: Vec<RuntimeRequirement>,
     pub(super) components: Vec<String>,
     pub(super) cuda_wheel_version: Option<String>,
     pub(super) python_version: String,
@@ -34,6 +35,24 @@ impl ProjectSpec {
             profile_name: name.to_string(),
             env_name: "project".to_string(),
             description: profile.description.clone(),
+            requirements: profile
+                .components
+                .iter()
+                .flat_map(|component| {
+                    manifest
+                        .components
+                        .get(component)
+                        .into_iter()
+                        .flat_map(|metadata| &metadata.provides)
+                        .map(move |requirement| RuntimeRequirement {
+                            id: requirement.clone(),
+                            source: "profile".to_string(),
+                            reason: format!("provided by `{component}` from the `{name}` profile"),
+                            evidence: None,
+                            severity: "required".to_string(),
+                        })
+                })
+                .collect(),
             components: profile.components.clone(),
             cuda_wheel_version: None,
             python_version: profile.python_version.clone(),
@@ -88,6 +107,43 @@ impl ProjectSpec {
         }
     }
 
+    pub(super) fn add_requirement(
+        &mut self,
+        manifest: &Manifest,
+        id: &str,
+        source: &str,
+        reason: impl Into<String>,
+        evidence: Option<String>,
+    ) {
+        let reason = reason.into();
+        if !self.requirements.iter().any(|item| item.id == id) {
+            self.requirements.push(RuntimeRequirement {
+                id: id.to_string(),
+                source: source.to_string(),
+                reason: reason.clone(),
+                evidence,
+                severity: "required".to_string(),
+            });
+        }
+        for component in providers_for(manifest, id) {
+            if !self.components.iter().any(|item| item == component) {
+                self.components.push(component.to_string());
+            }
+            if !self
+                .component_provenance
+                .iter()
+                .any(|item| item.name == component)
+            {
+                self.component_provenance.push(ComponentProvenance {
+                    name: component.to_string(),
+                    source: source.to_string(),
+                    reason: format!("provides `{id}`: {reason}"),
+                });
+            }
+        }
+        push_unique(&mut self.probe_notes, &reason);
+    }
+
     pub(super) fn add_required_dir(&mut self, path: &str) {
         push_unique(&mut self.required_dirs, path);
     }
@@ -135,7 +191,7 @@ impl ProjectSpec {
         });
     }
 
-    pub(super) fn apply_probe(&mut self, probe: ProbeResult) {
+    pub(super) fn apply_probe(&mut self, manifest: &Manifest, probe: ProbeResult) {
         if self.env_name == "project" {
             if let Some(name) = probe.env_name {
                 self.env_name = name;
@@ -151,6 +207,15 @@ impl ProjectSpec {
         }
         for component in probe.components {
             self.add_component(&component.name, component.note);
+        }
+        for requirement in probe.requirements {
+            self.add_requirement(
+                manifest,
+                &requirement.id,
+                inference_source(&requirement.note),
+                requirement.note,
+                None,
+            );
         }
         for path in probe.required_dirs {
             self.add_required_dir(&path);
@@ -174,6 +239,15 @@ pub(super) struct ComponentProvenance {
     pub(super) name: String,
     pub(super) source: String,
     pub(super) reason: String,
+}
+
+#[derive(Clone)]
+pub(super) struct RuntimeRequirement {
+    pub(super) id: String,
+    pub(super) source: String,
+    pub(super) reason: String,
+    pub(super) evidence: Option<String>,
+    pub(super) severity: String,
 }
 
 #[derive(Clone)]
@@ -220,6 +294,13 @@ pub(super) fn push_unique(items: &mut Vec<String>, value: &str) {
 }
 
 pub(super) fn dedupe_all(spec: &mut ProjectSpec) {
+    spec.requirements.sort_by(|left, right| {
+        left.id
+            .cmp(&right.id)
+            .then_with(|| left.source.cmp(&right.source))
+            .then_with(|| left.reason.cmp(&right.reason))
+    });
+    spec.requirements.dedup_by(|left, right| left.id == right.id);
     spec.components = dedupe(mem::take(&mut spec.components));
     spec.supported_systems = dedupe(mem::take(&mut spec.supported_systems));
     spec.required_dirs = dedupe(mem::take(&mut spec.required_dirs));
@@ -254,6 +335,18 @@ pub(super) fn dedupe_all(spec: &mut ProjectSpec) {
     spec.component_suggestions.dedup_by(|left, right| {
         left.name == right.name && left.evidence == right.evidence && left.reason == right.reason
     });
+}
+
+pub(super) fn providers_for<'a>(manifest: &'a Manifest, requirement: &str) -> Vec<&'a str> {
+    if requirement.starts_with("host.") {
+        return Vec::new();
+    }
+    manifest
+        .components
+        .iter()
+        .filter(|(_, component)| component.provides.iter().any(|item| item == requirement))
+        .map(|(name, _)| name.as_str())
+        .collect()
 }
 
 fn dedupe(items: Vec<String>) -> Vec<String> {

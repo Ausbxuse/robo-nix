@@ -32,7 +32,7 @@ pub(super) fn build_draft(args: &InitArgs, manifest: &Manifest) -> Result<Projec
 
     apply_target_defaults(&target_dir, &mut spec);
     if !args.no_probe {
-        spec.apply_probe(probe_project(&target_dir, manifest));
+        spec.apply_probe(manifest, probe_project(&target_dir, manifest));
     }
     apply_cli_overrides(args, &mut spec);
     dedupe_all(&mut spec);
@@ -222,6 +222,7 @@ dependencies = ["opencv-python"]
                 default_profile: "minimal".to_string(),
                 dependency_rules: vec![DependencyRule {
                     dependencies: vec!["opencv-python".to_string()],
+                    requires: vec!["runtime.graphics.opengl".to_string()],
                     components: vec!["graphics".to_string()],
                     note: "OpenCV wheels commonly need graphics runtime libraries".to_string(),
                 }],
@@ -243,6 +244,7 @@ dependencies = ["opencv-python"]
                     build_files: Vec::new(),
                     text_contains: Vec::new(),
                     skip_names: Vec::new(),
+                    requires: Vec::new(),
                     component: "core".to_string(),
                     note: "CUDA marker scan disabled".to_string(),
                 },
@@ -254,6 +256,11 @@ dependencies = ["opencv-python"]
         Component {
             category: "test".to_string(),
             description: description.to_string(),
+            provides: if description.contains("graphics") {
+                vec!["runtime.graphics.opengl".to_string()]
+            } else {
+                Vec::new()
+            },
             scaffold_directories: Vec::new(),
             supported_systems: vec!["x86_64-linux".to_string()],
         }

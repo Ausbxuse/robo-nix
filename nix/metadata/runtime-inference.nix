@@ -21,6 +21,12 @@
         "mujoco"
         "x11-gl"
       ];
+      requires = [
+        "runtime.sim.mujoco"
+        "runtime.graphics.egl"
+        "runtime.graphics.opengl"
+        "runtime.native.libstdcxx"
+      ];
       note = "pyproject.toml uses MuJoCo/simulation packages";
     }
     {
@@ -29,6 +35,10 @@
         "pyglet"
       ];
       components = ["x11-gl"];
+      requires = [
+        "runtime.graphics.egl"
+        "runtime.graphics.opengl"
+      ];
       note = "pyproject.toml uses OpenGL windowing packages";
     }
     {
@@ -39,6 +49,10 @@
       components = [
         "x11-gl"
         "media"
+      ];
+      requires = [
+        "runtime.graphics.opengl"
+        "runtime.media.ffmpeg"
       ];
       note = "OpenCV wheels commonly need graphics and media runtime libraries";
     }
@@ -52,6 +66,7 @@
         "torchcodec"
       ];
       components = ["media"];
+      requires = ["runtime.media.ffmpeg"];
       note = "pyproject.toml uses FFmpeg/media packages";
     }
     {
@@ -60,11 +75,16 @@
         "media"
         "x11-gl"
       ];
+      requires = [
+        "runtime.graphics.opengl"
+        "runtime.media.ffmpeg"
+      ];
       note = "LeRobot workflows commonly need media and graphics runtime libraries";
     }
     {
       dependencies = ["torchvision"];
       components = ["media"];
+      requires = ["runtime.media.ffmpeg"];
       note = "TorchVision video and dataset IO commonly need media runtime libraries";
     }
     {
@@ -76,6 +96,10 @@
       components = [
         "qt6"
         "x11-gl"
+      ];
+      requires = [
+        "runtime.graphics.opengl"
+        "runtime.ui.qt6"
       ];
       note = "pyproject.toml uses Qt bindings that commonly need desktop display and OpenGL runtime libraries";
     }
@@ -90,6 +114,10 @@
         "triton"
       ];
       components = ["native-build"];
+      requires = [
+        "runtime.native.compiler"
+        "runtime.native.libstdcxx"
+      ];
       note = "ML packages often build or load native extensions";
     }
     {
@@ -105,6 +133,11 @@
         "torch3d"
       ];
       components = ["cuda-toolkit"];
+      requires = [
+        "runtime.cuda.headers"
+        "runtime.cuda.link.cudart"
+        "runtime.cuda.nvcc"
+      ];
       note = "CUDA extension packages need CUDA compiler, headers, and link support";
     }
     {
@@ -113,11 +146,23 @@
         "isaac-sim"
         "x11-gl"
       ];
+      requires = [
+        "host.cuda.driver"
+        "host.cuda.libcuda"
+        "host.graphics.nvidia"
+        "runtime.graphics.egl"
+        "runtime.graphics.opengl"
+        "runtime.sim.isaac"
+      ];
       note = "Isaac Sim Python wheels need host NVIDIA CUDA and graphics runtime support";
     }
     {
       dependencies = ["flash-attn"];
       components = ["native-build"];
+      requires = [
+        "runtime.cuda.nvcc"
+        "runtime.native.compiler"
+      ];
       note = "FlashAttention builds CUDA native extensions";
     }
     {
@@ -125,6 +170,10 @@
       components = [
         "linux-headers"
         "native-build"
+      ];
+      requires = [
+        "runtime.native.compiler"
+        "runtime.native.linux-headers"
       ];
       note = "evdev native extensions include Linux input headers";
     }
@@ -141,6 +190,7 @@
         ]
       ];
       components = ["matplotlib-qt"];
+      requires = ["runtime.ui.matplotlib-qt"];
       note = "pyproject.toml uses Matplotlib with Qt bindings";
     }
   ];
@@ -155,6 +205,10 @@
       components = [
         "qt6"
         "linux-headers"
+      ];
+      requires = [
+        "runtime.native.linux-headers"
+        "runtime.ui.qt6"
       ];
       note = "workspace contains Qt service paths";
     }
@@ -180,6 +234,7 @@
         "xrobot"
       ];
       components = ["qt6"];
+      requires = ["runtime.ui.qt6"];
       note = "bootstrap script references Qt GUI runtime";
     }
     {
@@ -189,6 +244,7 @@
         "linux-headers"
       ];
       components = ["linux-headers"];
+      requires = ["runtime.native.linux-headers"];
       note = "bootstrap script references Linux headers";
     }
   ];
@@ -227,6 +283,10 @@
       "node_modules"
     ];
     component = "cuda-toolkit";
+    requires = [
+      "runtime.cuda.headers"
+      "runtime.cuda.nvcc"
+    ];
     note = "workspace contains CUDA extension markers";
   };
 }

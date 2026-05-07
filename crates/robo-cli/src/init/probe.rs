@@ -10,6 +10,7 @@ pub(super) struct ProbeResult {
     pub(super) env_name: Option<String>,
     pub(super) python_version: Option<ProbeValue>,
     pub(super) cuda_wheel_version: Option<ProbeValue>,
+    pub(super) requirements: Vec<ProbeRequirement>,
     pub(super) components: Vec<ProbeComponent>,
     pub(super) required_dirs: Vec<String>,
     pub(super) notes: Vec<String>,
@@ -24,6 +25,15 @@ impl ProbeResult {
             note: note.to_string(),
         });
     }
+
+    fn add_requirements(&mut self, requirements: &[String], note: &str) {
+        for requirement in requirements {
+            self.requirements.push(ProbeRequirement {
+                id: requirement.clone(),
+                note: note.to_string(),
+            });
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -35,6 +45,12 @@ pub(super) struct ProbeValue {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct ProbeComponent {
     pub(super) name: String,
+    pub(super) note: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct ProbeRequirement {
+    pub(super) id: String,
     pub(super) note: String,
 }
 
@@ -145,8 +161,12 @@ fn probe_dependencies(text: &str, manifest: &Manifest, probe: &mut ProbeResult) 
     let deps = crate::pyproject::dependency_names(text);
     for rule in &manifest.runtime_inference.dependency_rules {
         if has_dep(&deps, &rule.dependencies) {
-            for component in &rule.components {
-                probe.add_component(component, &rule.note);
+            if rule.requires.is_empty() {
+                for component in &rule.components {
+                    probe.add_component(component, &rule.note);
+                }
+            } else {
+                probe.add_requirements(&rule.requires, &rule.note);
             }
         }
     }
@@ -156,8 +176,12 @@ fn probe_dependencies(text: &str, manifest: &Manifest, probe: &mut ProbeResult) 
             .iter()
             .all(|group| has_dep(&deps, group))
         {
-            for component in &rule.components {
-                probe.add_component(component, &rule.note);
+            if rule.requires.is_empty() {
+                for component in &rule.components {
+                    probe.add_component(component, &rule.note);
+                }
+            } else {
+                probe.add_requirements(&rule.requires, &rule.note);
             }
         }
     }
@@ -178,8 +202,12 @@ fn probe_workspace_directories(target: &Path, manifest: &Manifest, probe: &mut P
                     let path = format!("{}/{}", rule.root, name);
                     probe.required_dirs.push(path);
                     if contains_any(&name.to_ascii_lowercase(), &rule.name_contains) {
-                        for component in &rule.components {
-                            probe.add_component(component, &rule.note);
+                        if rule.requires.is_empty() {
+                            for component in &rule.components {
+                                probe.add_component(component, &rule.note);
+                            }
+                        } else {
+                            probe.add_requirements(&rule.requires, &rule.note);
                         }
                     }
                 }
@@ -295,8 +323,12 @@ fn probe_script_rules(text: &str, manifest: &Manifest, probe: &mut ProbeResult) 
     let lower = text.to_ascii_lowercase();
     for rule in &manifest.runtime_inference.script_rules {
         if contains_any(&lower, &rule.text_contains) {
-            for component in &rule.components {
-                probe.add_component(component, &rule.note);
+            if rule.requires.is_empty() {
+                for component in &rule.components {
+                    probe.add_component(component, &rule.note);
+                }
+            } else {
+                probe.add_requirements(&rule.requires, &rule.note);
             }
         }
     }

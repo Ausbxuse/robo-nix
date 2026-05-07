@@ -275,6 +275,10 @@ EOF
 
 	assert_file_contains "$tmpdir/probed-project/robo.nix" 'envName = "probed-project";'
 	assert_file_contains "$tmpdir/probed-project/robo.nix" 'schemaVersion = 1;'
+	assert_file_contains "$tmpdir/probed-project/robo.nix" 'requirements = ['
+	assert_file_contains "$tmpdir/probed-project/robo.nix" 'id = "runtime.graphics.opengl";'
+	assert_file_contains "$tmpdir/probed-project/robo.nix" 'id = "runtime.media.ffmpeg";'
+	assert_file_contains "$tmpdir/probed-project/robo.nix" 'id = "host.cuda.driver";'
 	assert_file_contains "$tmpdir/probed-project/robo.nix" '"mujoco"'
 	assert_file_contains "$tmpdir/probed-project/robo.nix" '"x11-gl"'
 	assert_file_contains "$tmpdir/probed-project/robo.nix" '"media"'
@@ -312,6 +316,9 @@ EOF
 		nix run "${repo_flake_url}#robo" -- contract --json >"$probed_contract_output"
 	)
 	assert_file_contains "$probed_why_output" '"profile": "minimal"'
+	assert_file_contains "$probed_why_output" '"requirements": ['
+	assert_file_contains "$probed_why_output" '"name": "runtime.graphics.opengl"'
+	assert_file_contains "$probed_why_output" '"name": "host.cuda.driver"'
 	assert_file_contains "$probed_why_output" '"name": "base"'
 	assert_file_contains "$probed_why_output" '"source": "profile"'
 	assert_file_contains "$probed_why_output" '"name": "mujoco"'
@@ -321,6 +328,7 @@ EOF
 	assert_file_contains "$probed_contract_output" '"envName": "probed-project"'
 	assert_file_contains "$probed_contract_output" '"schemaVersion": "1"'
 	assert_file_contains "$probed_contract_output" '"defaultDerivation":'
+	assert_file_contains "$probed_contract_output" '"requirements": ['
 	assert_file_contains "$probed_contract_output" '"components": ['
 
 	if ! run_full_mode; then

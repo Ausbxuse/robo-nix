@@ -29,6 +29,7 @@ struct RuntimeContract {
     default_derivation: Option<String>,
     flake_lock_present: bool,
     source: Option<String>,
+    requirements: Vec<WhyEntry>,
     components: Vec<WhyEntry>,
     required_directories: Vec<WhyEntry>,
     required_files: Vec<WhyEntry>,
@@ -53,6 +54,7 @@ pub(crate) fn run(args: ContractArgs, config: Config) -> ExitCode {
         default_derivation: default_derivation_name(config),
         flake_lock_present: Path::new("flake.lock").is_file(),
         source: flake_robo_nix_source(),
+        requirements: why.requirements,
         components: why.components,
         required_directories: why.required_directories,
         required_files: why.required_files,
@@ -89,6 +91,15 @@ pub(crate) fn run(args: ContractArgs, config: Config) -> ExitCode {
     );
     if let Some(source) = &contract.source {
         contract_field(config, &format!("source={source}"));
+    }
+    for requirement in &contract.requirements {
+        contract_field(
+            config,
+            &format!(
+                "requirement={} source={} reason={}",
+                requirement.name, requirement.source, requirement.reason
+            ),
+        );
     }
     for component in &contract.components {
         contract_field(
