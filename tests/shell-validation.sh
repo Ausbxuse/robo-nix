@@ -48,6 +48,13 @@ assert_file_contains "$outside_status" "checked shell-shell-project"
 assert_file_contains "$outside_status" "uv.lock missing"
 assert_file_contains "$outside_status" "Python environment missing"
 
+init_build_project="$tmpdir/init-build-project"
+init_build_output="$tmpdir/init-build.txt"
+"$robo" init "$init_build_project" --build --robo-nix-url "$robo_nix_url" >"$init_build_output"
+test -s "$init_build_project/.robo-nix/shell-env"
+test -s "$init_build_project/.robo-nix/shell-env.key"
+assert_file_contains "$init_build_output" "robo runtime is built for this project."
+
 make_fake_shell() {
 	local name="$1"
 	local path="$tmpdir/$name"
@@ -87,19 +94,19 @@ for shell_name in sh bash zsh fish nu; do
 	assert_file_contains "$output" "prompt-prefix=[robo]"
 done
 
-up_shell="$(make_fake_shell up-shell)"
-up_shell_output="$tmpdir/up-shell.txt"
+build_shell="$(make_fake_shell build-shell)"
+build_shell_output="$tmpdir/build-shell.txt"
 (
 	cd "$project"
-	ROBO_NIX_SHELL="$up_shell" EXPECTED_SHELL="$up_shell" \
-		"$robo" up --shell >"$up_shell_output"
+	"$robo" build >"$build_shell_output"
 	test -s .robo-nix/shell-env
 	test -s .robo-nix/shell-env.key
+	ROBO_NIX_SHELL="$build_shell" EXPECTED_SHELL="$build_shell" \
+		"$robo" shell >>"$build_shell_output"
 )
-assert_file_contains "$up_shell_output" "robo is ready for this project."
-assert_file_contains "$up_shell_output" "Entering the runtime shell..."
-assert_file_contains "$up_shell_output" "active=1"
-assert_file_contains "$up_shell_output" "env=shell-shell-project"
+assert_file_contains "$build_shell_output" "robo runtime is built for this project."
+assert_file_contains "$build_shell_output" "active=1"
+assert_file_contains "$build_shell_output" "env=shell-shell-project"
 
 active_status="$tmpdir/active-status.txt"
 (

@@ -10,6 +10,6 @@ pub(crate) use nix::{
 };
 pub(crate) use project::{
     ensure_project_runtime, run_internal_exec, run_internal_shell_env, run_project_app,
-    run_project_command, run_project_shell, run_project_up,
+    run_project_build, run_project_command, run_project_shell, run_project_up,
 };
 pub(crate) use python::quoted_value;

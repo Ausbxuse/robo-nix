@@ -14,7 +14,7 @@ Native runtime environments for uv-based robot-learning projects.
 
 Use `uv` for the Python dependency workflow. Use `robo` for the Nix-managed interpreter and native runtime.
 
-Example: instead of asking every Ubuntu user to install the right CUDA, OpenGL, FFmpeg, compiler, and simulator dependencies by hand, a repo can keep PyTorch, MuJoCo, and project code in `uv.lock` while `robo` prepares the native runtime. New contributors enter it with `robo up --shell`, then run the project's normal `uv sync`.
+Example: instead of asking every Ubuntu user to install the right CUDA, OpenGL, FFmpeg, compiler, and simulator dependencies by hand, a repo can keep PyTorch, MuJoCo, and project code in `uv.lock` while `robo` prepares the native runtime on demand. New contributors enter it with `robo shell`, then run the project's normal `uv sync`.
 
 ## Quick Start
 
@@ -30,11 +30,11 @@ Create a project and enter its runtime shell:
 
 ```bash
 # Create a project with generated runtime files.
-robo up robot-learning --yes
+robo init robot-learning
 cd robot-learning
 
-# Prepare the runtime and enter its shell.
-robo up --shell
+# Enter the runtime shell. The runtime is built on demand.
+robo shell
 ```
 
 Then install Python packages with `uv`:
@@ -67,8 +67,8 @@ For a repository that already has Python project files, run:
 ```bash
 cd existing-project
 
-# Prepare the runtime and enter its shell.
-robo up --shell
+# Enter the runtime shell. The runtime is built on demand.
+robo shell
 
 # Sync project-owned Python dependencies.
 uv sync

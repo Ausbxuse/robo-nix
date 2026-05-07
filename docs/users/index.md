@@ -5,7 +5,7 @@ Use this section when you want to install `robo`, enter a project runtime, run c
 Most users only need this flow from a project directory:
 
 ```bash
-robo up --shell
+robo shell
 uv sync
 robo run python -m pytest
 ```

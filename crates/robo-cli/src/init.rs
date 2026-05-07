@@ -34,6 +34,9 @@ pub struct InitArgs {
     #[arg(long, help = "Overwrite generated flake.nix")]
     pub force: bool,
 
+    #[arg(long, help = "Build the runtime after writing project files")]
+    pub build: bool,
+
     #[arg(long, value_name = "NAME", help = "Environment name")]
     pub name: Option<String>,
 
@@ -86,6 +89,7 @@ impl InitArgs {
             list_components: false,
             stdout: false,
             force,
+            build: false,
             name: None,
             profile: None,
             with_components: None,
@@ -156,6 +160,10 @@ fn run_inner(args: InitArgs, config: Config, quiet: bool) -> ExitCode {
     };
 
     if args.stdout {
+        if args.build {
+            error(config, "--build cannot be used with --stdout.");
+            return ExitCode::from(2);
+        }
         println!("{}", plan.flake);
         return ExitCode::SUCCESS;
     }
@@ -170,7 +178,13 @@ fn run_inner(args: InitArgs, config: Config, quiet: bool) -> ExitCode {
         config,
         quiet,
     ) {
-        Ok(()) => ExitCode::SUCCESS,
+        Ok(()) => {
+            if args.build {
+                crate::command::run_project_build(plan.target_dir, config)
+            } else {
+                ExitCode::SUCCESS
+            }
+        }
         Err(code) => code,
     }
 }

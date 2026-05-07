@@ -13,7 +13,7 @@ hero:
       link: /blog
 features:
   - title: Enter the runtime
-    details: From a project directory, run robo up --shell, then use the project's normal uv sync and Python commands.
+    details: From a project directory, run robo shell, then use the project's normal uv sync and Python commands.
   - title: Keep Python workflow in uv
     details: uv selects the Python version and owns packages, virtualenv sync, dependency groups, indexes, editable sources, and uv.lock.
   - title: Put native pieces in Nix
@@ -35,7 +35,7 @@ By default the installer installs from the current `develop` branch commit, not 
 Then run project commands from the project directory:
 
 ```bash
-robo up --shell
+robo shell
 uv sync
 robo run python -m pytest
 ```

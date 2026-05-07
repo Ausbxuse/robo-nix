@@ -423,7 +423,7 @@ EOF
 	fi
 	assert_file_contains "$stale_check_output" "robo may be missing runtime components for stale-project"
 	assert_file_contains "$stale_check_output" "media: pyproject.toml uses FFmpeg/media packages"
-	assert_file_contains "$stale_check_output" "robo up"
+	assert_file_contains "$stale_check_output" "robo build"
 }
 
 assert_tricky_package_runtime_inference() {

@@ -82,7 +82,7 @@ From the project directory, add Qt to the runtime and rebuild the shell:
 
 ```bash
 robo add qt6
-robo up
+robo build
 ```
 
 ### `pybind11Config.cmake` or `nanobindConfig.cmake` missing
@@ -146,7 +146,7 @@ From the project directory, add those headers to the runtime and rebuild the she
 
 ```bash
 robo add linux-headers
-robo up
+robo build
 ```
 
 ## Failure Ownership

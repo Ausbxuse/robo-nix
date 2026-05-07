@@ -155,6 +155,7 @@ dependencies = ["opencv-python"]
             list_components: false,
             stdout: false,
             force: false,
+            build: false,
             name: Some("manual-name".to_string()),
             profile: None,
             with_components: Some("cuda-toolkit".to_string()),

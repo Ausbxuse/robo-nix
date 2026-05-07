@@ -14,7 +14,7 @@ For binding behavior, use:
 The normal command surface should stay small:
 
 ```bash
-robo up
+robo init
 robo status
 robo check
 robo shell
@@ -24,6 +24,7 @@ robo run <command>
 Support commands are useful only when the intent is genuinely different from the daily workflow:
 
 ```bash
+robo build
 robo diagnose [FILE|-]
 ```
 

@@ -46,7 +46,7 @@ Keep normal Python packaging. Add a reproducible native runtime around it.
 That gives users a small command surface while keeping the underlying environment declarative and reviewable.
 
 ```bash
-robo up --shell
+robo shell
 uv sync
 robo run python -m pytest
 ```

@@ -14,11 +14,11 @@ Create a project and enter its runtime shell:
 
 ```bash
 # Create a project with generated runtime files.
-robo up robot-learning --yes
+robo init robot-learning
 cd robot-learning
 
-# Prepare the runtime and enter its shell.
-robo up --shell
+# Enter the runtime shell. The runtime is built on demand.
+robo shell
 
 # Sync project-owned Python dependencies.
 uv sync
@@ -26,13 +26,13 @@ uv sync
 
 ## Existing Project
 
-For a repository that already has Python project files, run `robo up --shell` from the repository root:
+For a repository that already has Python project files, enter its shell from the repository root:
 
 ```bash
 cd existing-project
 
-# Prepare the runtime and enter its shell.
-robo up --shell
+# Enter the runtime shell. The runtime is built on demand.
+robo shell
 
 # Sync project-owned Python dependencies.
 uv sync
@@ -74,9 +74,15 @@ Use `robo status` from the project directory for a quick health summary:
 robo status
 ```
 
+Use `robo build` when you want to prebuild the runtime without entering a shell, such as in CI or before a long offline session:
+
+```bash
+robo build
+```
+
 ## Generated Files
 
-After `robo up`, a project usually contains:
+After `robo init`, a project usually contains:
 
 ```text
 robo.nix          project runtime choices, such as CUDA, graphics, ROS, or native tools

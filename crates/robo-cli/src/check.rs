@@ -186,7 +186,7 @@ fn run_default_check(config: Config, runtime: &ProjectRuntime) -> ExitCode {
         }
         println!();
         println!("Review robo.nix, then refresh the runtime:");
-        print_command(config, "robo up");
+        print_command(config, "robo build");
         return ExitCode::from(1);
     }
 
@@ -289,7 +289,7 @@ fn run_graphics_check(config: Config, runtime: &ProjectRuntime, verbose: bool) -
         println!("This runtime appears to need desktop graphics, but robo.nix does not include `x11-gl`.");
         println!();
         println!("Add `x11-gl` to components in robo.nix, then run:");
-        print_command(config, "robo up");
+        print_command(config, "robo build");
         return ExitCode::from(1);
     }
 
@@ -379,7 +379,7 @@ fn run_native_check(config: Config, runtime: &ProjectRuntime, verbose: bool) -> 
         println!("This project appears to need C/C++ build tooling, but robo.nix does not include `native-build`.");
         println!();
         println!("Add `native-build` to components in robo.nix, then run:");
-        print_command(config, "robo up");
+        print_command(config, "robo build");
         return ExitCode::from(1);
     }
 
@@ -426,7 +426,7 @@ exit "$missing"
             println!("Native build support is incomplete.\n");
             println!("{}", combined_output(&output));
             println!("Nix owns these native build tools. Review the `native-build` component, then run:");
-            print_command(config, "robo up");
+            print_command(config, "robo build");
             ExitCode::from(1)
         }
         Err(err) => {

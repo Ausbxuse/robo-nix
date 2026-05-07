@@ -38,15 +38,15 @@ Do not mix heading styles such as `Project:`, `ok: Generated:`, and `next steps:
 
 `robo shell` should launch a child runtime shell without requiring shell setup, dotfile edits, or hook installation. The shell prompt should show the `[robo]` marker by default, and plain `exit` should leave the runtime shell.
 
-`robo up --shell` should prepare the project and then enter that same shell path so first-time setup can be one command.
+`robo shell` should prepare the runtime on demand when the shell cache is missing or stale. `robo init --build` may create runtime files and prebuild the runtime in one first-time setup command, but docs should keep `robo shell` as the normal path.
 
 `uv sync` should be explicit:
 
-- `robo up` must not ask to run it
-- `robo up` must not provide an auto-sync flag
+- `robo build` must not ask to run it
+- `robo build` must not provide an auto-sync flag
 - `robo shell` must not install packages
 
-`robo up` may cache realized runtime exports under `.robo-nix/`. The cache is an implementation detail for speed; `robo shell` and `robo run` should reuse it when runtime files still match and rebuild it clearly when the project contract changes.
+`robo build` may cache realized runtime exports under `.robo-nix/` without entering a shell. The cache is an implementation detail for speed; `robo shell` and `robo run` should reuse it when runtime files still match and rebuild it clearly when the project contract changes.
 
 ## Color
 

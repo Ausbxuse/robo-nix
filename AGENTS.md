@@ -156,16 +156,16 @@ When the user corrects an agent:
 The intended beginner experience is:
 
 ```bash
-robo up robot-learning --yes
+robo init robot-learning
 cd robot-learning
-robo up --shell
+robo shell
 uv sync
 ```
 
 The installed workflow should keep Nix in the background:
 
 ```bash
-robo up
+robo init
 robo check
 robo shell
 robo run <command>
@@ -191,7 +191,7 @@ These are not a standing plan. Revisit them as downstream usage proves or dispro
    Current `x11-gl` handling bridges detected host NVIDIA GLVND libraries for desktop OpenGL, but AMD/Intel edge cases, PRIME/offload policy, Wayland-specific failures, headless/remote rendering modes, and a nixGL-style one-command launcher are not solved product surfaces yet. Keep these gaps explicit in docs and diagnostics. When expanding graphics support, prefer learning from nixGL's provider detection and command-wrapper model over mutating the whole development shell.
 
 6. Keep templates non-product until explicit maintainer approval.
-   Use `robo up` / `robo init` as the onboarding path. Placeholder template files may exist to define layout, but do not expose them as a public workflow until real usage proves them.
+   Use `robo init` and `robo shell` as the onboarding path. Keep `robo build` available as an explicit prebuild/cache command, not as a required beginner step. Placeholder template files may exist to define layout, but do not expose them as a public workflow until real usage proves them.
 
 7. Keep docs split by audience.
    User docs live under [docs/users](./docs/users/getting-started.md:1) and should assume zero Nix background. Developer docs live under [docs/developers](./docs/developers/overview.md:1) and can explain flakes, components, metadata, and maintainer workflows.

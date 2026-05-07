@@ -9,7 +9,7 @@ use std::process::ExitCode;
 
 use crate::command::{
     run_internal_exec, run_internal_shell_env, run_project_app, run_project_command,
-    run_project_shell, run_project_up,
+    run_project_build, run_project_shell, run_project_up,
 };
 use crate::shell::{SUPPORTED_INTERACTIVE_SHELLS, requested_shell_name};
 use crate::{Config, LabelKind, check, contract, cuda, diagnose, error, init, label};
@@ -42,7 +42,10 @@ enum CliCommand {
     #[command(about = "Initialize robo-nix runtime files")]
     Init(init::InitArgs),
 
-    #[command(about = "Prepare the project runtime")]
+    #[command(about = "Build the project runtime")]
+    Build(BuildArgs),
+
+    #[command(about = "Prepare the project runtime", hide = true)]
     Up(UpArgs),
 
     #[command(about = "Open the project runtime shell")]
@@ -113,6 +116,12 @@ struct UpArgs {
 }
 
 #[derive(Args)]
+struct BuildArgs {
+    #[arg(default_value = ".", help = "Project directory to build")]
+    target: PathBuf,
+}
+
+#[derive(Args)]
 struct CompletionArgs {
     #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
     args: Vec<OsString>,
@@ -134,6 +143,7 @@ pub(crate) fn run() -> ExitCode {
 
     match cli.command {
         Some(CliCommand::Init(args)) => init::run(args, config),
+        Some(CliCommand::Build(args)) => run_project_build(args.target, config),
         Some(CliCommand::Up(args)) => {
             run_project_up(args.target, args.yes, args.force, args.shell, config)
         }
@@ -175,8 +185,13 @@ fn print_help(config: Config) -> ExitCode {
     help_section(config, "common workflows");
     help_row(
         config,
-        "robo up",
-        "prepare this project's native runtime",
+        "robo init",
+        "create or update runtime files",
+    );
+    help_row(
+        config,
+        "robo build",
+        "prebuild and cache this project's native runtime",
     );
     help_row(
         config,

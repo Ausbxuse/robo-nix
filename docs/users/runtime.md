@@ -42,7 +42,7 @@ The important boundary is simple:
 
 If `robo check cuda` says the host driver is missing or too old, fix the host driver or choose CUDA wheels compatible with that host. If it says the runtime is missing build tools such as `nvcc`, add the `cuda-toolkit` component to the project runtime.
 
-For projects that declare CUDA wheels or Isaac Sim, `robo up` probes the host for `libcuda.so.1`. When it finds a confident provider, `robo run` and `robo shell` add that driver directory to the runtime automatically.
+For projects that declare CUDA wheels or Isaac Sim, `robo build`, `robo run`, and `robo shell` probe the host for `libcuda.so.1`. When they find a confident provider, `robo run` and `robo shell` add that driver directory to the runtime automatically.
 
 Override the detected path with:
 

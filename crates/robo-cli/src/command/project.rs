@@ -31,7 +31,7 @@ use shell_launch::{
 pub(crate) fn ensure_project_runtime(config: Config) -> Result<(), ExitCode> {
     if !Path::new("flake.nix").exists() || !Path::new("robo.nix").exists() {
         error(config, "this directory is not initialized for robo-nix.");
-        hint(config, "run `robo up` from the project checkout first.");
+        hint(config, "run `robo init .` from the project checkout first.");
         return Err(ExitCode::from(1));
     }
     repair_managed_flake_source(config)?;
@@ -42,6 +42,24 @@ pub(crate) fn ensure_project_runtime(config: Config) -> Result<(), ExitCode> {
         return Err(ExitCode::from(1));
     }
     Ok(())
+}
+
+pub(crate) fn run_project_build(target: PathBuf, config: Config) -> ExitCode {
+    if let Err(err) = env::set_current_dir(&target) {
+        error(
+            config,
+            &format!("failed to enter project directory {}: {err}", target.display()),
+        );
+        return ExitCode::from(1);
+    }
+
+    match build_runtime_cache(config, "build") {
+        Ok(()) => {
+            print_build_success(config);
+            ExitCode::SUCCESS
+        }
+        Err(code) => code,
+    }
 }
 
 pub(crate) fn run_project_app(mode: Option<&str>, args: Vec<OsString>, config: Config) -> ExitCode {
@@ -71,7 +89,10 @@ pub(crate) fn run_project_up(
 
     if !target.exists() {
         if !implicit_yes && !confirm_create_dir(config, &target) {
-            hint(config, "rerun with `robo up --yes <dir>` to create it non-interactively.");
+            hint(
+                config,
+                "run `robo init <dir> --build` to create it non-interactively.",
+            );
             return ExitCode::from(1);
         }
         if let Err(err) = fs::create_dir_all(&target) {
@@ -94,9 +115,9 @@ pub(crate) fn run_project_up(
     let initialized = Path::new("flake.nix").exists() && Path::new("robo.nix").exists();
     if !initialized {
         if open_shell {
-            status(config, "up: initializing runtime files");
+            status(config, "init: writing runtime files");
         } else if !implicit_yes && !confirm_up_init(config) {
-            hint(config, "rerun with `robo up --yes` to initialize non-interactively.");
+            hint(config, "run `robo init . --build` to initialize non-interactively.");
             return ExitCode::from(1);
         }
         let code = crate::init::run_quiet(
@@ -108,23 +129,35 @@ pub(crate) fn run_project_up(
         }
     }
 
-    status(config, "up: checking runtime files");
-    if let Err(code) = prepare_uv_runtime(config, "up", false) {
+    if let Err(code) = build_runtime_cache(config, "up") {
         return code;
     }
-    let mut progress = ShellProgress::new(config, "up: caching runtime shell");
+
+    if open_shell {
+        println!("robo runtime is built for this project.");
+        println!("Entering the runtime shell...");
+        return run_project_shell(vec![], config);
+    }
+    print_build_success(config);
+    ExitCode::SUCCESS
+}
+
+fn build_runtime_cache(config: Config, command_name: &str) -> Result<(), ExitCode> {
+    status(config, &format!("{command_name}: checking runtime files"));
+    prepare_uv_runtime(config, command_name, false)?;
+    let mut progress = ShellProgress::new(config, &format!("{command_name}: caching runtime shell"));
     let shell_script = match load_shell_env_script(config, Some(&progress)) {
         Ok(script) => script,
         Err(code) => {
             progress.finish();
-            return code;
+            return Err(code);
         }
     };
     let env = match materialize_shell_env(&shell_script, config, Some(&progress)) {
         Ok(env) => env,
         Err(code) => {
             progress.finish();
-            return code;
+            return Err(code);
         }
     };
     progress.finish();
@@ -133,28 +166,27 @@ pub(crate) fn run_project_up(
     if let Some(path) = host_bridge::auto_host_cuda_driver_path(&env) {
         status(
             config,
-            &format!("up: detected NVIDIA CUDA driver at {path}"),
+            &format!("{command_name}: detected NVIDIA CUDA driver at {path}"),
         );
     }
     if let Some(manifests) = host_bridge::auto_host_graphics_manifests(&env) {
         status(
             config,
-            &format!("up: detected NVIDIA graphics manifests: {manifests}"),
+            &format!("{command_name}: detected NVIDIA graphics manifests: {manifests}"),
         );
     }
     if let Some(dirs) = host_bridge::auto_host_graphics_library_dirs(&env) {
         status(
             config,
-            &format!("up: detected NVIDIA graphics libraries at {dirs}"),
+            &format!("{command_name}: detected NVIDIA graphics libraries at {dirs}"),
         );
     }
 
-    if open_shell {
-        println!("robo is ready for this project.");
-        println!("Entering the runtime shell...");
-        return run_project_shell(vec![], config);
-    }
-    println!("robo is ready for this project.\n");
+    Ok(())
+}
+
+fn print_build_success(config: Config) {
+    println!("robo runtime is built for this project.\n");
     println!("Python packages are not synced yet.");
     println!("Run the uv command documented by this project.");
     println!(
@@ -164,7 +196,6 @@ pub(crate) fn run_project_up(
     println!();
     println!("Enter the runtime shell:");
     action_row(config, "robo shell", "open an interactive runtime shell");
-    ExitCode::SUCCESS
 }
 
 fn confirm_create_dir(config: Config, target: &Path) -> bool {
