@@ -46,9 +46,14 @@ Keep normal Python packaging. Add a reproducible native runtime around it.
 That gives users a small command surface while keeping the underlying environment declarative and reviewable.
 
 ```bash
+# Enter the Nix-managed runtime shell.
 robo shell
+
+# Sync project-owned Python packages into .venv.
 uv sync
-python -m pytest
+
+# Run your project code inside the prepared runtime.
+python train.py
 ```
 
 The goal is not to hide reality. The goal is to make reality easier to see and easier to reproduce.

@@ -304,7 +304,7 @@ pub(crate) fn run_project_shell(args: Vec<OsString>, config: Config) -> ExitCode
         }
     };
     progress.set("shell: launching shell");
-    progress.finish();
+    progress.finish_ready();
     if show_card {
         print_shell_card(config, &launch);
     }
@@ -369,7 +369,7 @@ fn print_exports(env: &[(String, String)]) {
 pub(crate) fn run_project_command(args: Vec<OsString>, config: Config) -> ExitCode {
     if args.is_empty() {
         error(config, "run needs a command.");
-        hint(config, "example: robo run pytest tests");
+        hint(config, "example: robo run python train.py");
         return ExitCode::from(2);
     }
 

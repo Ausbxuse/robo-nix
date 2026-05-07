@@ -147,7 +147,6 @@ pub(crate) struct UiProgress {
 }
 
 pub(crate) struct UiSpinner {
-    config: Config,
     bar: Option<ProgressBar>,
 }
 
@@ -155,11 +154,10 @@ impl UiSpinner {
     pub(crate) fn new(config: Config, message: &str) -> Self {
         if config.debug || !std::io::stderr().is_terminal() {
             status(config, message);
-            return Self { config, bar: None };
+            return Self { bar: None };
         }
 
         Self {
-            config,
             bar: Some(spinner(config, message)),
         }
     }
@@ -170,11 +168,6 @@ impl UiSpinner {
         }
     }
 
-    pub(crate) fn set_message(&self, message: &str) {
-        if let Some(bar) = &self.bar {
-            bar.set_message(status_message(self.config, message));
-        }
-    }
 }
 
 impl Drop for UiSpinner {
@@ -276,7 +269,7 @@ fn spinner(config: Config, message: &str) -> ProgressBar {
     let spinner = ProgressBar::new_spinner();
     spinner.set_draw_target(ProgressDrawTarget::stderr());
     spinner.set_style(
-        ProgressStyle::with_template("{spinner:.cyan} {elapsed_precise:.dim} {msg}")
+        ProgressStyle::with_template("{spinner:.cyan} {msg} {elapsed_precise:.dim}")
             .unwrap_or_else(|_| ProgressStyle::default_spinner())
             .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]),
     );
@@ -302,5 +295,42 @@ fn keep_spinner_visible(started_at: Instant) {
     let elapsed = started_at.elapsed();
     if elapsed < minimum {
         std::thread::sleep(minimum - elapsed);
+    }
+}
+
+pub(crate) fn human_duration(duration: Duration) -> String {
+    let millis = duration.as_millis();
+    if millis < 1000 {
+        return format!("{millis}ms");
+    }
+
+    let seconds = duration.as_secs_f64();
+    if seconds < 60.0 {
+        return format!("{seconds:.1}s");
+    }
+
+    let total_seconds = duration.as_secs();
+    let minutes = total_seconds / 60;
+    let seconds = total_seconds % 60;
+    format!("{minutes}m {seconds}s")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn formats_short_human_durations_as_milliseconds() {
+        assert_eq!(human_duration(Duration::from_millis(42)), "42ms");
+    }
+
+    #[test]
+    fn formats_second_human_durations_with_one_decimal() {
+        assert_eq!(human_duration(Duration::from_millis(1250)), "1.2s");
+    }
+
+    #[test]
+    fn formats_long_human_durations_as_minutes_and_seconds() {
+        assert_eq!(human_duration(Duration::from_secs(125)), "2m 5s");
     }
 }

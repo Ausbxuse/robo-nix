@@ -35,15 +35,20 @@ By default the installer installs from the current `develop` branch commit, not 
 For an initialized project, run commands from the project directory:
 
 ```bash
+# Enter the Nix-managed runtime shell.
 robo shell
+
+# Sync project-owned Python packages into .venv.
 uv sync
-python -m pytest
+
+# Run your project code inside the prepared runtime.
+python train.py
 ```
 
 For a one-off command without opening a shell:
 
 ```bash
-robo run python -m pytest
+robo run python train.py
 ```
 
 `robo-nix` is for robot-learning projects that want reproducible native runtime setup without turning every user into a Nix user. The goal is easier downstream usage: less setup drift, clearer failures, and fewer environment details for each user to rediscover.

@@ -19,6 +19,7 @@
       # robo-nix uses this to select an ABI-aligned CPython executable for uv.
       pythonVersion = envSpec.pythonVersion or "3.11";
       extraPackages = envSpec.extraPackages or [];
+      extraRuntimeLibraries = envSpec.extraRuntimeLibraries or [];
       shellInit = envSpec.shellInit or "";
       bootstrap = envSpec.bootstrap or "";
       diagnostics = envSpec.diagnostics or "";
@@ -271,11 +272,22 @@
           if builtins.isFunction envSpec.extraPackages
           then envSpec.extraPackages pkgs
           else envSpec.extraPackages;
+        projectRuntimeLibraries =
+          if builtins.isFunction envSpec.extraRuntimeLibraries
+          then envSpec.extraRuntimeLibraries pkgs
+          else envSpec.extraRuntimeLibraries;
+        projectRuntimeLibraryPath = lib.makeLibraryPath projectRuntimeLibraries;
+        projectShellInit =
+          lib.optionalString (projectRuntimeLibraries != [])
+          (common.prependPath "LD_LIBRARY_PATH" projectRuntimeLibraryPath)
+          + lib.optionalString (projectRuntimeLibraries != [] && envSpec.shellInit != "") "\n"
+          + envSpec.shellInit;
         projectExtension = {
           check = "";
           gpuRequired = false;
-          packages = projectPackages;
-          inherit (envSpec) bootstrap diagnostics requiredDirectories requiredFiles shellInit;
+          packages = projectPackages ++ projectRuntimeLibraries;
+          inherit (envSpec) bootstrap diagnostics requiredDirectories requiredFiles;
+          shellInit = projectShellInit;
         };
       in
         if !envSupportedOnSystem envSpec resolvedComponents

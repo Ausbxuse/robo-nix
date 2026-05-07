@@ -70,6 +70,16 @@ In non-interactive logs or `--debug` mode, print normal status lines instead of 
 
 Do not leave a spinner active while prompting for input. A hidden prompt looks like a hang.
 
+For interactive shell setup, use a compact live tree with a parent setup line and one active child phase. Leave the completed tree behind:
+
+```text
+✓ robo ready 42ms
+  ├ ✓ shell: loading cached runtime shell 1ms
+  └ ✓ shell: launching shell 0ms
+```
+
+Do not imply background reload, file watching, or hot-swap behavior unless that product surface exists.
+
 ## Inference Severity
 
 Separate confident inference from review-needed evidence:

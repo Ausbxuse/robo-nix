@@ -666,6 +666,9 @@ assert_project_extension_contract() {
       extraPackages = pkgs: [
         pkgs.ffmpeg
       ];
+      extraRuntimeLibraries = pkgs: [
+        pkgs.assimp
+      ];
       shellInit = ''
         export PROJECT_EXTENSION_READY=1
       '';
@@ -674,6 +677,10 @@ assert_project_extension_contract() {
         '';
       diagnostics = ''
         check_ok "project extension check ran"
+        case ":$LD_LIBRARY_PATH:" in
+          *assimp*) check_ok "project runtime library path exported" ;;
+          *) check_error "project runtime library path missing" ;;
+        esac
       '';
       requiredDirectories = [
         "third_party/example"
@@ -697,6 +704,7 @@ EOF
 		nix run .#default -- --dry-run >"$dryrun_file"
 	)
 	grep -F "ok: project extension check ran" "$check_file" >/dev/null
+	grep -F "ok: project runtime library path exported" "$check_file" >/dev/null
 	grep -F "validated extended with Python 3.11" "$dryrun_file" >/dev/null
 
 	trap - RETURN

@@ -5,9 +5,14 @@ Use this section when you want to install `robo`, enter a project runtime, run c
 Most users only need this flow from an initialized project directory:
 
 ```bash
+# Enter the Nix-managed runtime shell.
 robo shell
+
+# Sync project-owned Python packages into .venv.
 uv sync
-python -m pytest
+
+# Run your project code inside the prepared runtime.
+python train.py
 ```
 
 Use `robo run <command>` instead when you only need one command inside the runtime.

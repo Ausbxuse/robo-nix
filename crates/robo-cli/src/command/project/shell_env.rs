@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::collections::{HashMap, hash_map::DefaultHasher};
 use std::env;
 use std::fs;
@@ -5,8 +6,11 @@ use std::hash::{Hash, Hasher};
 use std::io::{IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
+use std::time::{Duration, Instant};
 
-use crate::{Config, UiSpinner, error, hint, status};
+use indicatif::{MultiProgress, ProgressBar, ProgressDrawTarget, ProgressStyle};
+
+use crate::{Config, LabelKind, error, hint, human_duration, inline, label, status};
 
 use super::super::nix::{
     add_runtime_source_override, command_for_runtime, exit_code, hint_native_cuda_link_failure,
@@ -111,38 +115,178 @@ pub(super) fn write_shell_env_cache_if_possible(env: &[(String, String)], config
 
 pub(super) struct ShellProgress {
     config: Config,
-    spinner: Option<UiSpinner>,
+    tree: Option<ShellProgressTree>,
+    started_at: Instant,
+    active_step: RefCell<Option<ActiveStep>>,
+}
+
+struct ActiveStep {
+    message: String,
+    started_at: Instant,
+}
+
+struct ShellProgressTree {
+    multi: MultiProgress,
+    root: ProgressBar,
+    active_child: RefCell<Option<ProgressBar>>,
 }
 
 impl ShellProgress {
     pub(super) fn new(config: Config, message: &str) -> Self {
+        let started_at = Instant::now();
         if config.debug || !std::io::stderr().is_terminal() {
             status(config, message);
             return Self {
                 config,
-                spinner: None,
+                tree: None,
+                started_at,
+                active_step: RefCell::new(None),
             };
         }
 
+        let tree = ShellProgressTree::new(config, message);
         Self {
             config,
-            spinner: Some(UiSpinner::new(config, message)),
+            tree: Some(tree),
+            started_at,
+            active_step: RefCell::new(Some(ActiveStep {
+                message: message.to_string(),
+                started_at,
+            })),
         }
     }
 
     pub(super) fn set(&self, message: &str) {
-        if let Some(spinner) = &self.spinner {
-            spinner.set_message(message);
+        if let Some(tree) = &self.tree {
+            self.finish_active_step("├");
+            *self.active_step.borrow_mut() = Some(ActiveStep {
+                message: message.to_string(),
+                started_at: Instant::now(),
+            });
+            tree.start_child(self.config, message);
         } else {
             status(self.config, message);
         }
     }
 
     pub(super) fn finish(&mut self) {
-        if let Some(spinner) = &mut self.spinner {
-            spinner.finish();
+        if self.tree.is_some() {
+            self.finish_active_step("└");
+        }
+        if let Some(tree) = &self.tree {
+            tree.finish_clear();
         }
     }
+
+    pub(super) fn finish_ready(&mut self) {
+        if self.tree.is_some() {
+            self.finish_active_step("└");
+        }
+        if let Some(tree) = &self.tree {
+            tree.finish_ready(self.config, self.started_at.elapsed());
+        } else {
+            status(self.config, "robo ready");
+        }
+    }
+
+    fn finish_active_step(&self, branch: &str) {
+        let Some(step) = self.active_step.borrow_mut().take() else {
+            return;
+        };
+        if let Some(tree) = &self.tree {
+            tree.finish_child(self.config, branch, &step.message, step.started_at.elapsed());
+        }
+    }
+}
+
+impl ShellProgressTree {
+    fn new(config: Config, message: &str) -> Self {
+        let multi = MultiProgress::with_draw_target(ProgressDrawTarget::stderr());
+        let root = multi.add(tree_root_bar(config, "robo shell"));
+        let child = multi.add(tree_child_bar(config, message));
+        Self {
+            multi,
+            root,
+            active_child: RefCell::new(Some(child)),
+        }
+    }
+
+    fn start_child(&self, config: Config, message: &str) {
+        *self.active_child.borrow_mut() = Some(self.multi.add(tree_child_bar(config, message)));
+    }
+
+    fn finish_child(&self, config: Config, branch: &str, message: &str, duration: Duration) {
+        let line = format!(
+            "  {} {} {} {}",
+            label(config, branch, LabelKind::Hint),
+            label(config, "✓", LabelKind::Ok),
+            tree_message(config, message),
+            label(config, &human_duration(duration), LabelKind::Hint)
+        );
+        if let Some(child) = self.active_child.borrow_mut().take() {
+            child.set_style(tree_finished_style());
+            child.finish_with_message(line);
+        } else {
+            eprintln!("{line}");
+        }
+    }
+
+    fn finish_ready(&self, config: Config, duration: Duration) {
+        self.root.set_style(tree_finished_style());
+        self.root.finish_with_message(format!(
+            "{} {} {}",
+            label(config, "✓", LabelKind::Ok),
+            inline(config, "robo ready"),
+            label(config, &human_duration(duration), LabelKind::Ok)
+        ));
+    }
+
+    fn finish_clear(&self) {
+        if let Some(child) = self.active_child.borrow_mut().take() {
+            child.finish_and_clear();
+        }
+        self.root.finish_and_clear();
+    }
+}
+
+fn tree_root_bar(config: Config, message: &str) -> ProgressBar {
+    let bar = ProgressBar::new_spinner();
+    bar.set_style(
+        ProgressStyle::with_template("{spinner:.cyan} {msg} {elapsed_precise:.dim}")
+            .unwrap_or_else(|_| ProgressStyle::default_spinner())
+            .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]),
+    );
+    bar.set_message(inline(config, message));
+    bar.enable_steady_tick(Duration::from_millis(80));
+    bar
+}
+
+fn tree_child_bar(config: Config, message: &str) -> ProgressBar {
+    let bar = ProgressBar::new_spinner();
+    bar.set_style(
+        ProgressStyle::with_template("  └ {spinner:.cyan} {msg} {elapsed_precise:.dim}")
+            .unwrap_or_else(|_| ProgressStyle::default_spinner())
+            .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]),
+    );
+    bar.set_message(tree_message(config, message));
+    bar.enable_steady_tick(Duration::from_millis(80));
+    bar
+}
+
+fn tree_finished_style() -> ProgressStyle {
+    ProgressStyle::with_template("{msg}").unwrap_or_else(|_| ProgressStyle::default_bar())
+}
+
+fn tree_message(config: Config, message: &str) -> String {
+    let Some((phase, rest)) = message.split_once(": ") else {
+        return inline(config, message);
+    };
+
+    format!(
+        "{} {}",
+        label(config, &format!("{phase}:"), LabelKind::Status),
+        inline(config, rest)
+    )
 }
 
 pub(super) fn shell_env_value<'a>(envs: &'a [(String, String)], name: &str) -> Option<&'a String> {

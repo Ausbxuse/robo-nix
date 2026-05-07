@@ -36,11 +36,14 @@ cd robot-learning
 # Add your Python package metadata and dependencies to pyproject.toml.
 $EDITOR pyproject.toml
 
-# Enter the runtime shell. The native runtime is built on demand.
+# Enter the Nix-managed runtime shell. Native libraries and tools are built on demand.
 robo shell
 
-# Sync project-owned Python dependencies.
+# Sync project-owned Python packages into .venv.
 uv sync
+
+# Run your project code inside the prepared runtime.
+python train.py
 
 # Leave the runtime shell when you are done.
 exit
@@ -53,7 +56,7 @@ After first-time setup, choose one way to run project commands:
 robo shell
 
 # Or, for one-off commands, run through the runtime without opening a shell.
-robo run python your_script.py
+robo run python train.py
 ```
 
 When setup, Python, CUDA, graphics, or native builds fail, run diagnostics from the project directory:
@@ -69,13 +72,14 @@ For a repository that already has `robo.nix` and `flake.nix`, enter the runtime 
 ```bash
 cd existing-project
 
-# Enter the runtime shell. The runtime is built on demand.
+# Enter the Nix-managed runtime shell. Native libraries and tools are built on demand.
 robo shell
 
-# Sync project-owned Python dependencies.
+# Sync project-owned Python packages into .venv.
 uv sync
 
-python -m pytest
+# Run your project code inside the prepared runtime.
+python train.py
 ```
 
 For an existing Python repository without robo runtime files, `robo shell` asks before creating them:
