@@ -282,7 +282,7 @@ fn print_result(config: Config, result: &DiagnosisResult) {
         println!(
             "{} {}",
             label(config, "docs:", LabelKind::Hint),
-            inline(config, "`https://ausbxuse.github.io/robo-nix/users/failure-guide`")
+                inline(config, "`https://ausbxuse.github.io/robo-nix/users/troubleshooting`")
         );
         print_agent_handoff(config);
         return;
@@ -444,8 +444,8 @@ const ENTRIES: &[FailureEntry] = &[
             confidence: Confidence::High,
             owner: "Python environment state plus native runtime ABI alignment",
             summary: "A binary loaded from the Nix store requires a newer glibc symbol than the active host process provides.",
-            next: &["robo shell", "uv venv --clear", "uv sync"],
-            docs: "https://ausbxuse.github.io/robo-nix/users/failure-guide#glibc-version-not-found",
+            next: &["robo shell", "uv venv --python \"$ROBO_NIX_PYTHON\" --clear", "uv sync"],
+            docs: "https://ausbxuse.github.io/robo-nix/users/troubleshooting",
         },
         matcher: Matcher::All(GLIBC_MARKERS),
         search_terms: &["glibc", "version", "found", "nix", "store", "libstdc"],
@@ -458,7 +458,7 @@ const ENTRIES: &[FailureEntry] = &[
             owner: "Project checkout, submodules, vendored sources, or dependency declarations",
             summary: "The Python dependency metadata points at a local file URL that does not exist in this checkout.",
             next: &["git submodule update --init --recursive"],
-            docs: "https://ausbxuse.github.io/robo-nix/users/failure-guide#missing-local-editable-source",
+            docs: "https://ausbxuse.github.io/robo-nix/users/troubleshooting",
         },
         matcher: Matcher::All(LOCAL_SOURCE_MARKERS),
         search_terms: &["distribution", "found", "file", "third", "party", "editable"],
@@ -471,7 +471,7 @@ const ENTRIES: &[FailureEntry] = &[
             owner: "Nix runtime dependencies",
             summary: "CMake looked for Qt6Config.cmake while building native code.",
             next: &["add qt6 to robo.nix components", "robo up"],
-            docs: "https://ausbxuse.github.io/robo-nix/users/failure-guide#qt-cmake-package-missing",
+            docs: "https://ausbxuse.github.io/robo-nix/users/troubleshooting",
         },
         matcher: Matcher::Any(QT_CMAKE_MARKERS),
         search_terms: &["qt6", "cmake", "config", "package", "native"],
@@ -488,7 +488,7 @@ const ENTRIES: &[FailureEntry] = &[
                 "if the failing local package uses setup.py/CMake without build-system requirements, add it to tool.uv.no-build-isolation-package",
                 "rerun the uv sync command documented by the project",
             ],
-            docs: "https://ausbxuse.github.io/robo-nix/users/failure-guide#python-owned-cmake-helper-missing",
+            docs: "https://ausbxuse.github.io/robo-nix/users/troubleshooting",
         },
         matcher: Matcher::Any(PYTHON_CMAKE_MARKERS),
         search_terms: &["pybind11", "nanobind", "cmake", "config", "python"],
@@ -501,7 +501,7 @@ const ENTRIES: &[FailureEntry] = &[
             owner: "Host GPU driver integration",
             summary: "The runtime could not see the host NVIDIA driver library or device.",
             next: &["robo check cuda --verbose"],
-            docs: "https://ausbxuse.github.io/robo-nix/users/failure-guide#cuda-driver-not-visible",
+            docs: "https://ausbxuse.github.io/robo-nix/users/troubleshooting",
         },
         matcher: Matcher::Any(CUDA_DRIVER_MARKERS),
         search_terms: &["cuda", "driver", "libcuda", "device", "visible"],
@@ -514,7 +514,7 @@ const ENTRIES: &[FailureEntry] = &[
             owner: "Host driver version or project Python dependency lock",
             summary: "The selected Python CUDA wheels do not align with the CUDA driver API visible on this host.",
             next: &["robo check cuda --verbose"],
-            docs: "https://ausbxuse.github.io/robo-nix/users/failure-guide#cuda-wheel-and-driver-mismatch",
+            docs: "https://ausbxuse.github.io/robo-nix/users/troubleshooting",
         },
         matcher: Matcher::Any(CUDA_MISMATCH_MARKERS),
         search_terms: &["cuda", "driver", "version", "insufficient", "expects", "mismatch"],
@@ -527,7 +527,7 @@ const ENTRIES: &[FailureEntry] = &[
             owner: "Host graphics/display integration plus selected runtime graphics libraries",
             summary: "The graphics stack could not create an OpenGL context through EGL, GLVND, Wayland, or X11.",
             next: &["robo check graphics --verbose"],
-            docs: "https://ausbxuse.github.io/robo-nix/users/failure-guide#egl-or-opengl-context-failure",
+            docs: "https://ausbxuse.github.io/robo-nix/users/troubleshooting#egl-or-opengl-context-failure",
         },
         matcher: Matcher::Any(EGL_MARKERS),
         search_terms: &[
@@ -549,7 +549,7 @@ const ENTRIES: &[FailureEntry] = &[
             owner: "Nix runtime dependencies",
             summary: "A native extension included Linux kernel userspace headers that are not in the runtime.",
             next: &["add linux-headers to robo.nix components", "robo up"],
-            docs: "https://ausbxuse.github.io/robo-nix/users/failure-guide#missing-linux-headers",
+            docs: "https://ausbxuse.github.io/robo-nix/users/troubleshooting",
         },
         matcher: Matcher::Any(LINUX_HEADERS_MARKERS),
         search_terms: &["linux", "input", "joystick", "headers", "directory"],
@@ -562,7 +562,7 @@ const ENTRIES: &[FailureEntry] = &[
             owner: "Project build invocation plus Python/native boundary",
             summary: "A .venv build-tool executable appears in the failure alongside glibc symbol errors.",
             next: &["robo shell", "which cmake", "which ninja"],
-            docs: "https://ausbxuse.github.io/robo-nix/users/failure-guide#native-build-tool-shim-mixing",
+            docs: "https://ausbxuse.github.io/robo-nix/users/troubleshooting",
         },
         matcher: Matcher::AnyPair {
             required: "GLIBC_",

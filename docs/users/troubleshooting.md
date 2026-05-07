@@ -1,6 +1,6 @@
 # Troubleshooting
 
-Start with `robo check`:
+Start from the project directory with `robo check`:
 
 ```bash
 robo check
@@ -14,7 +14,7 @@ It reports what `robo` observed, which layer likely owns the failure, and what t
 - The failure area is obvious: `robo check cuda`, `robo check graphics`, `robo check native`, or `robo check python`
 - You need slower runtime probes: `robo check --deep`
 - You already have a traceback, compiler log, or loader error: `robo diagnose -`
-- You need component provenance: `robo check --why`
+- You need to know why a runtime piece was selected: `robo check --why`
 
 Examples:
 
@@ -37,11 +37,11 @@ Search for a distinctive phrase from the error log.
 
 Usually means the active Python environment was created outside the `robo` runtime and is mixing host Python/glibc with Nix native libraries.
 
-Try:
+From the project directory, enter the runtime shell and recreate the virtualenv:
 
 ```bash
 robo shell
-uv venv --clear
+uv venv --python "$ROBO_NIX_PYTHON" --clear
 uv sync
 ```
 
@@ -49,7 +49,7 @@ uv sync
 
 Usually means the host NVIDIA driver or `libcuda.so.1` is not visible to the runtime. Nix can provide CUDA build tools, but the proprietary driver comes from the host.
 
-Try:
+From the project directory, ask `robo` what it can see:
 
 ```bash
 robo check cuda --verbose
@@ -78,7 +78,7 @@ Upgrade the NVIDIA driver, or regenerate the project's lockfile with CUDA wheels
 
 Usually means a native CMake build needs Qt development/runtime files that are not in the runtime.
 
-Try:
+From the project directory, add Qt to the runtime and rebuild the shell:
 
 ```bash
 robo add qt6
@@ -104,11 +104,13 @@ Wayland: Failed to load libwayland-client
 
 Usually means the graphics runtime cannot create an OpenGL context. The cause may be display socket visibility, EGL vendor files, GLVND loader state, Wayland/X11 access, or host/container graphics integration.
 
-Try:
+From the project directory, ask `robo` what graphics state it can see:
 
 ```bash
 robo check graphics --verbose
 ```
+
+The verbose graphics check reports display socket visibility, `libEGL`, EGL vendor files, `/dev/dri`, container graphics hints, host graphics bridge state, and OpenGL renderer evidence when a renderer probe is available. If the renderer is `llvmpipe`, `softpipe`, or another software rasterizer, fix host/container GPU visibility before debugging MuJoCo or simulator code.
 
 ### Missing local editable source
 
@@ -121,7 +123,7 @@ No such file or directory
 
 Usually means the project's Python dependency metadata points at a local source checkout that is missing.
 
-Try:
+From the repository root, fetch the source checkout if the project uses Git submodules:
 
 ```bash
 git submodule update --init --recursive
@@ -140,7 +142,7 @@ linux/joystick.h: No such file or directory
 
 Usually means a native extension includes Linux kernel userspace headers.
 
-Try:
+From the project directory, add those headers to the runtime and rebuild the shell:
 
 ```bash
 robo add linux-headers

@@ -1,13 +1,13 @@
 # Runtime Support
 
-`robo` prepares the runtime environment around Python: native libraries, compilers, CUDA and graphics support, ROS tooling, simulator dependencies, FFmpeg, and shell variables.
+`robo` prepares the runtime environment around Python: the CPython interpreter, native libraries, compilers, CUDA and graphics support, ROS tooling, simulator dependencies, FFmpeg, and shell variables.
 
-Python packages stay in `uv.lock`. Runtime pieces come from Nix and host diagnostics.
+The requested Python version and Python packages stay in uv-managed project files. The interpreter and runtime pieces come from Nix and host diagnostics.
 
 ## What Belongs Where
 
-- `uv` owns Python packages, CUDA wheels, virtual environments, dependency groups, package indexes, editable sources, and `uv.lock`.
-- Nix owns native libraries, compilers, build tools, CUDA toolkit pieces when selected, graphics/media libraries, ROS tooling, and simulator support.
+- `uv` owns Python version selection, Python package resolution, CUDA wheels, virtual environment creation/sync, dependency groups, package indexes, editable sources, and `uv.lock`.
+- Nix owns the CPython interpreter, native libraries, compilers, build tools, CUDA toolkit pieces when selected, graphics/media libraries, ROS tooling, and simulator support.
 - The host owns hardware, GPU kernel drivers, display server policy, device access, containers, and vendor SDKs installed outside the project.
 
 Each project gets its own pinned runtime, so native tool versions can differ across repositories without relying on global Ubuntu packages.
@@ -26,13 +26,21 @@ Native CUDA extension builds need the toolkit component:
 CUDAExtension, .cu files, custom kernels -> cuda-toolkit
 ```
 
-Run:
+If a CUDA project fails, run the CUDA check from the project directory:
 
 ```bash
 robo check cuda
 ```
 
-Nix does not vendor the proprietary NVIDIA kernel driver. uv wheels do not install it. `robo` reports that boundary clearly.
+Use this when a Python package says it cannot find CUDA, reports a driver mismatch, or fails to load `libcuda.so.1`. The check looks at the current project runtime and the host driver visibility, then reports which side owns the next fix.
+
+The important boundary is simple:
+
+- Nix can provide CUDA build tools and runtime libraries selected by the project.
+- uv can install CUDA-enabled Python wheels selected by the project.
+- The NVIDIA kernel driver and `libcuda.so.1` still come from the host machine.
+
+If `robo check cuda` says the host driver is missing or too old, fix the host driver or choose CUDA wheels compatible with that host. If it says the runtime is missing build tools such as `nvcc`, add the `cuda-toolkit` component to the project runtime.
 
 For projects that declare CUDA wheels or Isaac Sim, `robo up` probes the host for `libcuda.so.1`. When it finds a confident provider, `robo run` and `robo shell` add that driver directory to the runtime automatically.
 
@@ -50,9 +58,9 @@ export ROBO_NIX_DISABLE_HOST_CUDA_AUTO=1
 
 ## Graphics
 
-Graphics support is selected through runtime components such as `x11-gl` and `qt6`.
+Graphics support is selected through named runtime pieces such as `x11-gl` and `qt6`. You may see these names in `robo.nix`, `robo check`, or `robo add` commands.
 
-Use it for:
+Select graphics support when the project uses:
 
 - MuJoCo and simulator viewers
 - desktop OpenGL
@@ -73,7 +81,7 @@ Disable host graphics auto-bridging with:
 export ROBO_NIX_DISABLE_HOST_GRAPHICS_AUTO=1
 ```
 
-Debug with:
+If a viewer or graphics import fails, run the graphics check from the project directory:
 
 ```bash
 robo check graphics --verbose
@@ -88,11 +96,11 @@ Known limits:
 
 ## ROS
 
-Current ROS support is intentionally narrow:
+Current ROS support is intentionally narrow. These names may appear in generated runtime files or `robo check` output:
 
 - `ros2-jazzy` provides a ROS 2 Jazzy underlay, colcon tooling, `vcs`, CycloneDDS defaults, and the ROS setup environment.
 - `ros-workspace` expects a workspace at `ros_ws/src` and exposes `ROBO_NIX_ROS_WS`.
-- The `ros2-workspace` profile combines the base runtime, uv-managed Python, native build tools, `ros2-jazzy`, and `ros-workspace`.
+- The `ros2-workspace` profile combines the base runtime, uv-managed Python workflow, native build tools, `ros2-jazzy`, and `ros-workspace`.
 - Supported systems for ROS 2 Jazzy are Linux only: `x86_64-linux` and `aarch64-linux`.
 
 This is runtime infrastructure. It is not a ROS launcher, rosdep replacement, package registry, networking policy layer, or robot-specific bringup system.
