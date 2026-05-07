@@ -15,8 +15,8 @@
     // {
       components = envSpec.components or [];
       description = envSpec.description or "${envName} robo-nix environment";
-      # NOTE: uv owns the virtualenv, packages, and lockfile. robo-nix uses
-      # this to select an ABI-aligned CPython executable for uv.
+      # NOTE: uv owns version selection, the virtualenv, packages, and lockfile.
+      # robo-nix uses this to select an ABI-aligned CPython executable for uv.
       pythonVersion = envSpec.pythonVersion or "3.11";
       extraPackages = envSpec.extraPackages or [];
       shellInit = envSpec.shellInit or "";

@@ -6,12 +6,12 @@ The goal is a clear, reusable native runtime standard for uv-managed robot-learn
 
 Keep the boundary strict:
 
-- uv owns Python versions, virtual environments, Python packages, dependency groups, optional extras, editable sources, indexes, and `uv.lock`.
-- Nix owns native runtime dependencies, native libraries, CUDA/graphics/ROS/simulator tooling, compilers, and shell environment.
+- uv owns Python version selection, virtual environment creation/sync, Python packages, dependency groups, optional extras, editable sources, indexes, and `uv.lock`.
+- Nix owns the CPython interpreter, native runtime dependencies, native libraries, CUDA/graphics/ROS/simulator tooling, compilers, and shell environment.
 - The Rust `robo` CLI owns user-facing workflow, diagnostics, command wrapping, and generated runtime files.
 - Runtime inference coverage should live in metadata, not compiled Rust logic.
 
-Do not make Nix-managed Python a first-class mode unless real users prove that need.
+Do not make Nix-managed Python packaging a first-class mode unless real users prove that need.
 
 ## Repository Shape
 

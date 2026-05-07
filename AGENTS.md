@@ -10,12 +10,12 @@ The product should optimize for people who want to work on robot learning, not l
 
 The hard boundary is:
 
-- `uv` owns Python versions, virtual environments, Python packages, and `uv.lock`.
-- Nix owns runtime dependencies, native libraries, CUDA/graphics/ROS/simulator tooling, compilers, and shell environment.
+- `uv` owns Python version selection, virtual environment creation/sync, Python packages, and `uv.lock`.
+- Nix owns the CPython interpreter, runtime dependencies, native libraries, CUDA/graphics/ROS/simulator tooling, compilers, and shell environment.
 - The Rust `robo` CLI should own user-facing workflow, diagnostics, and command wrapping.
 - Runtime inference coverage should live in data/Nix metadata, not compiled Rust logic.
 
-Do not make Nix-managed Python a first-class product mode unless real users prove that need. Do not build a central Python package registry or preset matrix.
+Do not make Nix-managed Python packaging a first-class product mode unless real users prove that need. Do not build a central Python package registry or preset matrix.
 
 Do not make `robo` run `uv sync` implicitly or offer an interactive "run uv sync now?" prompt. `robo` exists to make the uv environment work by providing the native/runtime layer and diagnostics; uv syncing remains an explicit user or project command because dependency groups, extras, package indexes, editable sources, and install policy are project-owned.
 
@@ -182,7 +182,7 @@ These are not a standing plan. Revisit them as downstream usage proves or dispro
    It should validate host prerequisites, Nix/flakes availability, workspace layout, supported platform, uv state, native runtime libraries, GPU/CUDA expectations, and likely missing runtime dependencies. Keep `diagnose` focused on classifying existing error logs.
 
 3. Keep Python ownership in uv.
-   Generated projects should use `.python-version`, `pyproject.toml`, and `uv.lock`. Nix should provide `uv` and the native/runtime layer that uv-installed packages need.
+   Generated projects should use `.python-version`, `pyproject.toml`, and `uv.lock`. Nix should provide `uv`, the CPython interpreter, and the native/runtime layer that uv-installed packages need.
 
 4. Improve native/runtime diagnostics.
    Catch and explain common robotics failures such as missing `libstdc++.so.6`, `libGL.so.1`, FFmpeg libraries, CUDA driver/runtime mismatch, and native extension build failures.

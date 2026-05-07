@@ -31,8 +31,8 @@ robo diagnose [FILE|-]
 
 Keep ownership explicit:
 
-- uv owns Python packages, virtual environments, project sync, dependency groups, optional extras, package indexes, editable sources, and `uv.lock`.
-- Nix owns native runtime dependencies, compilers, CUDA, graphics, ROS, simulators, and shell environment.
+- uv owns Python version selection, Python packages, virtual environment sync, project sync, dependency groups, optional extras, package indexes, editable sources, and `uv.lock`.
+- Nix owns the CPython interpreter, native runtime dependencies, compilers, CUDA, graphics, ROS, simulators, and shell environment.
 - `robo` owns workflow, command wrapping, generated runtime files, diagnostics, and plain-language explanations.
 
 Practical consequences:

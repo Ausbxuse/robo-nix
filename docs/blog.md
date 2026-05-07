@@ -39,8 +39,8 @@ Keep normal Python packaging. Add a reproducible native runtime around it.
 
 `robo-nix` uses a simple boundary:
 
-- `uv` owns Python packages, `.venv`, `.python-version`, `pyproject.toml`, and `uv.lock`.
-- Nix owns native libraries, compilers, simulator tooling, CUDA/graphics/ROS runtime pieces, and shell environment.
+- `uv` owns Python version selection, Python packages, `.venv` sync, `pyproject.toml`, and `uv.lock`.
+- Nix owns the CPython interpreter, native libraries, compilers, simulator tooling, CUDA/graphics/ROS runtime pieces, and shell environment.
 - `robo` owns the user workflow and diagnostics.
 
 That gives users a small command surface while keeping the underlying environment declarative and reviewable.

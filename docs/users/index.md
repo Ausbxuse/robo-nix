@@ -2,7 +2,7 @@
 
 Use this section when you want to install `robo`, enter a project runtime, run commands, or debug environment failures.
 
-Most users only need this flow:
+Most users only need this flow from a project directory:
 
 ```bash
 robo up --shell
@@ -10,7 +10,7 @@ uv sync
 robo run python -m pytest
 ```
 
-`robo` prepares the runtime around Python. `uv` still owns Python packages, dependency groups, indexes, editable sources, and `uv.lock`.
+`robo` prepares the Nix-managed Python interpreter and runtime. `uv` still selects the Python version and owns Python packages, dependency groups, indexes, editable sources, and `uv.lock`.
 
 ## Pages
 
