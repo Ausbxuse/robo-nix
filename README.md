@@ -14,7 +14,7 @@ Native runtime environments for uv-based robot-learning projects.
 
 Use `uv` for the Python dependency workflow. Use `robo` for the Nix-managed interpreter and native runtime.
 
-Example: instead of asking every Ubuntu user to install the right CUDA, OpenGL, FFmpeg, compiler, and simulator dependencies by hand, a repo can keep PyTorch, MuJoCo, and project code in `uv.lock` while `robo` prepares the native runtime on demand. New contributors enter it with `robo shell`, then run the project's normal `uv sync`.
+Example: instead of asking every Ubuntu user to install the right CUDA, OpenGL, FFmpeg, compiler, and simulator dependencies by hand, a repo can keep PyTorch, MuJoCo, and project code in `uv.lock` while `robo` prepares the native runtime on demand. Once a repo has robo runtime files, users enter it with `robo shell`, then run the project's normal `uv sync`.
 
 ## Quick Start
 
@@ -33,6 +33,9 @@ Create a project, enter its runtime shell, and sync Python packages:
 robo init robot-learning
 cd robot-learning
 
+# Add your Python package metadata and dependencies to pyproject.toml.
+$EDITOR pyproject.toml
+
 # Enter the runtime shell. The native runtime is built on demand.
 robo shell
 
@@ -43,22 +46,25 @@ uv sync
 exit
 ```
 
-After first-time setup, use these from the project directory:
+After first-time setup, choose one way to run project commands:
 
 ```bash
-# Run one command inside the prepared runtime.
-robo run python your_script.py
-
-# Re-enter the runtime for interactive work.
+# For normal interactive work, enter the runtime shell.
 robo shell
 
-# Diagnose setup, Python, CUDA, graphics, and native build issues.
+# Or, for one-off commands, run through the runtime without opening a shell.
+robo run python your_script.py
+```
+
+When setup, Python, CUDA, graphics, or native builds fail, run diagnostics from the project directory:
+
+```bash
 robo check
 ```
 
 ## Existing Projects
 
-For a repository that already has Python project files, run:
+For a repository that already has `robo.nix` and `flake.nix`, enter the runtime directly:
 
 ```bash
 cd existing-project
@@ -72,7 +78,22 @@ uv sync
 python -m pytest
 ```
 
+For an existing Python repository without robo runtime files, initialize it first:
+
+```bash
+cd existing-python-project
+robo init .
+robo shell
+uv sync
+```
+
 `uv sync` is separate on purpose: each project controls its own dependency groups, extras, private indexes, and editable sources.
+
+Use `robo build` only when you want to prebuild the runtime without entering a shell, such as in CI or before working offline:
+
+```bash
+robo build
+```
 
 ## How It Works
 

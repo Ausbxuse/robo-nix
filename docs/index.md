@@ -13,7 +13,7 @@ hero:
       link: /blog
 features:
   - title: Enter the runtime
-    details: From a project directory, run robo shell, then use the project's normal uv sync and Python commands.
+    details: From an initialized project directory, run robo shell, then use the project's normal uv sync and Python commands.
   - title: Keep Python workflow in uv
     details: uv selects the Python version and owns packages, virtualenv sync, dependency groups, indexes, editable sources, and uv.lock.
   - title: Put native pieces in Nix
@@ -32,7 +32,7 @@ curl -fsSL https://raw.githubusercontent.com/ausbxuse/robo-nix/develop/scripts/i
 
 By default the installer installs from the current `develop` branch commit, not from the latest release tag.
 
-Then run project commands from the project directory:
+For an initialized project, run commands from the project directory:
 
 ```bash
 robo shell
@@ -40,7 +40,7 @@ uv sync
 robo run python -m pytest
 ```
 
-`robo-nix` is for robot-learning projects that want reproducible native runtime setup without turning every contributor into a Nix user. The goal is easier downstream usage: less setup drift, clearer failures, and fewer environment details for each user to rediscover.
+`robo-nix` is for robot-learning projects that want reproducible native runtime setup without turning every user into a Nix user. The goal is easier downstream usage: less setup drift, clearer failures, and fewer environment details for each user to rediscover.
 
 ::: warning Early beta
 `robo-nix` is still being validated against real robot-learning projects. CLI wording, generated files, diagnostics, runtime coverage, and installer behavior may change. Review generated `robo.nix` and `flake.nix` before committing them, and pin versions for shared team workflows.

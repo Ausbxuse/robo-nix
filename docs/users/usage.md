@@ -10,14 +10,17 @@ The installer uses an existing `nix` when it can. If Nix is missing, it installs
 
 ## New Project
 
-Create a project and enter its runtime shell:
+Create a project, add Python metadata, and enter its runtime shell:
 
 ```bash
 # Create a project with generated runtime files.
 robo init robot-learning
 cd robot-learning
 
-# Enter the runtime shell. The runtime is built on demand.
+# Add your Python package metadata and dependencies.
+$EDITOR pyproject.toml
+
+# Enter the runtime shell. The native runtime is built on demand.
 robo shell
 
 # Sync project-owned Python dependencies.
@@ -26,7 +29,7 @@ uv sync
 
 ## Existing Project
 
-For a repository that already has Python project files, enter its shell from the repository root:
+For a repository that already has `robo.nix` and `flake.nix`, enter its runtime shell from the repository root:
 
 ```bash
 cd existing-project
@@ -38,6 +41,15 @@ robo shell
 uv sync
 
 python -m pytest
+```
+
+For an existing Python repository without robo runtime files, initialize it first:
+
+```bash
+cd existing-python-project
+robo init .
+robo shell
+uv sync
 ```
 
 `uv sync` is separate on purpose. Each project controls its own dependency groups, optional extras, private indexes, editable sources, and install policy.

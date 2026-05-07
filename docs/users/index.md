@@ -2,7 +2,7 @@
 
 Use this section when you want to install `robo`, enter a project runtime, run commands, or debug environment failures.
 
-Most users only need this flow from a project directory:
+Most users only need this flow from an initialized project directory:
 
 ```bash
 robo shell

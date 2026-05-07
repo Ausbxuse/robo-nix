@@ -55,7 +55,7 @@ The goal is not to hide reality. The goal is to make reality easier to see and e
 
 ## Where It Fits
 
-`robo-nix` is not trying to win every environment category. It is for uv-managed robot-learning projects that need host-integrated native runtime support without asking every contributor to become a Nix user.
+`robo-nix` is not trying to win every environment category. It is for uv-managed robot-learning projects that need host-integrated native runtime support without asking every user to become a Nix user.
 
 <div class="fit-matrix">
 
