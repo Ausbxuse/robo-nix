@@ -128,9 +128,9 @@ Proposed handling:
   and make Rust responsible only for loading rules, applying them, and explaining
   what matched.
 - Keep inference advisory and auditable. It can select minimal generated
-  components during `robo init`, and `robo check` can report the observed match,
-  but it must not run `uv sync`, choose uv dependency groups, or infer optional
-  extras.
+  components during `robo init` by modifying generated `robo.nix`, but it must
+  report what matched and must not run `uv sync`, choose uv dependency groups, or
+  infer optional extras.
 - Add a root `flake.nix` for the rebuild branch itself. Assumption: "flake-based
   toolchains" means the repository should pin and expose the tools needed to
   build, test, format, and parse-check generated files, not only generate
@@ -138,25 +138,79 @@ Proposed handling:
 - Keep the root flake small: one dev shell, one formatter/check path, and any
   narrow checks needed for the iteration. Avoid reintroducing the old repository
   support framework.
-- Add diagnostics inside existing commands instead of reintroducing
-  `robo diagnose`: missing Nix, missing generated files, invalid template data,
-  unsupported host system, and generated Nix parse failures.
+- Center diagnostics in `robo shell` for now instead of adding `robo check` or
+  reintroducing `robo diagnose`: missing Nix, missing generated files, invalid
+  template data, unsupported host system, and generated Nix parse failures.
 - Keep diagnostics bounded: say the owning layer, expected file/tool, observed
-  failure, and next command. Do not add package-specific debugging trees.
+  failure, and next command. When `robo shell` fails, write enough debug context
+  for a GitHub issue or agent handoff without trying to debug downstream project
+  policy.
 - Add minimum docs by audience: a user getting-started page for the four-command
   workflow, a developer overview explaining the iteration process and code
   boundaries, and a short root `AGENTS.md`.
+- Remove the iteration-001 `robo check` surface for now. Reintroduce it only if
+  `robo shell` grows enough that a separate preflight command has a clear
+  boundary.
+- Remove the hardcoded Python default. `robo shell` should read the uv-style
+  `.python-version` file and report a clear error when it is missing. Generated
+  projects should make the Python version explicit in `.python-version` instead
+  of baking a default into Rust.
+- Add useful comments with markers such as `TODO`, `NOTE`, `DEBUG`, `FIXME`,
+  `WARN`, and `BUG` where they clarify project boundaries, incomplete behavior,
+  or future work. Keep comments trustworthy and specific, not decorative.
 
 Open design questions before implementation:
 
 - Should runtime inference rules live as Nix data, TOML/JSON data consumed by
   Rust, or both rendered into generated Nix?
-- Should the first runtime inference affect generated `robo.nix`, or should it
-  only report advisory notes until the rule contract is reviewed?
+- What is the cleanest rule data format for iteration 002 while keeping future
+  migration to Nix-owned metadata easy?
 - Should the root flake provide `cargo fmt` through `rustfmt`, even though this
   host currently lacks `rustfmt` outside Nix?
 - Should generated Markdown docs be templates, or should docs stay handwritten
   and only generated project files move to templates?
+- `include_str!` clarification: this means checked-in template files are compiled
+  into the `robo` binary at build time. The alternative is installing template
+  files beside the binary and reading them at runtime. The compiled-in approach
+  keeps installation simple; runtime files are easier to patch locally but add
+  packaging surface. Recommendation: use checked-in templates plus `include_str!`
+  for now.
+- Confirm spelling: uv uses `.python-version` with a hyphen. Treat
+  `.python_version` as a typo unless explicitly corrected.
+
+Alignment updates from review:
+
+- `robo-nix` is not beginner-only, but it should be the most beginner-friendly
+  robot-learning runtime environment tool. Its narrow focus is robot learning,
+  not general development environments like `devenv`.
+- Highest priorities are robustness and ease of use.
+- `robo diagnose` is out of scope and should be removed. Diagnostics belong
+  inside scoped commands, especially `robo shell`, and should help developers or
+  agents fix issues from pasted debug logs.
+- Runtime inference should be data-driven and separate from Rust command logic.
+- Generated `robo.nix` can be modified by inference, following the clean shape
+  of the original repo's generated `robo.nix`.
+- Generated downstream `flake.nix` should stay small and delegate editable policy
+  to `robo.nix`.
+- The repo should get a minimal root `flake.nix` for toolchains.
+- User docs and developer docs should be separate from the beginning.
+- Nix owns interpreter/native/runtime/toolchain layers. uv owns Python package
+  resolution, virtualenvs, dependency groups/extras, and lockfiles.
+- Iterations should ship fast, break fast, and iterate fast while preserving
+  minimal completeness.
+
+Consistency checks before implementation:
+
+- Iteration 001 currently includes `robo check`; review says no `robo check` yet.
+  Iteration 002 should remove it from the public surface.
+- Iteration 001 currently hardcodes Python `3.11`; review says there should be
+  no Rust default. Iteration 002 should read `.python-version` and fail clearly
+  if absent.
+- Earlier candidate wording mentioned `robo check` diagnostics. That is now
+  superseded by the `robo shell`-centered diagnostic direction.
+- `robo shell` may grow quickly if it owns all early diagnostics. The explicit
+  review direction is to accept that for now and refactor only when it becomes
+  unmanageable.
 
 ## Supervisor Check
 
@@ -173,3 +227,4 @@ Before iteration 002, confirm whether this is the right minimal product core:
 - Are the candidate iteration-002 boundaries above correct, especially keeping
   inference advisory and keeping diagnostics inside `check`/`init` instead of
   bringing back `diagnose`?
+- Confirm the consistency checks above before implementation begins.
