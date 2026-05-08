@@ -24,3 +24,11 @@ uv sync
 Runtime inference is first-bootstrap only. If `pyproject.toml` exists when
 `robo.nix` is missing, `robo shell` uses the small data file in
 `metadata/runtime-inference.tsv` to choose initial runtime components.
+
+CUDA and desktop graphics are component-based:
+
+- `desktop-gl` provides Nix-managed desktop graphics libraries.
+- `cuda-toolkit` provides the Nix-managed CUDA build toolkit.
+- Host `libcuda.so.1` still comes from the NVIDIA driver. Set
+  `ROBO_NIX_LIBCUDA_PATH` explicitly when a CUDA workload needs that driver
+  library inside the runtime.

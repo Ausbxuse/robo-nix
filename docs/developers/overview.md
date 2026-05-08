@@ -19,6 +19,11 @@ reviewable.
 After `robo.nix` exists, it is user-managed and canonical. Shell must not rewrite
 it.
 
+`desktop-gl` is Nix-managed desktop graphics support. `cuda-toolkit` is the
+Nix-owned CUDA build toolkit. Host CUDA drivers remain host-owned; this branch
+only honors an explicit `ROBO_NIX_LIBCUDA_PATH` and does not scan host driver
+directories.
+
 Generated text should live in `templates/` or `metadata/` and be embedded with
 `include_str!`.
 

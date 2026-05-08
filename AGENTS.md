@@ -49,6 +49,11 @@ environment manager.
   `WARN`, `BUG`, and `DEBUG`.
 - Do not overwrite a non-robo `flake.nix`.
 - Do not rewrite an existing `robo.nix` from `robo shell`.
+- Keep Nix-managed desktop graphics separate from host NVIDIA driver policy.
+- Do not add generated-shell scans over host CUDA, NVIDIA, EGL, Vulkan, WSL, or
+  distro driver directories. If host CUDA is needed in this branch, honor an
+  explicit `ROBO_NIX_LIBCUDA_PATH` and leave broader detection to a reviewed
+  future iteration.
 
 ## Verification
 

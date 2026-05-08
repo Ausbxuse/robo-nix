@@ -26,7 +26,10 @@
     forAllSystems = nixpkgs.lib.genAttrs systems;
   in {
     devShells = forAllSystems (system: let
-      pkgs = import nixpkgs {inherit system;};
+      pkgs = import nixpkgs {
+        inherit system;
+        config.allowUnfree = true;
+      };
       lib = pkgs.lib;
 
       rawPythonVersion = lib.strings.removeSuffix "\n" (builtins.readFile ./.python-version);
@@ -44,18 +47,49 @@
       selectedComponents = spec.components or [];
       extraPackages = spec.extraPackages or (_: []);
       extraRuntimeLibraries = spec.extraRuntimeLibraries or (_: []);
+      cudaPackages = pkgs.cudaPackages;
+      cudaToolkit = pkgs.symlinkJoin {
+        name = "robo-cuda-toolkit-${cudaPackages.cudaMajorMinorVersion}";
+        paths = [
+          cudaPackages.cuda_cccl
+          cudaPackages.cuda_cudart
+          cudaPackages.cuda_nvcc
+          cudaPackages.cuda_nvrtc
+          cudaPackages.cuda_profiler_api
+          cudaPackages.libnpp.lib
+        ];
+      };
 
       componentPackages = {
         python-uv = [python pkgs.uv];
         native-build = [pkgs.cmake pkgs.pkg-config pkgs.stdenv.cc];
         desktop-gl = [
+          pkgs.dbus
+          pkgs.fontconfig
           pkgs.glib
           pkgs.libGL
-          pkgs.xorg.libICE
-          pkgs.xorg.libSM
-          pkgs.xorg.libX11
-          pkgs.xorg.libXext
-          pkgs.xorg.libXrender
+          pkgs.libglvnd
+          pkgs.mesa
+          pkgs.vulkan-loader
+          pkgs.wayland
+          pkgs.libice
+          pkgs.libsm
+          pkgs.libx11
+          pkgs.libxau
+          pkgs.libxcomposite
+          pkgs.libxcursor
+          pkgs.libxdamage
+          pkgs.libxdmcp
+          pkgs.libxext
+          pkgs.libxfixes
+          pkgs.libxi
+          pkgs.libxrandr
+          pkgs.libxrender
+          pkgs.libxtst
+        ];
+        cuda-toolkit = [
+          cudaPackages.backendStdenv.cc
+          cudaToolkit
         ];
       };
 
@@ -63,9 +97,17 @@
         python-uv = [];
         native-build = [];
         desktop-gl = componentPackages.desktop-gl;
+        cuda-toolkit = let
+          cudaPackages = pkgs.cudaPackages;
+        in [
+          cudaPackages.cuda_cudart
+          cudaPackages.cuda_nvrtc
+          cudaPackages.libnpp.lib
+        ];
       };
 
       unknownComponents = lib.filter (component: !(builtins.hasAttr component componentPackages)) selectedComponents;
+      hasComponent = component: builtins.elem component selectedComponents;
       componentPackageLists = map (component: builtins.getAttr component componentPackages) selectedComponents;
       componentRuntimeLibraryLists = map (component: builtins.getAttr component componentRuntimeLibraries) selectedComponents;
       runtimeLibraries = (builtins.concatLists componentRuntimeLibraryLists) ++ extraRuntimeLibraries pkgs;
@@ -102,6 +144,59 @@
                   *":${runtimeLibraryPath}:"*) ;;
                   *) export LD_LIBRARY_PATH="${runtimeLibraryPath}''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" ;;
                 esac
+              ''
+              + lib.optionalString (hasComponent "desktop-gl") ''
+
+                export __EGL_VENDOR_LIBRARY_FILENAMES="''${__EGL_VENDOR_LIBRARY_FILENAMES:-${pkgs.mesa}/share/glvnd/egl_vendor.d/50_mesa.json}"
+              ''
+              + lib.optionalString (hasComponent "cuda-toolkit") ''
+
+                export CUDA_PATH="''${ROBO_NIX_CUDA_ROOT:-${cudaToolkit}}"
+                export CUDA_HOME="$CUDA_PATH"
+                export CUDA_TOOLKIT_ROOT_DIR="$CUDA_PATH"
+                export CUDAToolkit_ROOT="$CUDA_PATH"
+                export CUDAHOSTCXX="${cudaPackages.backendStdenv.cc}/bin/c++"
+                export CC="${cudaPackages.backendStdenv.cc}/bin/cc"
+                export CXX="${cudaPackages.backendStdenv.cc}/bin/c++"
+                export NVIDIA_VISIBLE_DEVICES="''${NVIDIA_VISIBLE_DEVICES:-all}"
+
+                case ":$PATH:" in
+                  *":$CUDA_PATH/bin:"*) ;;
+                  *) export PATH="$CUDA_PATH/bin:$PATH" ;;
+                esac
+                case ":''${CPATH:-}:" in
+                  *":$CUDA_PATH/include:"*) ;;
+                  *) export CPATH="$CUDA_PATH/include''${CPATH:+:$CPATH}" ;;
+                esac
+                case ":''${LIBRARY_PATH:-}:" in
+                  *":$CUDA_PATH/lib:"*) ;;
+                  *) export LIBRARY_PATH="$CUDA_PATH/lib''${LIBRARY_PATH:+:$LIBRARY_PATH}" ;;
+                esac
+                case ":''${LD_LIBRARY_PATH:-}:" in
+                  *":$CUDA_PATH/lib:"*) ;;
+                  *) export LD_LIBRARY_PATH="$CUDA_PATH/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" ;;
+                esac
+              ''
+              + ''
+
+                if [ -n "''${ROBO_NIX_LIBCUDA_PATH:-}" ]; then
+                  robo_nix_cuda_driver_dir=""
+                  if [ -f "$ROBO_NIX_LIBCUDA_PATH" ]; then
+                    robo_nix_cuda_driver_dir="$(dirname "$ROBO_NIX_LIBCUDA_PATH")"
+                  elif [ -d "$ROBO_NIX_LIBCUDA_PATH" ] && [ -e "$ROBO_NIX_LIBCUDA_PATH/libcuda.so.1" ]; then
+                    robo_nix_cuda_driver_dir="$ROBO_NIX_LIBCUDA_PATH"
+                    export ROBO_NIX_LIBCUDA_PATH="$ROBO_NIX_LIBCUDA_PATH/libcuda.so.1"
+                  fi
+
+                  if [ -n "$robo_nix_cuda_driver_dir" ]; then
+                    export TRITON_LIBCUDA_PATH="''${TRITON_LIBCUDA_PATH:-$robo_nix_cuda_driver_dir}"
+                    case ":''${LD_LIBRARY_PATH:-}:" in
+                      *":$robo_nix_cuda_driver_dir:"*) ;;
+                      *) export LD_LIBRARY_PATH="$robo_nix_cuda_driver_dir''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" ;;
+                    esac
+                  fi
+                  unset robo_nix_cuda_driver_dir
+                fi
               ''
               + (spec.shellHook or "");
           };
