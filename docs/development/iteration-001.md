@@ -219,6 +219,23 @@ Confirmed consistency decisions:
 - Treat `robo shell` as the canonical command users primarily use.
 - Use `.python-version`, not `.python_version`.
 - Use checked-in template files compiled into the binary with `include_str!`.
+- Keep `robo run`.
+- If a command needs `.python-version` and it is missing, fail clearly instead of
+  choosing a default Python version.
+- `robo shell` should re-read project files and warn when generated runtime
+  config looks stale relative to current project metadata.
+- Start runtime inference with a tiny rule set: `torch`/`pytorch`,
+  `opencv-python`, and `mujoco`.
+- A small tab-separated rule file is acceptable in principle if it keeps the
+  implementation dependency-free and easy to audit.
+
+Blocking clarification before implementation:
+
+- Review said "we should not need `robo init`". This conflicts with earlier
+  iteration-002 scope, which still included `robo init` as the command that
+  writes generated project files. Clarify whether `robo init` should be removed
+  entirely, kept only as an optional bootstrap helper, or replaced by
+  `robo shell` creating/repairing generated files.
 
 ## Supervisor Check
 
