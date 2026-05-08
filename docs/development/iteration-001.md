@@ -103,6 +103,61 @@ Proposed handling:
 - Avoid building a Rust-side Nix AST or formatter unless `robo` becomes a
   general Nix expression generator, which is not the current product goal.
 
+## Candidate Scope For Iteration 002
+
+Requested by review:
+
+- Separate heavy raw strings in general, not only generated `.nix` files.
+- Add minimal runtime inference.
+- Add flake-based toolchains.
+- Add minimal error handling and diagnostics.
+- Add minimum user and developer docs.
+
+Proposed handling:
+
+- Move substantial generated text into template/resource files before adding new
+  behavior. This should cover Nix, Markdown/help text, generated TOML, and any
+  future shell snippets. Rust should keep small inline strings only when they are
+  ordinary messages or one-line generated values.
+- Add a tiny template renderer with explicit placeholders, such as
+  `{{project_name}}` and `{{python_version}}`. Do not add a general template
+  engine until the project has enough variation to justify one.
+- Keep runtime inference data-driven. For the first version, scan only
+  `pyproject.toml` dependency names and map a small set of package markers to
+  runtime components or notes. Put the rules in data owned by the runtime layer,
+  and make Rust responsible only for loading rules, applying them, and explaining
+  what matched.
+- Keep inference advisory and auditable. It can select minimal generated
+  components during `robo init`, and `robo check` can report the observed match,
+  but it must not run `uv sync`, choose uv dependency groups, or infer optional
+  extras.
+- Add a root `flake.nix` for the rebuild branch itself. Assumption: "flake-based
+  toolchains" means the repository should pin and expose the tools needed to
+  build, test, format, and parse-check generated files, not only generate
+  downstream project flakes.
+- Keep the root flake small: one dev shell, one formatter/check path, and any
+  narrow checks needed for the iteration. Avoid reintroducing the old repository
+  support framework.
+- Add diagnostics inside existing commands instead of reintroducing
+  `robo diagnose`: missing Nix, missing generated files, invalid template data,
+  unsupported host system, and generated Nix parse failures.
+- Keep diagnostics bounded: say the owning layer, expected file/tool, observed
+  failure, and next command. Do not add package-specific debugging trees.
+- Add minimum docs by audience: a user getting-started page for the four-command
+  workflow, a developer overview explaining the iteration process and code
+  boundaries, and a short root `AGENTS.md`.
+
+Open design questions before implementation:
+
+- Should runtime inference rules live as Nix data, TOML/JSON data consumed by
+  Rust, or both rendered into generated Nix?
+- Should the first runtime inference affect generated `robo.nix`, or should it
+  only report advisory notes until the rule contract is reviewed?
+- Should the root flake provide `cargo fmt` through `rustfmt`, even though this
+  host currently lacks `rustfmt` outside Nix?
+- Should generated Markdown docs be templates, or should docs stay handwritten
+  and only generated project files move to templates?
+
 ## Supervisor Check
 
 Before iteration 002, confirm whether this is the right minimal product core:
@@ -115,3 +170,6 @@ Before iteration 002, confirm whether this is the right minimal product core:
   iteration?
 - Should iteration 002 move generated Nix into template files before any new
   runtime behavior is added?
+- Are the candidate iteration-002 boundaries above correct, especially keeping
+  inference advisory and keeping diagnostics inside `check`/`init` instead of
+  bringing back `diagnose`?
