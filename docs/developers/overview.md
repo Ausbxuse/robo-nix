@@ -24,6 +24,10 @@ Nix-owned CUDA build toolkit. Host CUDA drivers remain host-owned; this branch
 only honors an explicit `ROBO_NIX_LIBCUDA_PATH` and does not scan host driver
 directories.
 
+`linux-headers` owns Linux kernel headers needed by native extensions such as
+`evdev`. Treat those headers as a reusable native build capability, not as a
+downstream teleoperation special case.
+
 Generated text should live in `templates/` or `metadata/` and be embedded with
 `include_str!`.
 

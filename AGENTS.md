@@ -54,6 +54,9 @@ environment manager.
   distro driver directories. If host CUDA is needed in this branch, honor an
   explicit `ROBO_NIX_LIBCUDA_PATH` and leave broader detection to a reviewed
   future iteration.
+- Linux input packages such as `evdev` are handled through the `linux-headers`
+  component. Keep this as a generic native-header contract, not a downstream
+  project workaround.
 
 ## Verification
 

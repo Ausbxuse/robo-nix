@@ -3,6 +3,8 @@ torch	native-build	PyTorch projects often need native build tools. CUDA wheels s
 pytorch	native-build	PyTorch projects often need native build tools. CUDA wheels still need the host NVIDIA driver for libcuda.so.1.
 opencv-python	desktop-gl	OpenCV wheels commonly need desktop graphics runtime libraries.
 mujoco	desktop-gl	MuJoCo commonly needs desktop graphics runtime libraries.
+evdev	native-build	evdev builds native extensions for Linux input devices.
+evdev	linux-headers	evdev native extensions include Linux input headers.
 cuda-python	cuda-toolkit	CUDA Python projects commonly need the Nix-owned CUDA build toolkit surface.
 cupy-cuda11x	cuda-toolkit	CuPy CUDA projects commonly need the Nix-owned CUDA build toolkit surface.
 cupy-cuda12x	cuda-toolkit	CuPy CUDA projects commonly need the Nix-owned CUDA build toolkit surface.

@@ -24,6 +24,8 @@ Common runtime components:
 
 - `desktop-gl`: Nix-managed OpenGL/EGL/Vulkan loader and desktop graphics
   libraries for GUI and simulator workloads.
+- `linux-headers`: Linux kernel headers for native input-device packages such
+  as `evdev`.
 - `cuda-toolkit`: Nix-managed CUDA build toolkit surface for native CUDA
   extensions. The NVIDIA driver and `libcuda.so.1` still come from the host.
 

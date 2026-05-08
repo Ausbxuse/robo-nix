@@ -29,6 +29,8 @@ CUDA and desktop graphics are component-based:
 
 - `desktop-gl` provides Nix-managed desktop graphics libraries.
 - `cuda-toolkit` provides the Nix-managed CUDA build toolkit.
+- `linux-headers` provides Linux kernel headers for packages such as `evdev`
+  that build native input-device extensions.
 - Host `libcuda.so.1` still comes from the NVIDIA driver. Set
   `ROBO_NIX_LIBCUDA_PATH` explicitly when a CUDA workload needs that driver
   library inside the runtime.

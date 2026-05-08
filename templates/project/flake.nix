@@ -63,6 +63,7 @@
       componentPackages = {
         python-uv = [python pkgs.uv];
         native-build = [pkgs.cmake pkgs.pkg-config pkgs.stdenv.cc];
+        linux-headers = [pkgs.linuxHeaders];
         desktop-gl = [
           pkgs.dbus
           pkgs.fontconfig
@@ -96,6 +97,7 @@
       componentRuntimeLibraries = {
         python-uv = [];
         native-build = [];
+        linux-headers = [];
         desktop-gl = componentPackages.desktop-gl;
         cuda-toolkit = let
           cudaPackages = pkgs.cudaPackages;
@@ -148,6 +150,18 @@
               + lib.optionalString (hasComponent "desktop-gl") ''
 
                 export __EGL_VENDOR_LIBRARY_FILENAMES="''${__EGL_VENDOR_LIBRARY_FILENAMES:-${pkgs.mesa}/share/glvnd/egl_vendor.d/50_mesa.json}"
+              ''
+              + lib.optionalString (hasComponent "linux-headers") ''
+
+                export ROBO_NIX_LINUX_HEADERS="${pkgs.linuxHeaders}/include"
+                case ":''${CPATH:-}:" in
+                  *":$ROBO_NIX_LINUX_HEADERS:"*) ;;
+                  *) export CPATH="$ROBO_NIX_LINUX_HEADERS''${CPATH:+:$CPATH}" ;;
+                esac
+                case ":''${C_INCLUDE_PATH:-}:" in
+                  *":$ROBO_NIX_LINUX_HEADERS:"*) ;;
+                  *) export C_INCLUDE_PATH="$ROBO_NIX_LINUX_HEADERS''${C_INCLUDE_PATH:+:$C_INCLUDE_PATH}" ;;
+                esac
               ''
               + lib.optionalString (hasComponent "cuda-toolkit") ''
 

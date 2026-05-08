@@ -11,7 +11,13 @@ const HELP: &str = include_str!("../templates/help.txt");
 const PROJECT_FLAKE_TEMPLATE: &str = include_str!("../templates/project/flake.nix");
 const PROJECT_ROBO_TEMPLATE: &str = include_str!("../templates/project/robo.nix");
 const RUNTIME_INFERENCE_TSV: &str = include_str!("../metadata/runtime-inference.tsv");
-const KNOWN_COMPONENTS: &[&str] = &["python-uv", "native-build", "desktop-gl", "cuda-toolkit"];
+const KNOWN_COMPONENTS: &[&str] = &[
+    "python-uv",
+    "native-build",
+    "linux-headers",
+    "desktop-gl",
+    "cuda-toolkit",
+];
 
 fn main() -> ExitCode {
     match run(env::args_os().skip(1).collect()) {
@@ -543,6 +549,30 @@ dependencies = [
         assert!(robo_nix.contains("\"cuda-toolkit\" # inferred from pyproject.toml:"));
         assert!(robo_nix.contains("cuda-python"));
         assert!(robo_nix.contains("cupy-cuda12x"));
+
+        cleanup(root);
+    }
+
+    #[test]
+    fn first_bootstrap_infers_linux_headers_for_evdev() {
+        let root = temp_project("evdev-inference");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join(".python-version"), "3.11\n").unwrap();
+        fs::write(
+            root.join("pyproject.toml"),
+            r#"[project]
+dependencies = [
+  "evdev<1.9.3; sys_platform == 'linux'",
+]
+"#,
+        )
+        .unwrap();
+
+        prepare_project(&root).unwrap();
+        let robo_nix = fs::read_to_string(root.join("robo.nix")).unwrap();
+
+        assert!(robo_nix.contains("\"native-build\" # inferred from pyproject.toml: evdev"));
+        assert!(robo_nix.contains("\"linux-headers\" # inferred from pyproject.toml: evdev"));
 
         cleanup(root);
     }
