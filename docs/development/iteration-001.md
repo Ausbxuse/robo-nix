@@ -235,6 +235,11 @@ Confirmed consistency decisions:
 - `robo shell` should automatically write missing generated runtime files when
   `.python-version` exists. It should fail clearly when `.python-version` is
   missing.
+- If `flake.nix` already exists and does not have the expected robo-generated
+  shape, `robo shell` should fail and explain that the repository already has a
+  non-robo flake. It must not overwrite that file.
+- `robo shell` must never create `pyproject.toml`. That file is Python project
+  metadata owned by uv/project policy, not by `robo-nix`.
 - "Stale" means generated runtime state no longer matches observed project
   facts, such as `.python-version` changing, `pyproject.toml` gaining a package
   that maps to a runtime component, or `flake.lock` no longer matching the
@@ -256,14 +261,16 @@ Resolved clarification:
 Resolved ownership clarification:
 
 - `robo.nix` is prepared by `robo shell` only for first initialization. Once the
-  file exists, it is user-managed. `robo shell` may read it and warn when current
-  project metadata suggests it could be incomplete, but it must not update the
-  file after first creation.
+  file exists, it is user-managed and canonical for the shell. `robo shell`
+  should use it directly without warning about inferred component differences,
+  and it must not update the file after first creation.
 - Future correctness checks or repair commands may inspect or suggest changes to
   `robo.nix`, but that should be a separate command surface, not `robo shell`.
-- `robo shell` should follow the old repo's Python project logic: require
-  `.python-version`, allow `pyproject.toml` to drive inference when present, and
-  skip inference clearly when `pyproject.toml` is absent rather than failing.
+- `robo shell` should follow the old repo's Python project logic for first
+  bootstrap: require `.python-version`, allow `pyproject.toml` to drive initial
+  inference when present, and skip inference clearly when `pyproject.toml` is
+  absent rather than failing.
+- `robo run` should use the same bootstrap path as `robo shell`.
 - Do not eagerly create or refresh `flake.lock` before it is needed. Running
   `nix develop` can materialize/update the lock as part of normal Nix behavior;
   extra lock-refresh commands add network/cache friction and should wait for a
