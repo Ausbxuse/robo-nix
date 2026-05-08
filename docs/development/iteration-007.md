@@ -13,6 +13,12 @@ Focused command:
 UV_PROJECT_ENVIRONMENT=/home/zhenyu/src/dev/dexmate/dexmate-teleop/.venv UV_CACHE_DIR=/home/zhenyu/src/dev/dexmate/dexmate-teleop/.robo-nix/uv-cache robo run python -c 'import numpy; print(numpy.__version__)'
 ```
 
+Post-fix result:
+
+- The direct NumPy import printed `2.3.5`.
+- The multiprocessing spawn-shaped NumPy import printed `2.3.5` and exited
+  with code `0`.
+
 Key error:
 
 ```text
