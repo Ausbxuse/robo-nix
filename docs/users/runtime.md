@@ -75,6 +75,8 @@ Select graphics support when the project uses:
 
 Some NVIDIA workloads need the host NVIDIA GLVND provider rather than Nix Mesa. When a runtime includes `host-nvidia-gl`, `robo` may bridge detected host NVIDIA EGL/Vulkan manifests and a small project-local vendor library directory.
 
+MuJoCo runtimes default `MUJOCO_GL` to `egl` when the user has not set a value. This keeps offscreen MuJoCo rendering on the EGL path by default while still allowing project or user commands to override the backend explicitly.
+
 This is not an offload launcher. PRIME/offload remains host policy. Use the host's normal launch policy, such as `nvidia-offload`, when the machine needs it.
 
 Disable host graphics auto-bridging with:
@@ -95,6 +97,26 @@ Known limits:
 - `robo init` does not bake the current desktop session into generated project files.
 - Headless and remote rendering modes such as EGL-only rendering, OSMesa, VirtualGL, and container display forwarding still need explicit project or host setup.
 - There is no nixGL-style one-command wrapper yet.
+
+## Extra Packages And Libraries
+
+Use `extraPackages` for command-line tools that should be available on `PATH`:
+
+```nix
+extraPackages = pkgs: [
+  pkgs.imagemagick
+];
+```
+
+Use `extraRuntimeLibraries` only when a Python package imports successfully but fails to load a shared library at runtime:
+
+```nix
+extraRuntimeLibraries = pkgs: [
+  pkgs.ffmpeg
+];
+```
+
+Both lists contain Nix package values, not strings. Write `pkgs.ffmpeg`, not `"ffmpeg"`. Packages outside nixpkgs should be exposed as package values first, for example through a flake input or overlay, then referenced from the list. Do not put command-line-only tools in `extraRuntimeLibraries`; that list is also added to the runtime library path.
 
 ## ROS
 

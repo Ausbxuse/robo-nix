@@ -1,10 +1,11 @@
 use std::env;
 use std::path::Path;
 
+use crate::diagnose::id;
 use crate::runtime::ProjectRuntime;
 use crate::Config;
 
-use super::output::{check_error, check_hint, check_ok, check_warn};
+use super::output::{check_error_diag, check_hint, check_ok, check_warn_diag};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct CudaCheckPlan {
@@ -72,7 +73,12 @@ fn check_cuda_host_requirement(
     warnings: &mut usize,
 ) {
     if env::consts::OS != "linux" {
-        check_error(config, issues, "CUDA environments require a Linux host");
+        check_error_diag(
+            config,
+            issues,
+            id::CUDA_HOST_NOT_READY,
+            "CUDA environments require a Linux host",
+        );
         check_hint(
             config,
             "use a Linux NVIDIA machine for gpu-learning or isaac-learning environments",
@@ -87,9 +93,10 @@ fn check_cuda_host_requirement(
             &format!("CUDA host driver supports {host_version}"),
         );
     } else {
-        check_error(
+        check_error_diag(
             config,
             issues,
+            id::CUDA_HOST_NOT_READY,
             "could not detect host NVIDIA driver CUDA support",
         );
         check_hint(
@@ -101,7 +108,6 @@ fn check_cuda_host_requirement(
     if let Some(path) = crate::runtime::find_host_libcuda() {
         check_ok(config, &format!("CUDA driver library visible at {path}"));
         if env::var_os("ROBO_NIX_LIBCUDA_PATH").is_none()
-            && plan.host_required
             && let Some(driver_dir) = Path::new(&path).parent()
         {
             check_hint(
@@ -113,9 +119,10 @@ fn check_cuda_host_requirement(
             );
         }
     } else {
-        check_warn(
+        check_warn_diag(
             config,
             warnings,
+            id::CUDA_DRIVER_NOT_VISIBLE,
             "libcuda.so.1 was not visible through ROBO_NIX_LIBCUDA_PATH, LD_LIBRARY_PATH, ldconfig, or known host driver locations",
         );
         check_hint(
@@ -124,24 +131,22 @@ fn check_cuda_host_requirement(
         );
     }
 
-    if let Some(expected_cuda_version) = plan.expected_wheel_version.as_deref() {
-        if let Some(host_version) = host_cuda_version.as_deref() {
-            if crate::runtime::cuda_version_less_than(&host_version, expected_cuda_version)
-                == Some(true)
-            {
-                check_error(
-                    config,
-                    issues,
-                    &format!(
-                        "CUDA host driver mismatch: host supports {host_version}, uv.lock expects {expected_cuda_version}"
-                    ),
-                );
-                check_hint(
-                    config,
-                    "upgrade the host NVIDIA driver or regenerate uv.lock with CUDA wheels supported by this host",
-                );
-            }
-        }
+    if let Some(expected_cuda_version) = plan.expected_wheel_version.as_deref()
+        && let Some(host_version) = host_cuda_version.as_deref()
+        && crate::runtime::cuda_version_less_than(host_version, expected_cuda_version) == Some(true)
+    {
+        check_error_diag(
+            config,
+            issues,
+            id::CUDA_DRIVER_WHEEL_MISMATCH,
+            &format!(
+                "CUDA host driver mismatch: host supports {host_version}, uv.lock expects {expected_cuda_version}"
+            ),
+        );
+        check_hint(
+            config,
+            "upgrade the host NVIDIA driver or regenerate uv.lock with CUDA wheels supported by this host",
+        );
     }
 }
 
@@ -160,26 +165,20 @@ fn check_cuda_toolkit_requirement(
             );
             return;
         }
-        check_warn(
+        check_warn_diag(
             config,
             warnings,
+            id::CUDA_TOOLKIT_NOT_VISIBLE,
             "CUDA root is not visible in the current shell",
         );
         check_hint(
             config,
             "robo shell sets CUDA_HOME/CUDA_PATH from the cuda-toolkit component",
         );
-        if deep {
-            check_hint(
-                config,
-                "deep checks will validate the runtime created by nix develop",
-            );
-        } else {
-            check_hint(
-                config,
-                "open the runtime shell or run deep checks to validate the Nix CUDA toolkit",
-            );
-        }
+        check_hint(
+            config,
+            "open the runtime shell or run deep checks to validate the Nix CUDA toolkit",
+        );
         return;
     };
     check_ok(config, &format!("CUDA root exists at {cuda_root}"));
@@ -189,9 +188,10 @@ fn check_cuda_toolkit_requirement(
     };
 
     let Some(actual_cuda_version) = crate::runtime::cuda_version_from_root() else {
-        check_warn(
+        check_warn_diag(
             config,
             warnings,
+            id::CUDA_TOOLKIT_NOT_VISIBLE,
             "found CUDA root but could not detect its major.minor version",
         );
         check_hint(
@@ -209,9 +209,10 @@ fn check_cuda_toolkit_requirement(
             &format!("CUDA version alignment: {expected_cuda_version} at {cuda_root}"),
         );
     } else {
-        check_error(
+        check_error_diag(
             config,
             issues,
+            id::CUDA_DRIVER_WHEEL_MISMATCH,
             &format!(
                 "CUDA mismatch: uv.lock expects {expected_cuda_version}, runtime reports {actual_cuda_version}"
             ),

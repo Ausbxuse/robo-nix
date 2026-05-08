@@ -85,6 +85,26 @@
           ]
         );
 
+      validateExtraRuntimeLibrary = package:
+        if builtins.isString package
+        then
+          throw ''
+            extraRuntimeLibraries entry "${package}" is a string, not a Nix package.
+            Use pkgs.${package} without quotes for shared libraries.
+            Use extraPackages = pkgs: [ pkgs.${package} ]; for command-line tools.
+          ''
+        else package;
+
+      validateExtraPackage = package:
+        if builtins.isString package
+        then
+          throw ''
+            extraPackages entry "${package}" is a string, not a Nix package.
+            Use pkgs.${package} without quotes for command-line tools.
+            Use extraRuntimeLibraries = pkgs: [ pkgs.${package} ]; only when Python packages need shared libraries at runtime.
+          ''
+        else package;
+
       runtimeLibs = [
         pkgs.stdenv.cc.cc.lib
         pkgs.dbus.lib
@@ -269,13 +289,21 @@
             || lib.elem "isaac-sim" componentNames
           );
         projectPackages =
-          if builtins.isFunction envSpec.extraPackages
-          then envSpec.extraPackages pkgs
-          else envSpec.extraPackages;
+          builtins.map
+          validateExtraPackage
+          (
+            if builtins.isFunction envSpec.extraPackages
+            then envSpec.extraPackages pkgs
+            else envSpec.extraPackages
+          );
         projectRuntimeLibraries =
-          if builtins.isFunction envSpec.extraRuntimeLibraries
-          then envSpec.extraRuntimeLibraries pkgs
-          else envSpec.extraRuntimeLibraries;
+          builtins.map
+          validateExtraRuntimeLibrary
+          (
+            if builtins.isFunction envSpec.extraRuntimeLibraries
+            then envSpec.extraRuntimeLibraries pkgs
+            else envSpec.extraRuntimeLibraries
+          );
         projectRuntimeLibraryPath = lib.makeLibraryPath projectRuntimeLibraries;
         projectShellInit =
           lib.optionalString (projectRuntimeLibraries != [])

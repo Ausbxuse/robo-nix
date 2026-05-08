@@ -18,7 +18,7 @@ pub(super) fn run(args: &mut InitArgs, manifest: &Manifest, config: Config) -> R
         args.profile = Some(profile);
     } else {
         let profiles = profile_names(manifest);
-        eprintln!("Project setup:");
+        eprintln!("{}", crate::label(config, "project setup", crate::LabelKind::Status));
         for (index, profile) in profiles.iter().enumerate() {
             eprintln!("  {}. {}", index + 1, profile);
         }

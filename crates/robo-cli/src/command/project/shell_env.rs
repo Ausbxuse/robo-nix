@@ -15,7 +15,7 @@ use std::time::{Duration, Instant};
 
 use indicatif::{ProgressBar, ProgressDrawTarget, ProgressStyle};
 
-use crate::{Config, LabelKind, error, hint, human_duration, inline, label, status};
+use crate::{Config, HiddenCursor, LabelKind, error, hint, human_duration, inline, label, status};
 
 use super::super::nix::{
     add_runtime_source_override, command_for_runtime, command_for_runtime_progress, exit_code,
@@ -144,7 +144,7 @@ fn shell_env_progress_detail(bytes: &[u8]) -> Option<String> {
     if detail.is_empty() {
         return None;
     }
-    if detail.starts_with("linking ") {
+    if detail.starts_with("linking ") || detail.starts_with("evaluating file '") {
         return None;
     }
     Some(truncate_progress_detail(&detail))
@@ -252,6 +252,7 @@ struct ShellProgressTree {
     state: Arc<Mutex<ShellProgressTreeState>>,
     stop_ticker: Arc<AtomicBool>,
     ticker: RefCell<Option<JoinHandle<()>>>,
+    _cursor: HiddenCursor,
 }
 
 struct ShellProgressTreeState {
@@ -395,6 +396,7 @@ impl ShellProgressTree {
             state,
             stop_ticker,
             ticker: RefCell::new(Some(ticker)),
+            _cursor: HiddenCursor::new(),
         };
         tree.render_live(config);
         tree
@@ -435,11 +437,13 @@ impl ShellProgressTree {
         let state = self.state.lock().expect("shell progress state poisoned");
         self.bar
             .finish_with_message(render_finished_tree(config, &state.completed, duration));
+        self._cursor.show();
     }
 
     fn finish_clear(&self) {
         self.stop_ticker();
         self.bar.finish_and_clear();
+        self._cursor.show();
     }
 
     fn render_live(&self, config: Config) {
@@ -716,10 +720,16 @@ fn append_shell_state(envs: &mut Vec<(String, String)>) {
         "ROBO_NIX_PROMPT_PREFIX",
         "[robo]".to_string(),
     );
+    let runtime_input_fingerprints = runtime_input_fingerprints_for(Path::new("."));
     set_shell_env(
         envs,
         "ROBO_NIX_RUNTIME_INPUT_KEY",
-        runtime_input_key_for(Path::new(".")),
+        runtime_input_key_from_fingerprints(&runtime_input_fingerprints),
+    );
+    set_shell_env(
+        envs,
+        "ROBO_NIX_RUNTIME_INPUT_FILES",
+        serialize_runtime_input_fingerprints(&runtime_input_fingerprints),
     );
 
     if let Ok(current_exe) = env::current_exe() {
@@ -812,8 +822,14 @@ fn shell_env_cache_key() -> String {
     shell_env_cache_key_for(Path::new("."))
 }
 
-pub(super) fn current_runtime_input_key_for(workspace: &Path) -> String {
-    runtime_input_key_for(workspace)
+pub(super) fn current_runtime_input_fingerprints_for(workspace: &Path) -> Vec<(String, String)> {
+    runtime_input_fingerprints_for(workspace)
+}
+
+pub(super) fn current_runtime_input_key_from_fingerprints(
+    fingerprints: &[(String, String)],
+) -> String {
+    runtime_input_key_from_fingerprints(fingerprints)
 }
 
 fn shell_env_cache_key_for(workspace: &Path) -> String {
@@ -845,20 +861,21 @@ fn shell_env_cache_key_for(workspace: &Path) -> String {
         env::var(name).ok().hash(&mut hasher);
     }
 
-    hash_runtime_input_files(workspace, &mut hasher);
+    runtime_input_fingerprints_for(workspace).hash(&mut hasher);
     hash_venv_cmake_prefixes(workspace, &mut hasher);
 
     format!("{:016x}", hasher.finish())
 }
 
-fn runtime_input_key_for(workspace: &Path) -> String {
+fn runtime_input_key_from_fingerprints(fingerprints: &[(String, String)]) -> String {
     let mut hasher = DefaultHasher::new();
     "runtime-input-v1".hash(&mut hasher);
-    hash_runtime_input_files(workspace, &mut hasher);
+    fingerprints.hash(&mut hasher);
     format!("{:016x}", hasher.finish())
 }
 
-fn hash_runtime_input_files<H: Hasher>(workspace: &Path, hasher: &mut H) {
+fn runtime_input_fingerprints_for(workspace: &Path) -> Vec<(String, String)> {
+    let mut fingerprints = Vec::new();
     for path in [
         "flake.nix",
         "flake.lock",
@@ -866,20 +883,43 @@ fn hash_runtime_input_files<H: Hasher>(workspace: &Path, hasher: &mut H) {
         "pyproject.toml",
         "uv.lock",
     ] {
-        path.hash(hasher);
-        match fs::read(workspace.join(path)) {
-            Ok(bytes) => bytes.hash(hasher),
-            Err(_) => 0_u8.hash(hasher),
-        }
+        fingerprints.push((path.to_string(), fingerprint_file(&workspace.join(path))));
     }
-    "robo.nix".hash(hasher);
-    match normalized_robo_manifest(workspace) {
-        Some(manifest) => manifest.hash(hasher),
-        None => match fs::read(workspace.join("robo.nix")) {
-            Ok(bytes) => bytes.hash(hasher),
-            Err(_) => 0_u8.hash(hasher),
-        },
+    let robo_fingerprint = normalized_robo_manifest(workspace)
+        .map(|manifest| fingerprint_bytes(&manifest))
+        .or_else(|| {
+            parsed_nix_file(workspace, "robo.nix").map(|manifest| fingerprint_bytes(&manifest))
+        })
+        .unwrap_or_else(|| fingerprint_file(&workspace.join("robo.nix")));
+    fingerprints.push(("robo.nix".to_string(), robo_fingerprint));
+    fingerprints
+}
+
+fn fingerprint_file(path: &Path) -> String {
+    fs::read(path)
+        .map(|bytes| fingerprint_bytes(&bytes))
+        .unwrap_or_else(|_| "missing".to_string())
+}
+
+fn fingerprint_bytes(bytes: &[u8]) -> String {
+    let mut hasher = DefaultHasher::new();
+    bytes.hash(&mut hasher);
+    format!("{:016x}", hasher.finish())
+}
+
+pub(super) fn serialize_runtime_input_fingerprints(fingerprints: &[(String, String)]) -> String {
+    serde_json::to_string(fingerprints).expect("runtime fingerprints should encode as JSON")
+}
+
+pub(super) fn parse_runtime_input_fingerprints(text: &str) -> Vec<(String, String)> {
+    if let Ok(fingerprints) = serde_json::from_str(text) {
+        return fingerprints;
     }
+
+    text.split(';')
+        .filter_map(|entry| entry.split_once('='))
+        .map(|(path, hash)| (path.to_string(), hash.to_string()))
+        .collect()
 }
 
 fn normalized_robo_manifest(workspace: &Path) -> Option<Vec<u8>> {
@@ -888,6 +928,10 @@ fn normalized_robo_manifest(workspace: &Path) -> Option<Vec<u8>> {
         spec = import ./robo.nix;
         provenance = spec.provenance or {};
         extraRuntimeLibraries = spec.extraRuntimeLibraries or [];
+        runtimeLibraryName = library:
+          if builtins.isAttrs library
+          then library.pname or library.name or null
+          else library;
       in builtins.toJSON {
         schemaVersion = if spec ? schemaVersion then toString spec.schemaVersion else null;
         envName = spec.envName or null;
@@ -905,7 +949,7 @@ fn normalized_robo_manifest(workspace: &Path) -> Option<Vec<u8>> {
         extraRuntimeLibraries =
           if builtins.typeOf extraRuntimeLibraries == "lambda"
           then throw "function-valued extraRuntimeLibraries requires raw hash"
-          else extraRuntimeLibraries;
+          else builtins.map runtimeLibraryName extraRuntimeLibraries;
         provenance = {
           profile = provenance.profile or null;
           sourceScripts = provenance.sourceScripts or [];
@@ -928,6 +972,15 @@ fn normalized_robo_manifest(workspace: &Path) -> Option<Vec<u8>> {
             "--expr",
             expr,
         ])
+        .output()
+        .ok()?;
+    output.status.success().then_some(output.stdout)
+}
+
+fn parsed_nix_file(workspace: &Path, path: &str) -> Option<Vec<u8>> {
+    let output = Command::new("nix-instantiate")
+        .current_dir(workspace)
+        .args(["--parse", path])
         .output()
         .ok()?;
     output.status.success().then_some(output.stdout)
@@ -1172,13 +1225,6 @@ mod tests {
     #[test]
     fn nix_progress_details_are_cleaned_for_display() {
         assert_eq!(
-            shell_env_progress_detail(
-                b"evaluating file '/home/zhenyu/src/dev/dexmate/dexmate-teleop/flake.nix'\n"
-            )
-            .as_deref(),
-            Some("evaluating file '/home/zhenyu/src/dev/dexmate/dexmate-teleop/flake.nix'")
-        );
-        assert_eq!(
             nix_evaluated_package_path(
                 b"evaluating file '/nix/store/source/pkgs/by-name/ja/jasper/package.nix'\n"
             )
@@ -1190,11 +1236,39 @@ mod tests {
             None
         );
         assert_eq!(
+            shell_env_progress_detail(b"evaluating file '/workspace/flake.nix'\n"),
+            None
+        );
+        assert_eq!(
             shell_env_progress_detail(
                 br#"linking "/nix/store/source/file" to "/nix/store/.links/hash"
 "#
             ),
             None
+        );
+    }
+
+    #[test]
+    fn runtime_input_fingerprints_round_trip() {
+        let fingerprints = vec![
+            ("pyproject.toml".to_string(), "abc".to_string()),
+            ("robo.nix".to_string(), "def".to_string()),
+        ];
+
+        assert_eq!(
+            parse_runtime_input_fingerprints(&serialize_runtime_input_fingerprints(&fingerprints)),
+            fingerprints
+        );
+    }
+
+    #[test]
+    fn runtime_input_fingerprints_parse_legacy_env_value() {
+        assert_eq!(
+            parse_runtime_input_fingerprints("pyproject.toml=abc;robo.nix=def"),
+            vec![
+                ("pyproject.toml".to_string(), "abc".to_string()),
+                ("robo.nix".to_string(), "def".to_string()),
+            ]
         );
     }
 }

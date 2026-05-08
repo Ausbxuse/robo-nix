@@ -38,13 +38,57 @@ Do not mix heading styles such as `Project:`, `ok: Generated:`, and `next steps:
 
 ```text
 dexmate-teleop  ok  python=3.11  1 warning
-/home/zhenyu/src/dev/dexmate/dexmate-teleop
 ✓ project: Python contract, uv lockfile
 ✓ runtime: runtime files, inferred components, required directories (2)
 ✓ environment: Nix-backed Python
-! environment: native build tool shims: cmake
-  Nix owns CMake, Ninja, compilers, and native build tools
-! skipped: deep runtime probes: robo check --deep
+! environment: native build tool shims: cmake [native.python-build-tool-shim]
+· next: deep runtime probes: robo check --deep
+```
+
+`robo diagnose` should read like a compiler diagnostic, not JSON rendered as text. Put the stable diagnosis ID on the first line, then group the facts:
+
+```text
+error[graphics.egl-context]: EGL/OpenGL context creation failed
+
+problem
+  The graphics stack could not create an OpenGL context through EGL, GLVND, Wayland, or X11.
+
+evidence
+  OpenGL platform library has not been loaded
+
+owner
+  Host graphics/display integration plus selected runtime graphics libraries
+
+try
+  robo check graphics --verbose
+
+docs
+  https://ausbxuse.github.io/robo-nix/users/troubleshooting#egl-or-opengl-context-failure
+```
+
+Use `warning[id]:` for non-fatal contract issues that `check` reports as warnings. Keep no-match output action-oriented: `no diagnosis matched`, then `try` and `docs`.
+
+Focused checks should answer the diagnostic question, not just dump probes. If `robo diagnose` points to `robo check graphics --verbose` and the graphics check passes, say what that means:
+
+```text
+graphics  ok
+
+display
+  ok session        Wayland wayland-0
+
+opengl / egl
+  ok libEGL         Nix libglvnd
+  ok vendor         Mesa from Nix
+
+mujoco
+  ok context        current GL settings can create a MuJoCo OpenGL context
+
+when copied MuJoCo logs still fail
+  this check proves the current robo runtime can create a MuJoCo OpenGL context
+  the failing command is probably using a different environment, stale shell, or direct Python entrypoint
+
+try
+  robo run <your command>
 ```
 
 ## Shell Workflow
@@ -65,7 +109,7 @@ dexmate-teleop  ok  python=3.11  1 warning
 
 Color should guide scanning, not decorate every word.
 
-- phase labels such as `shell:` and section headings: cyan/status color
+- status labels and section headings: cyan/status color
 - success markers such as `✓`: green
 - warning markers such as `!`: yellow
 - field labels and unchanged actions such as `kept`: dim
@@ -77,7 +121,7 @@ Captured output must remain stable and grep-friendly. JSON output must remain ra
 
 ## Long Work
 
-Use a progress bar when a command has known phases. Use a spinner for one long-running silent command.
+Use the shared spinner for long-running silent command work, including multi-phase checks. Update the message as phases change.
 
 In non-interactive logs or `--debug` mode, print normal status lines instead of animated progress. Do not animate commands that already stream useful subprocess output.
 

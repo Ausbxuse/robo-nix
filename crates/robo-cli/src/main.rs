@@ -71,8 +71,9 @@ pub(crate) use command::{
 };
 pub(crate) use pyproject::exact_python_requirement;
 pub(crate) use ui::{
-    Config, LabelKind, UiProgress, UiSpinner, command_row_err, error, field, field_err, hint,
-    human_duration, inline, label, ok, output_with_spinner, section, section_err, status, warn,
+    Config, HiddenCursor, LabelKind, UiProgress, UiSpinner, command_row_err, error, field,
+    field_err, hint, human_duration, inline, label, ok, output_with_spinner, section, section_err,
+    status, warn,
 };
 
 fn main() -> std::process::ExitCode {

@@ -4,6 +4,7 @@ use std::fs;
 use std::path::Path;
 use std::process::{Command, ExitCode};
 
+use crate::diagnose::id;
 use crate::runtime::{
     ProjectRuntime, RuntimeWhy, WhyEntry, build_runtime_why, read_project_runtime,
 };
@@ -25,8 +26,8 @@ use cuda::{check_cuda_host, cuda_check_plan};
 use deep::run_deep_checks;
 use native::{check_native_tool_wheel_shims, native_tool_wheel_shims};
 use output::{
-    check_error, check_field, check_hint, check_line, check_next, check_ok, check_status, check_warn,
-    check_why, check_why_item,
+    check_diagnostic_line, check_error_diag, check_field, check_hint, check_line, check_next,
+    check_ok, check_status, check_warn_diag, check_why, check_why_item,
 };
 use python::{
     check_python_environment, check_python_files, python_environment_origin, PythonEnvironmentOrigin,
@@ -319,7 +320,8 @@ fn run_graphics_check(config: Config, runtime: &ProjectRuntime, verbose: bool) -
     };
 
     let text = String::from_utf8_lossy(&output.stdout);
-    let findings = egl::findings(&egl::parse(&text));
+    let probe = egl::parse(&text);
+    let findings = egl::findings(&probe);
     let errors = findings
         .iter()
         .filter(|finding| finding.kind == egl::FindingKind::Error)
@@ -342,8 +344,22 @@ fn run_graphics_check(config: Config, runtime: &ProjectRuntime, verbose: bool) -
         return ExitCode::from(1);
     }
 
+    let mut mujoco_context = if runtime_has_component(runtime, "mujoco") {
+        egl::MujocoContext::SkippedMissingVenv
+    } else {
+        egl::MujocoContext::NotSelected
+    };
+    if let Some(code) = check_mujoco_context(
+        config,
+        runtime,
+        verbose,
+        &mut mujoco_context,
+    ) {
+        return code;
+    }
+
     if let Some(finding) = warnings.first() {
-        println!("Graphics runtime needs attention.\n");
+        println!("graphics  warning\n");
         println!("{}", finding.message);
         if let Some(hint) = finding.hint {
             println!();
@@ -355,18 +371,161 @@ fn run_graphics_check(config: Config, runtime: &ProjectRuntime, verbose: bool) -
         return ExitCode::SUCCESS;
     }
 
-    println!("Graphics runtime looks ready.\n");
-    for finding in findings
-        .iter()
-        .filter(|finding| finding.kind == egl::FindingKind::Ok)
-        .take(2)
-    {
-        println!("Found {}", finding.message);
-    }
+    println!("graphics  ok\n");
+    print_graphics_summary(config, &egl::summary_sections(&probe, mujoco_context));
     if verbose {
         print_graphics_evidence(config, &findings);
     }
+    if mujoco_context == egl::MujocoContext::Ready {
+        println!();
+        section(config, "when copied MuJoCo logs still fail");
+        println!(
+            "  {}",
+            inline(
+                config,
+                "this check proves the current robo runtime can create a MuJoCo OpenGL context"
+            )
+        );
+        println!(
+            "  {}",
+            inline(
+                config,
+                "the failing command is probably using a different environment, stale shell, or direct Python entrypoint"
+            )
+        );
+        println!();
+        section(config, "try");
+        print_command(config, "robo run <your command>");
+        print_command(config, "robo shell");
+        print_command(config, "python -c 'import os; print(os.environ.get(\"MUJOCO_GL\"))'");
+    }
     ExitCode::SUCCESS
+}
+
+const MUJOCO_CONTEXT_PROBE: &str = r#"
+import mujoco
+from mujoco import gl_context
+
+ctx = gl_context.GLContext(64, 64)
+try:
+    ctx.make_current()
+    model = mujoco.MjModel.from_xml_string(
+        '<mujoco><worldbody><geom type="sphere" size="0.1"/></worldbody></mujoco>'
+    )
+    mujoco.MjrContext(model, mujoco.mjtFontScale.mjFONTSCALE_100)
+    print("mujoco opengl context ok")
+finally:
+    ctx.free()
+"#;
+
+fn check_mujoco_context(
+    config: Config,
+    runtime: &ProjectRuntime,
+    verbose: bool,
+    context: &mut egl::MujocoContext,
+) -> Option<ExitCode> {
+    if !runtime_has_component(runtime, "mujoco") {
+        return None;
+    }
+    if !Path::new(".venv/bin/python").exists() {
+        if verbose {
+            println!("MuJoCo OpenGL context probe skipped because .venv is missing.");
+        }
+        return None;
+    }
+
+    let default_output = runtime_output_with_spinner(
+        config,
+        "graphics: probing MuJoCo OpenGL context",
+        ".venv/bin/python",
+        ["-c", MUJOCO_CONTEXT_PROBE],
+        [],
+    );
+    match default_output {
+        Ok(output) if output.status.success() => {
+            *context = egl::MujocoContext::Ready;
+            None
+        }
+        Ok(default_output) => {
+            let egl_output = runtime_output_with_spinner(
+                config,
+                "graphics: probing MuJoCo EGL context",
+                "env",
+                ["MUJOCO_GL=egl", ".venv/bin/python", "-c", MUJOCO_CONTEXT_PROBE],
+                [],
+            );
+            match egl_output {
+                Ok(egl_output) if egl_output.status.success() => {
+                    println!("Graphics runtime needs MuJoCo GL mode selection.\n");
+                    check_diagnostic_line(
+                        config,
+                        "warn",
+                        LabelKind::Warn,
+                        id::GRAPHICS_EGL_CONTEXT,
+                        "MuJoCo OpenGL context failed with current GL settings",
+                    );
+                    println!(
+                        "{} {}",
+                        label(config, "ok:", LabelKind::Ok),
+                        inline(config, "MuJoCo OpenGL context works with MUJOCO_GL=egl")
+                    );
+                    println!();
+                    println!("Use EGL for offscreen MuJoCo rendering:");
+                    print_command(config, "MUJOCO_GL=egl <your command>");
+                    if verbose {
+                        println!();
+                        section(config, "failed default probe");
+                        print!("{}", combined_output(&default_output));
+                    }
+                    Some(ExitCode::SUCCESS)
+                }
+                Ok(egl_output) => {
+                    println!("Graphics runtime is blocked for MuJoCo.\n");
+                    check_diagnostic_line(
+                        config,
+                        "error",
+                        LabelKind::Error,
+                        id::GRAPHICS_EGL_CONTEXT,
+                        "MuJoCo OpenGL context probe failed",
+                    );
+                    println!();
+                    println!("Default GL probe:");
+                    print!("{}", combined_output(&default_output));
+                    println!();
+                    println!("EGL probe:");
+                    print!("{}", combined_output(&egl_output));
+                    Some(ExitCode::from(1))
+                }
+                Err(err) => {
+                    println!("Graphics runtime is blocked for MuJoCo.\n");
+                    check_diagnostic_line(
+                        config,
+                        "error",
+                        LabelKind::Error,
+                        id::GRAPHICS_EGL_CONTEXT,
+                        &format!("failed to run MuJoCo EGL context probe: {err}"),
+                    );
+                    if verbose {
+                        println!();
+                        section(config, "failed default probe");
+                        print!("{}", combined_output(&default_output));
+                    }
+                    Some(ExitCode::from(1))
+                }
+            }
+        }
+        Err(err) => {
+            println!("Graphics runtime is blocked for MuJoCo.\n");
+            check_diagnostic_line(
+                config,
+                "error",
+                LabelKind::Error,
+                id::GRAPHICS_EGL_CONTEXT,
+                &format!("failed to run MuJoCo OpenGL context probe: {err}"),
+            );
+            Some(ExitCode::from(1))
+        }
+    }
 }
 
 fn run_native_check(config: Config, runtime: &ProjectRuntime, verbose: bool) -> ExitCode {
@@ -386,7 +545,7 @@ fn run_native_check(config: Config, runtime: &ProjectRuntime, verbose: bool) -> 
     }
 
     if !tools.is_empty() {
-        println!("Native build support needs attention.\n");
+        println!("native tools  warning\n");
         println!("The Python environment contains native build tool shims: {}.", tools.join(", "));
         println!("Nix should own CMake, Ninja, compilers, and native build tools.");
         println!();
@@ -415,8 +574,8 @@ exit "$missing"
         [],
     ) {
         Ok(output) if output.status.success() => {
-            println!("Native build support looks ready.\n");
-            println!("Found a compiler, CMake, pkg-config, and common C/C++ build tooling.");
+            println!("native build  ok\n");
+            println!("compiler, CMake, pkg-config, and common C/C++ build tooling are available.");
             if verbose {
                 println!();
                 section(config, "evidence");
@@ -525,9 +684,31 @@ fn print_command(config: Config, command: &str) {
     println!("  {}", label(config, command, LabelKind::Command));
 }
 
+fn print_graphics_summary(config: Config, sections: &[egl::SummarySection]) {
+    for (index, summary_section) in sections.iter().enumerate() {
+        if index > 0 {
+            println!();
+        }
+        section(config, summary_section.title);
+        for row in &summary_section.rows {
+            let status = match row.kind {
+                egl::FindingKind::Ok => label(config, "ok", LabelKind::Ok),
+                egl::FindingKind::Warn => label(config, "warn", LabelKind::Warn),
+                egl::FindingKind::Error => label(config, "error", LabelKind::Error),
+            };
+            println!(
+                "  {} {:<14} {}",
+                status,
+                label(config, row.name, LabelKind::Hint),
+                inline(config, &row.value)
+            );
+        }
+    }
+}
+
 fn print_graphics_evidence(config: Config, findings: &[egl::Finding]) {
     println!();
-    section(config, "evidence");
+    section(config, "details");
     for finding in findings {
         let label_text = match finding.kind {
             egl::FindingKind::Ok => "ok:",
@@ -673,9 +854,10 @@ fn check_graphics_environment(config: Config, runtime: &ProjectRuntime, warnings
         return;
     };
 
-    check_warn(
+    check_warn_diag(
         config,
         warnings,
+        id::GRAPHICS_MUJOCO_GL_FORCED,
         &format!("MuJoCo GL backend forced by MUJOCO_GL={mujoco_gl}"),
     );
     check_hint(
@@ -701,9 +883,10 @@ fn check_schema_version(config: Config, runtime: &ProjectRuntime, warnings: &mut
     match runtime.schema_version.as_deref() {
         Some("1") => check_ok(config, "robo.nix schema version is 1"),
         Some(version) => {
-            check_warn(
+            check_warn_diag(
                 config,
                 warnings,
+                id::RUNTIME_FILES_MISSING_OR_STALE,
                 &format!("robo.nix schema version {version} is newer than this robo supports"),
             );
             check_hint(
@@ -712,7 +895,12 @@ fn check_schema_version(config: Config, runtime: &ProjectRuntime, warnings: &mut
             );
         }
         None => {
-            check_warn(config, warnings, "robo.nix schema version is missing");
+            check_warn_diag(
+                config,
+                warnings,
+                id::RUNTIME_FILES_MISSING_OR_STALE,
+                "robo.nix schema version is missing",
+            );
             check_hint(
                 config,
                 "rerun `robo init . --force` when you are ready to migrate this generated file",
@@ -725,7 +913,12 @@ fn check_uv_files(config: Config, warnings: &mut usize) {
     if Path::new("uv.lock").exists() {
         check_ok(config, "uv.lock is present");
     } else {
-        check_warn(config, warnings, "uv.lock is missing");
+        check_warn_diag(
+            config,
+            warnings,
+            id::PYTHON_PROJECT_FILES_MISSING,
+            "uv.lock is missing",
+        );
         check_hint(
             config,
             "run 'robo shell', then run 'uv sync' after defining pyproject.toml dependencies",
@@ -735,7 +928,12 @@ fn check_uv_files(config: Config, warnings: &mut usize) {
     if Path::new(".venv").is_dir() {
         check_ok(config, "uv virtual environment exists");
     } else {
-        check_warn(config, warnings, "uv virtual environment is missing");
+        check_warn_diag(
+            config,
+            warnings,
+            id::PYTHON_ENV_MISSING,
+            "uv virtual environment is missing",
+        );
         check_hint(
             config,
             "run 'robo shell', then run 'uv sync' to create .venv",
@@ -761,9 +959,10 @@ fn check_expected_components(
         {
             matched.push(expected.name);
         } else {
-            check_warn(
+            check_warn_diag(
                 config,
                 warnings,
+                id::RUNTIME_COMPONENTS_INCOMPLETE,
                 &format!(
                     "pyproject.toml implies component {} but robo.nix does not select it",
                     expected.name
@@ -795,9 +994,10 @@ fn check_required_paths(config: Config, why: &RuntimeWhy, issues: &mut usize) {
         if Path::new(&path.name).is_dir() {
             directory_count += 1;
         } else {
-            check_error(
+            check_error_diag(
                 config,
                 issues,
+                id::PROJECT_REQUIRED_DIRECTORIES_MISSING,
                 &format!("required directory is missing: {}", path.name),
             );
             check_hint(config, &path.remediation_hint);
@@ -815,9 +1015,10 @@ fn check_required_paths(config: Config, why: &RuntimeWhy, issues: &mut usize) {
         if Path::new(&path.name).is_file() {
             file_count += 1;
         } else {
-            check_error(
+            check_error_diag(
                 config,
                 issues,
+                id::RUNTIME_FILES_MISSING_OR_STALE,
                 &format!("required file is missing: {}", path.name),
             );
             check_hint(config, &path.remediation_hint);
@@ -832,9 +1033,10 @@ fn check_required_paths(config: Config, why: &RuntimeWhy, issues: &mut usize) {
         if Path::new(&script.name).is_file() {
             script_count += 1;
         } else {
-            check_error(
+            check_error_diag(
                 config,
                 issues,
+                id::RUNTIME_FILES_MISSING_OR_STALE,
                 &format!("bootstrap script is missing: {}", script.name),
             );
             check_hint(config, &script.remediation_hint);
@@ -897,9 +1099,10 @@ fn check_lock_freshness(config: Config, warnings: &mut usize) {
             .output()
             .is_ok_and(|output| !output.stdout.is_empty())
     {
-        check_warn(
+        check_warn_diag(
             config,
             warnings,
+            id::RUNTIME_FILES_MISSING_OR_STALE,
             "robo-nix path input has local changes; flake.lock may point at an older source snapshot",
         );
         check_hint(

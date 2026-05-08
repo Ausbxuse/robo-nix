@@ -1,6 +1,7 @@
 use console::style;
 use indicatif::{ProgressBar, ProgressDrawTarget, ProgressStyle};
-use std::io::IsTerminal;
+use std::cell::Cell;
+use std::io::{IsTerminal, Write};
 use std::process::{Command, Output, Stdio};
 use std::time::{Duration, Instant};
 
@@ -133,34 +134,40 @@ pub(crate) fn output_with_spinner(
     }
 
     command.stdout(Stdio::piped()).stderr(Stdio::piped());
+    let _cursor = HiddenCursor::new();
     let spinner = spinner(config, message);
     let started_at = Instant::now();
     let output = command.output();
     keep_spinner_visible(started_at);
     spinner.finish_and_clear();
+    _cursor.show();
     output
 }
 
 pub(crate) struct UiProgress {
     config: Config,
     bar: Option<ProgressBar>,
-    current: u64,
-    total: u64,
+    _cursor: Option<HiddenCursor>,
 }
 
 pub(crate) struct UiSpinner {
     bar: Option<ProgressBar>,
+    _cursor: Option<HiddenCursor>,
 }
 
 impl UiSpinner {
     pub(crate) fn new(config: Config, message: &str) -> Self {
         if config.debug || !std::io::stderr().is_terminal() {
             status(config, message);
-            return Self { bar: None };
+            return Self {
+                bar: None,
+                _cursor: None,
+            };
         }
 
         Self {
             bar: Some(spinner(config, message)),
+            _cursor: Some(HiddenCursor::new()),
         }
     }
 
@@ -168,8 +175,10 @@ impl UiSpinner {
         if let Some(bar) = &self.bar {
             bar.finish_and_clear();
         }
+        if let Some(cursor) = &self._cursor {
+            cursor.show();
+        }
     }
-
 }
 
 impl Drop for UiSpinner {
@@ -179,42 +188,25 @@ impl Drop for UiSpinner {
 }
 
 impl UiProgress {
-    pub(crate) fn new(config: Config, total: u64, message: &str) -> Self {
+    pub(crate) fn new(config: Config, _total: u64, message: &str) -> Self {
         if config.debug || !std::io::stderr().is_terminal() {
             status(config, message);
             return Self {
                 config,
                 bar: None,
-                current: 0,
-                total,
+                _cursor: None,
             };
         }
 
-        let bar = ProgressBar::new(total);
-        bar.set_draw_target(ProgressDrawTarget::stderr());
-        bar.set_style(
-            ProgressStyle::with_template(
-                "{spinner:.cyan} [{bar:20.cyan/blue}] {pos:.dim}/{len:.dim} {msg}",
-            )
-                .unwrap_or_else(|_| ProgressStyle::default_bar())
-                .progress_chars("=>-")
-                .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]),
-        );
-        bar.set_message(status_message(config, message));
-        bar.enable_steady_tick(Duration::from_millis(80));
-
         Self {
             config,
-            bar: Some(bar),
-            current: 0,
-            total,
+            bar: Some(spinner(config, message)),
+            _cursor: Some(HiddenCursor::new()),
         }
     }
 
     pub(crate) fn step(&mut self, message: &str) {
-        self.current = (self.current + 1).min(self.total);
         if let Some(bar) = &self.bar {
-            bar.set_position(self.current);
             bar.set_message(status_message(self.config, message));
         } else {
             status(self.config, message);
@@ -264,6 +256,9 @@ impl UiProgress {
         if let Some(bar) = &self.bar {
             bar.finish_and_clear();
         }
+        if let Some(cursor) = &self._cursor {
+            cursor.show();
+        }
     }
 }
 
@@ -278,6 +273,33 @@ fn spinner(config: Config, message: &str) -> ProgressBar {
     spinner.set_message(status_message(config, message));
     spinner.enable_steady_tick(Duration::from_millis(80));
     spinner
+}
+
+pub(crate) struct HiddenCursor {
+    hidden: Cell<bool>,
+}
+
+impl HiddenCursor {
+    pub(crate) fn new() -> Self {
+        eprint!("\x1b[?25l");
+        let _ = std::io::stderr().flush();
+        Self {
+            hidden: Cell::new(true),
+        }
+    }
+
+    pub(crate) fn show(&self) {
+        if self.hidden.replace(false) {
+            eprint!("\x1b[?25h");
+            let _ = std::io::stderr().flush();
+        }
+    }
+}
+
+impl Drop for HiddenCursor {
+    fn drop(&mut self) {
+        self.show();
+    }
 }
 
 fn status_message(config: Config, message: &str) -> String {

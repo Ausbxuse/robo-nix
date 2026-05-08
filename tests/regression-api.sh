@@ -69,6 +69,18 @@ assert_component_catalog_contract() {
 	assert_expr "$expr"
 }
 
+assert_input_graph_contract() {
+	local expr
+	expr='
+    let
+      flake = builtins.getFlake "'"git+file://${repo_root}"'";
+    in
+      assert flake.inputs.nixpkgs-python.inputs.nixpkgs.outPath == flake.inputs.nixpkgs.outPath;
+      true
+  '
+	assert_expr "$expr"
+}
+
 assert_component_metadata_contract() {
 	local expr
 	expr='
@@ -212,6 +224,10 @@ assert_python_uv_exports_native_build_prefixes() {
       assert component.shellInit == builtins.replaceStrings ["/bin//nix/store"] ["unexpected"] component.shellInit;
       assert flake.inputs.nixpkgs.lib.hasInfix "ROBO_NIX_PYTHON" component.shellInit;
       assert flake.inputs.nixpkgs.lib.hasInfix "UV_PYTHON_DOWNLOADS" component.shellInit;
+      assert flake.inputs.nixpkgs.lib.hasInfix "unset PYTHONHOME" component.shellInit;
+      assert flake.inputs.nixpkgs.lib.hasInfix "unset PYTHONPATH" component.shellInit;
+      assert flake.inputs.nixpkgs.lib.hasInfix "current robo-nix Python" component.shellInit;
+      assert flake.inputs.nixpkgs.lib.hasInfix "expected %s" component.shellInit;
       assert flake.inputs.nixpkgs.lib.hasInfix "uv venv --python" component.shellInit;
       assert flake.inputs.nixpkgs.lib.hasInfix "site-packages" component.shellInit;
       assert flake.inputs.nixpkgs.lib.hasInfix "share/cmake" component.shellInit;
@@ -350,6 +366,7 @@ assert_mujoco_exports_mujoco_path_and_gl_default_metadata() {
     in
       assert builtins.elem pkgs.mujoco.name (builtins.map (package: package.name) component.packages);
       assert flake.inputs.nixpkgs.lib.hasInfix "MUJOCO_PATH" shellInit;
+      assert flake.inputs.nixpkgs.lib.hasInfix "MUJOCO_GL" shellInit;
       assert flake.inputs.nixpkgs.lib.hasInfix "ROBO_NIX_MUJOCO_GL_DEFAULT" shellInit;
       true
   '
@@ -709,6 +726,86 @@ EOF
 	cleanup_dir "$tmpdir"
 }
 
+assert_extra_runtime_libraries_reject_strings() {
+	local tmpdir
+	local system
+	local output_file
+	tmpdir="$(mktemp_dir)"
+	system="$(current_nix_system)"
+	output_file="$tmpdir/string-runtime-library.out"
+	trap 'cleanup_dir "$tmpdir"' RETURN
+
+	cat >"$tmpdir/flake.nix" <<EOF
+{
+  inputs = {
+    robo-nix.url = "git+file://${repo_root}";
+  };
+
+  outputs = {robo-nix, ...}:
+    robo-nix.lib.mkProjectFlake {
+      envName = "string-runtime-library";
+      components = [
+        "base"
+      ];
+      extraRuntimeLibraries = pkgs: [
+        "ffmpeg"
+      ];
+      supportedSystems = [
+        "${system}"
+      ];
+    };
+}
+EOF
+
+	assert_command_fails_capture "$output_file" nix run "$tmpdir#default" -- --dry-run
+	grep -F 'extraRuntimeLibraries entry "ffmpeg" is a string, not a Nix package.' "$output_file" >/dev/null
+	grep -F "Use pkgs.ffmpeg without quotes for shared libraries." "$output_file" >/dev/null
+	grep -F "Use extraPackages = pkgs: [ pkgs.ffmpeg ]; for command-line tools." "$output_file" >/dev/null
+
+	trap - RETURN
+	cleanup_dir "$tmpdir"
+}
+
+assert_extra_packages_reject_strings() {
+	local tmpdir
+	local system
+	local output_file
+	tmpdir="$(mktemp_dir)"
+	system="$(current_nix_system)"
+	output_file="$tmpdir/string-package.out"
+	trap 'cleanup_dir "$tmpdir"' RETURN
+
+	cat >"$tmpdir/flake.nix" <<EOF
+{
+  inputs = {
+    robo-nix.url = "git+file://${repo_root}";
+  };
+
+  outputs = {robo-nix, ...}:
+    robo-nix.lib.mkProjectFlake {
+      envName = "string-package";
+      components = [
+        "base"
+      ];
+      extraPackages = pkgs: [
+        "imagemagick"
+      ];
+      supportedSystems = [
+        "${system}"
+      ];
+    };
+}
+EOF
+
+	assert_command_fails_capture "$output_file" nix run "$tmpdir#default" -- --dry-run
+	grep -F 'extraPackages entry "imagemagick" is a string, not a Nix package.' "$output_file" >/dev/null
+	grep -F "Use pkgs.imagemagick without quotes for command-line tools." "$output_file" >/dev/null
+	grep -F "Use extraRuntimeLibraries = pkgs: [ pkgs.imagemagick ]; only when Python packages need shared libraries at runtime." "$output_file" >/dev/null
+
+	trap - RETURN
+	cleanup_dir "$tmpdir"
+}
+
 assert_human_facing_failure_contract() {
 	local tmpdir
 	local system
@@ -777,6 +874,7 @@ assert_project_init_validation_contract() {
 	cleanup_dir "$tmpdir"
 }
 
+assert_input_graph_contract
 assert_component_catalog_contract
 assert_component_metadata_contract
 assert_profile_metadata_contract
@@ -804,4 +902,6 @@ fi
 
 assert_project_flake_contract
 assert_project_extension_contract
+assert_extra_runtime_libraries_reject_strings
+assert_extra_packages_reject_strings
 assert_human_facing_failure_contract

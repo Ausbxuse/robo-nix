@@ -53,6 +53,12 @@ They should expose reusable runtime capability, such as:
 
 Do not add a component for a single downstream project unless the behavior is clearly reusable.
 
+## Python Runtime Boundary
+
+`uv` owns Python package resolution, the virtualenv, and `uv.lock`. `python-uv` owns the CPython executable and shell facts that let uv build an environment against the Nix runtime.
+
+`nixpkgs-python` must follow the same `nixpkgs` input used by the runtime libraries. This keeps the selected CPython extension modules and the Nix native libraries in the same ABI set. Do not fix mismatches by extracting individual Python build inputs into `LD_LIBRARY_PATH`; keep the input graph aligned and make stale virtualenvs visible.
+
 ## Host Boundaries
 
 Do not treat host path inventories as a scalable abstraction.

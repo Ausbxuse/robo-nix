@@ -116,6 +116,26 @@ pub(crate) struct Finding {
     pub(crate) hint: Option<&'static str>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum MujocoContext {
+    Ready,
+    SkippedMissingVenv,
+    NotSelected,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SummarySection {
+    pub(crate) title: &'static str,
+    pub(crate) rows: Vec<SummaryRow>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SummaryRow {
+    pub(crate) kind: FindingKind,
+    pub(crate) name: &'static str,
+    pub(crate) value: String,
+}
+
 impl Finding {
     fn ok(message: impl Into<String>) -> Self {
         Self {
@@ -250,6 +270,152 @@ pub(crate) fn findings(probe: &Probe) -> Vec<Finding> {
     findings.extend(renderer_findings(probe));
 
     findings
+}
+
+pub(crate) fn summary_sections(
+    probe: &Probe,
+    mujoco_context: MujocoContext,
+) -> Vec<SummarySection> {
+    vec![
+        SummarySection {
+            title: "display",
+            rows: vec![display_summary_row(probe), dri_summary_row(probe)],
+        },
+        SummarySection {
+            title: "opengl / egl",
+            rows: vec![
+                libegl_summary_row(probe),
+                vendor_summary_row(probe),
+                host_driver_summary_row(probe),
+            ],
+        },
+        SummarySection {
+            title: "mujoco",
+            rows: vec![mujoco_summary_row(mujoco_context)],
+        },
+    ]
+}
+
+fn display_summary_row(probe: &Probe) -> SummaryRow {
+    match (
+        probe.session_type.as_deref(),
+        probe.wayland_display.as_deref(),
+        probe.display.as_deref(),
+    ) {
+        (Some("wayland"), Some(display), _) => {
+            summary_row(FindingKind::Ok, "session", format!("Wayland {display}"))
+        }
+        (Some("x11"), _, Some(display)) | (None, _, Some(display)) => {
+            summary_row(FindingKind::Ok, "session", format!("X11 {display}"))
+        }
+        (Some(session), None, Some(display)) => summary_row(
+            FindingKind::Ok,
+            "session",
+            format!("{session}, DISPLAY={display}"),
+        ),
+        (Some(session), None, None) => summary_row(
+            FindingKind::Warn,
+            "session",
+            format!("{session}, no display socket"),
+        ),
+        _ => summary_row(FindingKind::Warn, "session", "no Wayland or X11 display"),
+    }
+}
+
+fn dri_summary_row(probe: &Probe) -> SummaryRow {
+    match probe.dev_dri.as_deref() {
+        Some("") => summary_row(FindingKind::Warn, "devices", "/dev/dri has no device nodes"),
+        Some(nodes) => summary_row(FindingKind::Ok, "devices", nodes),
+        None => summary_row(FindingKind::Warn, "devices", "/dev/dri is not visible"),
+    }
+}
+
+fn libegl_summary_row(probe: &Probe) -> SummaryRow {
+    match probe.libegl.as_deref() {
+        Some(path) => summary_row(FindingKind::Ok, "libEGL", graphics_path_summary(path)),
+        None => summary_row(FindingKind::Error, "libEGL", "not visible"),
+    }
+}
+
+fn vendor_summary_row(probe: &Probe) -> SummaryRow {
+    if probe.vendor_unset {
+        return summary_row(FindingKind::Warn, "vendor", "selection unset");
+    }
+    match probe.vendor_files.first() {
+        Some(vendor) if vendor.exists => {
+            summary_row(FindingKind::Ok, "vendor", graphics_vendor_summary(&vendor.path))
+        }
+        Some(vendor) => summary_row(FindingKind::Error, "vendor", format!("missing {}", vendor.path)),
+        None => summary_row(FindingKind::Warn, "vendor", "not reported"),
+    }
+}
+
+fn host_driver_summary_row(probe: &Probe) -> SummaryRow {
+    if probe.run_opengl_driver {
+        summary_row(FindingKind::Ok, "host driver", "visible")
+    } else if probe.container.is_some() {
+        summary_row(FindingKind::Warn, "host driver", "/run/opengl-driver not visible")
+    } else {
+        summary_row(FindingKind::Warn, "host driver", "not visible")
+    }
+}
+
+fn mujoco_summary_row(context: MujocoContext) -> SummaryRow {
+    match context {
+        MujocoContext::Ready => summary_row(
+            FindingKind::Ok,
+            "context",
+            "current GL settings can create a MuJoCo OpenGL context",
+        ),
+        MujocoContext::SkippedMissingVenv => summary_row(
+            FindingKind::Warn,
+            "context",
+            ".venv is missing, so the Python MuJoCo probe did not run",
+        ),
+        MujocoContext::NotSelected => {
+            summary_row(FindingKind::Ok, "context", "mujoco component is not selected")
+        }
+    }
+}
+
+fn summary_row(
+    kind: FindingKind,
+    name: &'static str,
+    value: impl Into<String>,
+) -> SummaryRow {
+    SummaryRow {
+        kind,
+        name,
+        value: value.into(),
+    }
+}
+
+fn graphics_path_summary(path: &str) -> String {
+    if path.contains("libglvnd") {
+        "Nix libglvnd".to_string()
+    } else if path.starts_with("/nix/store/") {
+        "Nix store".to_string()
+    } else {
+        path.to_string()
+    }
+}
+
+fn graphics_vendor_summary(path: &str) -> String {
+    let provider = if path.contains("mesa") || path.ends_with("50_mesa.json") {
+        "Mesa"
+    } else if path.contains("nvidia") {
+        "NVIDIA"
+    } else {
+        "EGL vendor"
+    };
+    let source = if path.starts_with("/nix/store/") {
+        "Nix"
+    } else if path.starts_with("/run/opengl-driver/") {
+        "host driver"
+    } else {
+        path
+    };
+    format!("{provider} from {source}")
 }
 
 fn display_finding(probe: &Probe) -> Finding {
@@ -397,7 +563,15 @@ fn nix_libegl_with_host_vendor(probe: &Probe) -> bool {
         && probe
             .vendor_files
             .iter()
-            .any(|vendor| vendor.exists && !vendor.path.starts_with("/nix/store/"))
+            .any(|vendor| vendor.exists && non_nix_unmanaged_vendor(probe, &vendor.path))
+}
+
+fn non_nix_unmanaged_vendor(probe: &Probe, vendor_path: &str) -> bool {
+    !vendor_path.starts_with("/nix/store/")
+        && !probe
+            .host_graphics_auto
+            .as_deref()
+            .is_some_and(|manifests| manifests.split(':').any(|path| path == vendor_path))
 }
 
 #[cfg(test)]
@@ -532,6 +706,31 @@ mod tests {
     }
 
     #[test]
+    fn nix_libegl_with_robo_managed_host_vendor_file_is_not_a_warning() {
+        let probe = Probe {
+            session_type: Some("wayland".to_string()),
+            wayland_display: Some("wayland-0".to_string()),
+            libegl: Some("/nix/store/abc-libglvnd/lib/libEGL.so.1".to_string()),
+            vendor_files: vec![VendorFile {
+                path: "/run/opengl-driver/share/glvnd/egl_vendor.d/10_nvidia.json".to_string(),
+                exists: true,
+            }],
+            host_graphics_auto: Some(
+                "/run/opengl-driver/share/glvnd/egl_vendor.d/10_nvidia.json:/run/opengl-driver/share/vulkan/icd.d/nvidia_icd.json"
+                    .to_string(),
+            ),
+            ..Probe::default()
+        };
+
+        assert!(!findings(&probe).iter().any(|finding| {
+            finding.kind == FindingKind::Warn
+                && finding
+                    .message
+                    .contains("Nix libEGL is paired with a non-Nix EGL vendor file")
+        }));
+    }
+
+    #[test]
     fn software_renderer_is_a_container_graphics_warning() {
         let probe = Probe {
             session_type: Some("wayland".to_string()),
@@ -573,5 +772,34 @@ mod tests {
                     .message
                     .contains("LIBGL_ALWAYS_SOFTWARE=1 forces software rendering")
         }));
+    }
+
+    #[test]
+    fn summary_sections_use_probe_fields_not_finding_text() {
+        let probe = Probe {
+            session_type: Some("wayland".to_string()),
+            wayland_display: Some("wayland-0".to_string()),
+            libegl: Some("/nix/store/abc-libglvnd/lib/libEGL.so.1".to_string()),
+            vendor_files: vec![VendorFile {
+                path: "/nix/store/def-mesa/share/glvnd/egl_vendor.d/50_mesa.json".to_string(),
+                exists: true,
+            }],
+            dev_dri: Some("card0 renderD128".to_string()),
+            run_opengl_driver: true,
+            ..Probe::default()
+        };
+
+        let sections = summary_sections(&probe, MujocoContext::Ready);
+
+        assert_eq!(sections[0].title, "display");
+        assert_eq!(sections[0].rows[0].value, "Wayland wayland-0");
+        assert_eq!(sections[0].rows[1].value, "card0 renderD128");
+        assert_eq!(sections[1].rows[0].value, "Nix libglvnd");
+        assert_eq!(sections[1].rows[1].value, "Mesa from Nix");
+        assert_eq!(sections[1].rows[2].value, "visible");
+        assert_eq!(
+            sections[2].rows[0].value,
+            "current GL settings can create a MuJoCo OpenGL context"
+        );
     }
 }

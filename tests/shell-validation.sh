@@ -115,7 +115,12 @@ chmod +x "$stale_shell"
 	ROBO_NIX_SHELL="$stale_shell" EXPECTED_SHELL="$stale_shell" \
 		"$robo" shell >"$stale_output" 2>&1
 )
-assert_file_contains "$stale_output" "shell: detected runtime changes in $project"
+assert_file_contains "$stale_output" "runtime changed in $project"
+assert_file_contains "$stale_output" "changed $project/pyproject.toml"
+if grep -F "shell: detected runtime changes" "$stale_output" >/dev/null; then
+	echo "shell refresh should not print shell-prefixed status lines" >&2
+	exit 1
+fi
 assert_file_contains "$stale_output" "run exit to leave this runtime shell"
 
 comment_shell="$tmpdir/comment-shell"
@@ -135,8 +140,12 @@ chmod +x "$comment_shell"
 (
 	cd "$project"
 	ROBO_NIX_SHELL="$comment_shell" EXPECTED_SHELL="$comment_shell" \
-		"$robo" shell >"$comment_output"
+		"$robo" shell >"$comment_output" 2>&1
 )
+if grep -F "runtime changed in $project" "$comment_output" >/dev/null; then
+	echo "comment-only robo.nix edits should not refresh the runtime" >&2
+	exit 1
+fi
 assert_file_contains "$comment_output" "run exit to leave this runtime shell"
 
 shell_init_shell="$tmpdir/shell-init-shell"
@@ -167,7 +176,12 @@ chmod +x "$shell_init_shell"
 	ROBO_NIX_SHELL="$shell_init_shell" EXPECTED_SHELL="$shell_init_shell" \
 		"$robo" shell >"$shell_init_output" 2>&1
 )
-assert_file_contains "$shell_init_output" "shell: detected runtime changes in $project"
+assert_file_contains "$shell_init_output" "runtime changed in $project"
+assert_file_contains "$shell_init_output" "changed $project/robo.nix"
+if grep -F "shell: detected runtime changes" "$shell_init_output" >/dev/null; then
+	echo "shell refresh should not print shell-prefixed status lines" >&2
+	exit 1
+fi
 assert_file_contains "$shell_init_output" "run exit to leave this runtime shell"
 
 prompt_init_project="$tmpdir/prompt-init-project"

@@ -21,9 +21,10 @@ mod shell_launch;
 use flake_repair::repair_managed_flake_source;
 use shell_card::print_shell_card;
 use shell_env::{
-    ShellProgress, current_runtime_input_key_for, load_cached_or_refresh_shell_env,
-    load_shell_env_script, materialize_shell_env, refresh_shell_env_for_hook,
-    write_shell_env_cache_if_possible,
+    ShellProgress, current_runtime_input_fingerprints_for,
+    current_runtime_input_key_from_fingerprints, load_cached_or_refresh_shell_env,
+    load_shell_env_script, materialize_shell_env, parse_runtime_input_fingerprints,
+    refresh_shell_env_for_hook, write_shell_env_cache_if_possible,
 };
 use shell_launch::{
     ShellLaunch, command_from_launch_args, normalize_shell_args,
@@ -343,13 +344,12 @@ pub(crate) fn run_internal_shell_refresh(args: Vec<OsString>, config: Config) ->
     }
     match active_shell_freshness(&state) {
         ShellFreshness::Current => return ExitCode::SUCCESS,
-        ShellFreshness::Stale => status(
-            config,
-            &format!("shell: detected runtime changes in {}", state.workspace),
-        ),
+        ShellFreshness::Stale(changed) => {
+            print_runtime_refresh_notice(config, &state.workspace, &changed);
+        }
         ShellFreshness::Unknown => status(
             config,
-            &format!("shell: refreshing runtime environment in {}", state.workspace),
+            &format!("refreshing runtime environment in {}", state.workspace),
         ),
     }
     if !Path::new(&state.workspace).join("robo.nix").exists() {
@@ -524,6 +524,7 @@ pub(super) struct RuntimeState {
     pub(super) python_version: String,
     pub(super) workspace: String,
     runtime_input_key: Option<String>,
+    runtime_input_files: Option<String>,
 }
 
 impl RuntimeState {
@@ -550,6 +551,7 @@ impl RuntimeState {
             env::current_dir().map_or_else(|_| ".".into(), |path| path.display().to_string())
         });
         let runtime_input_key = env::var("ROBO_NIX_RUNTIME_INPUT_KEY").ok();
+        let runtime_input_files = env::var("ROBO_NIX_RUNTIME_INPUT_FILES").ok();
 
         Self {
             active,
@@ -557,6 +559,7 @@ impl RuntimeState {
             python_version,
             workspace,
             runtime_input_key,
+            runtime_input_files,
         }
     }
 }
@@ -571,7 +574,7 @@ fn print_already_active(config: Config, _state: &RuntimeState) {
 
 enum ShellFreshness {
     Current,
-    Stale,
+    Stale(Vec<String>),
     Unknown,
 }
 
@@ -583,10 +586,52 @@ fn active_shell_freshness(state: &RuntimeState) -> ShellFreshness {
     if !workspace.join("robo.nix").exists() || !workspace.join("flake.nix").exists() {
         return ShellFreshness::Unknown;
     }
-    if active_key == &current_runtime_input_key_for(workspace) {
+    let current = current_runtime_input_fingerprints_for(workspace);
+    if active_key == &current_runtime_input_key_from_fingerprints(&current) {
         ShellFreshness::Current
     } else {
-        ShellFreshness::Stale
+        ShellFreshness::Stale(changed_runtime_inputs(state, current))
+    }
+}
+
+fn changed_runtime_inputs(state: &RuntimeState, current: Vec<(String, String)>) -> Vec<String> {
+    let Some(active_inputs) = &state.runtime_input_files else {
+        return Vec::new();
+    };
+    let active = parse_runtime_input_fingerprints(active_inputs);
+    if active.is_empty() || current.is_empty() {
+        return Vec::new();
+    }
+
+    let active: std::collections::HashMap<_, _> = active.into_iter().collect();
+    let workspace = Path::new(&state.workspace);
+    current
+        .into_iter()
+        .filter_map(|(path, hash)| {
+            active
+                .get(&path)
+                .is_none_or(|active_hash| active_hash != &hash)
+                .then(|| workspace.join(path).display().to_string())
+        })
+        .collect()
+}
+
+fn print_runtime_refresh_notice(config: Config, workspace: &str, changed: &[String]) {
+    eprintln!(
+        "{}",
+        label(
+            config,
+            &format!("runtime changed in {workspace}"),
+            LabelKind::Status
+        )
+    );
+    if changed.is_empty() {
+        return;
+    }
+
+    eprintln!("{}", label(config, "changed files", LabelKind::Status));
+    for path in changed {
+        eprintln!("  {} {}", label(config, "changed", LabelKind::Hint), path);
     }
 }
 

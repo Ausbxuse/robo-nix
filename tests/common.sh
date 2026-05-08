@@ -60,6 +60,18 @@ assert_file_contains() {
 	fi
 }
 
+assert_file_not_contains() {
+	local file="$1"
+	local unexpected="$2"
+	if grep -F "$unexpected" "$file" >/dev/null; then
+		printf 'expected %s not to contain: %s\n' "$file" "$unexpected" >&2
+		printf -- '--- %s ---\n' "$file" >&2
+		cat "$file" >&2
+		printf -- '--- end %s ---\n' "$file" >&2
+		exit 1
+	fi
+}
+
 assert_command_fails() {
 	if "$@"; then
 		echo "expected command to fail: $*" >&2

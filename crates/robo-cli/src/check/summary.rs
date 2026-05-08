@@ -4,6 +4,7 @@ use std::fs;
 use std::path::Path;
 use std::process::ExitCode;
 
+use crate::diagnose::id;
 use crate::runtime::{ProjectRuntime, RuntimeWhy};
 use crate::{Config, LabelKind, UiSpinner, exact_python_requirement, inline, label};
 
@@ -14,13 +15,15 @@ use super::native::native_tool_wheel_shims;
 use super::python::{PythonEnvironmentOrigin, python_environment_origin};
 
 struct Attention {
+    id: &'static str,
     title: String,
     details: Vec<String>,
 }
 
 impl Attention {
-    fn new(title: impl Into<String>) -> Self {
+    fn new(id: &'static str, title: impl Into<String>) -> Self {
         Self {
+            id,
             title: title.into(),
             details: Vec::new(),
         }
@@ -62,7 +65,10 @@ pub(super) fn run_summary(
     } else {
         warnings += 1;
         attention.push(
-            Attention::new("runtime files need review")
+            Attention::new(
+                id::RUNTIME_FILES_MISSING_OR_STALE,
+                "runtime files need review",
+            )
                 .detail("run: robo init . --force")
                 .detail("note: review local edits before regenerating"),
         );
@@ -83,14 +89,20 @@ pub(super) fn run_summary(
     } else if pyproject.is_none() {
         warnings += 1;
         attention.push(
-            Attention::new("pyproject.toml missing")
+            Attention::new(
+                id::PYTHON_PROJECT_FILES_MISSING,
+                "pyproject.toml missing",
+            )
                 .detail("run: robo init .")
                 .detail("note: uv owns Python dependencies"),
         );
     } else {
         issues += 1;
         attention.push(
-            Attention::new("Python version mismatch")
+            Attention::new(
+                id::PYTHON_VERSION_MISMATCH,
+                "Python version mismatch",
+            )
                 .detail(format!("expected: {}", runtime.python_version))
                 .detail("fix: align .python-version, pyproject.toml, and robo.nix"),
         );
@@ -101,7 +113,10 @@ pub(super) fn run_summary(
     } else {
         warnings += 1;
         attention.push(
-            Attention::new("uv.lock missing")
+            Attention::new(
+                id::PYTHON_PROJECT_FILES_MISSING,
+                "uv.lock missing",
+            )
                 .detail("run: robo shell")
                 .detail("     uv sync"),
         );
@@ -111,18 +126,21 @@ pub(super) fn run_summary(
         PythonEnvironmentOrigin::Missing => {
             warnings += 1;
             attention.push(
-                Attention::new("Python environment missing")
+                Attention::new(id::PYTHON_ENV_MISSING, "Python environment missing")
                     .detail("run: robo shell")
                     .detail("     uv sync"),
             );
         }
         PythonEnvironmentOrigin::NixBacked(_origin) => {
-            environment_ready.push(format!("Nix-backed Python"));
+            environment_ready.push("Nix-backed Python".to_string());
         }
         PythonEnvironmentOrigin::HostBacked(origin) => {
             issues += 1;
             attention.push(
-                Attention::new("Python environment was created outside robo-nix")
+                Attention::new(
+                    id::PYTHON_ENV_HOST_OWNED,
+                    "Python environment was created outside robo-nix",
+                )
                     .detail(format!("found: {origin}"))
                     .detail("fix: robo shell -c 'uv venv --python \"$ROBO_NIX_PYTHON\" --clear && uv sync'"),
             );
@@ -133,9 +151,11 @@ pub(super) fn run_summary(
     if !native_tool_shims.is_empty() {
         warnings += 1;
         attention.push(
-            Attention::new("Python environment contains native build tool shims")
-                .detail(format!("found: {}", native_tool_shims.join(", ")))
-                .detail("note: Nix owns CMake, Ninja, compilers, and native build tools"),
+            Attention::new(
+                id::NATIVE_PYTHON_BUILD_TOOL_SHIM,
+                "Python environment contains native build tool shims",
+            )
+                .detail(format!("found: {}", native_tool_shims.join(", "))),
         );
     }
 
@@ -155,7 +175,10 @@ pub(super) fn run_summary(
         } else {
             warnings += missing.len();
             attention.push(
-                Attention::new("runtime components may be incomplete")
+                Attention::new(
+                    id::RUNTIME_COMPONENTS_INCOMPLETE,
+                    "runtime components may be incomplete",
+                )
                     .detail(format!("missing: {}", missing.join(", ")))
                     .detail("run: robo init . --force"),
             );
@@ -168,19 +191,20 @@ pub(super) fn run_summary(
         .filter(|path| !Path::new(&path.name).is_dir())
         .map(|path| path.name.clone())
         .collect();
-    if missing_directories.is_empty() {
-        if !why.required_directories.is_empty() {
-            runtime_ready.push(format!(
-                "required directories ({})",
-                why.required_directories.len()
-            ));
-        }
-    } else {
+    if !missing_directories.is_empty() {
         issues += missing_directories.len();
         attention.push(
-            Attention::new("required directories missing")
+            Attention::new(
+                id::PROJECT_REQUIRED_DIRECTORIES_MISSING,
+                "required directories missing",
+            )
                 .detail(format!("missing: {}", missing_directories.join(", "))),
         );
+    } else if !why.required_directories.is_empty() {
+        runtime_ready.push(format!(
+            "required directories ({})",
+            why.required_directories.len()
+        ));
     }
 
     summarize_cuda_requirements(
@@ -194,16 +218,16 @@ pub(super) fn run_summary(
     summarize_graphics_environment(&runtime, &mut warnings, &mut attention);
     progress.finish();
 
-    if args.deep {
-        if let Err(code) = run_deep_checks(
+    if args.deep
+        && let Err(code) = run_deep_checks(
             config,
             &runtime,
             &pyproject_dependencies,
             &mut issues,
             &mut warnings,
-        ) {
-            return code;
-        }
+        )
+    {
+        return code;
     }
 
     print_summary(
@@ -262,7 +286,10 @@ fn summarize_graphics_environment(
 
     *warnings += 1;
     attention.push(
-        Attention::new("MuJoCo GL backend is forced")
+        Attention::new(
+            id::GRAPHICS_MUJOCO_GL_FORCED,
+            "MuJoCo GL backend is forced",
+        )
             .detail(format!("found: MUJOCO_GL={mujoco_gl}"))
             .detail("note: desktop GLFW viewers usually need this unset")
             .detail("fix: unset MUJOCO_GL before running graphical MuJoCo apps"),
@@ -294,7 +321,7 @@ fn summarize_cuda_host_requirement(
     if env::consts::OS != "linux" {
         *issues += 1;
         attention.push(
-            Attention::new("CUDA requires a Linux host")
+            Attention::new(id::CUDA_HOST_NOT_READY, "CUDA requires a Linux host")
                 .detail("fix: use a Linux NVIDIA machine for this runtime"),
         );
         return;
@@ -303,17 +330,25 @@ fn summarize_cuda_host_requirement(
     let Some(host_version) = crate::runtime::host_cuda_driver_version() else {
         *issues += 1;
         attention.push(
-            Attention::new("NVIDIA driver stack not found")
+            Attention::new(
+                id::CUDA_HOST_NOT_READY,
+                "NVIDIA driver stack not found",
+            )
                 .detail("fix: run on a machine with NVIDIA drivers installed"),
         );
         return;
     };
 
     if let Some(expected) = plan.expected_wheel_version.as_deref() {
-        if crate::runtime::cuda_version_less_than(&host_version, expected) == Some(true) {
+        let driver_too_old =
+            crate::runtime::cuda_version_less_than(&host_version, expected) == Some(true);
+        if driver_too_old {
             *issues += 1;
             attention.push(
-                Attention::new("CUDA host driver is too old")
+                Attention::new(
+                    id::CUDA_DRIVER_WHEEL_MISMATCH,
+                    "CUDA host driver is too old",
+                )
                     .detail(format!("found: CUDA {host_version}"))
                     .detail(format!("need: CUDA {expected} for uv.lock CUDA wheels"))
                     .detail("fix: upgrade the NVIDIA driver or regenerate uv.lock with older CUDA wheels"),
@@ -330,7 +365,10 @@ fn summarize_cuda_host_requirement(
     } else {
         *warnings += 1;
         attention.push(
-            Attention::new("CUDA driver library not found")
+            Attention::new(
+                id::CUDA_DRIVER_NOT_VISIBLE,
+                "CUDA driver library not found",
+            )
                 .detail("note: Nix provides the CUDA build toolkit, but libcuda.so.1 comes from the host driver")
                 .detail("deep: robo check --deep"),
         );
@@ -350,7 +388,10 @@ fn summarize_cuda_toolkit_requirement(
             return;
         }
         *warnings += 1;
-        let mut item = Attention::new("CUDA toolkit not visible in this shell")
+        let mut item = Attention::new(
+            id::CUDA_TOOLKIT_NOT_VISIBLE,
+            "CUDA toolkit not visible in this shell",
+        )
             .detail("run: robo shell")
             .detail("note: CUDA_HOME/CUDA_PATH are set inside the runtime");
         if !deep {
@@ -368,7 +409,10 @@ fn summarize_cuda_toolkit_requirement(
     let Some(actual) = crate::runtime::cuda_version_from_root() else {
         *warnings += 1;
         attention.push(
-            Attention::new("CUDA toolkit version is unknown")
+            Attention::new(
+                id::CUDA_TOOLKIT_NOT_VISIBLE,
+                "CUDA toolkit version is unknown",
+            )
                 .detail(format!("path: {cuda_root}"))
                 .detail("deep: robo check --deep"),
         );
@@ -380,7 +424,10 @@ fn summarize_cuda_toolkit_requirement(
     } else {
         *issues += 1;
         attention.push(
-            Attention::new("CUDA toolkit version does not match uv.lock")
+            Attention::new(
+                id::CUDA_DRIVER_WHEEL_MISMATCH,
+                "CUDA toolkit version does not match uv.lock",
+            )
                 .detail(format!("found: CUDA {actual} at {cuda_root}"))
                 .detail(format!("need: CUDA {expected}")),
         );
@@ -390,7 +437,7 @@ fn summarize_cuda_toolkit_requirement(
 fn print_summary(
     config: Config,
     runtime: &ProjectRuntime,
-    workspace: &str,
+    _workspace: &str,
     project_ready: &[String],
     runtime_ready: &[String],
     environment_ready: &[String],
@@ -406,11 +453,12 @@ fn print_summary(
         LabelKind::Error
     };
 
+    let python = format!("python={}", runtime.python_version);
     println!(
-        "{}  {}  python={}  {}{}",
-        runtime.env_name,
+        "{}  {}  {}  {}{}",
+        label(config, &runtime.env_name, LabelKind::Status),
         label(config, status, status_kind),
-        runtime.python_version,
+        label(config, &python, LabelKind::Hint),
         count_label(config, warnings, "warning", LabelKind::Warn),
         if issues == 0 {
             String::new()
@@ -421,7 +469,6 @@ fn print_summary(
             )
         }
     );
-    println!("{}", workspace);
 
     if !project_ready.is_empty() {
         print_compact_row(config, LabelKind::Ok, "project", &project_ready.join(", "));
@@ -447,8 +494,8 @@ fn print_summary(
     if !deep {
         print_compact_command_row(
             config,
-            LabelKind::Warn,
-            "skipped",
+            LabelKind::Hint,
+            "next",
             "deep runtime probes",
             "robo check --deep",
         );
@@ -464,7 +511,7 @@ fn print_compact_row(config: Config, kind: LabelKind, label_text: &str, body: &s
     println!(
         "{} {}: {}",
         label(config, "✓", kind),
-        label(config, &format!("{label_text}:"), LabelKind::Status),
+        label(config, label_text, LabelKind::Status),
         inline(config, body),
     );
 }
@@ -478,8 +525,8 @@ fn print_compact_command_row(
 ) {
     print!(
         "{} {}: {}: ",
-        label(config, "!", kind),
-        label(config, &format!("{label_text}:"), LabelKind::Status),
+        label(config, "·", kind),
+        label(config, label_text, LabelKind::Status),
         inline(config, body),
     );
     println!("{}", label(config, command, LabelKind::Command));
@@ -489,10 +536,11 @@ fn print_compact_attention(config: Config, item: &Attention) {
     let label_text = compact_attention_label(&item.title);
     let body = compact_attention_body(item);
     println!(
-        "{} {}: {}",
+        "{} {}: {} {}",
         label(config, "!", LabelKind::Warn),
-        label(config, &format!("{label_text}:"), LabelKind::Status),
+        label(config, label_text, LabelKind::Status),
         inline(config, &body),
+        label(config, &format!("[{}]", item.id), LabelKind::Hint),
     );
     for detail in &item.details {
         println!("  {}", summary_detail(config, detail));
@@ -516,10 +564,10 @@ fn compact_attention_label(title: &str) -> &str {
 }
 
 fn compact_attention_body(item: &Attention) -> String {
-    if item.title == "Python environment contains native build tool shims" {
-        if let Some(found) = item.details.iter().find_map(|detail| detail.strip_prefix("found: ")) {
-            return format!("native build tool shims: {found}");
-        }
+    if item.title == "Python environment contains native build tool shims"
+        && let Some(found) = item.details.iter().find_map(|detail| detail.strip_prefix("found: "))
+    {
+        return format!("native build tool shims: {found}");
     }
 
     item.title.clone()

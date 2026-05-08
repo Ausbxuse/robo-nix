@@ -1,10 +1,11 @@
 use std::fs;
 use std::path::Path;
 
+use crate::diagnose::id;
 use crate::runtime::ProjectRuntime;
 use crate::{Config, exact_python_requirement};
 
-use super::output::{check_error, check_hint, check_ok, check_warn};
+use super::output::{check_error_diag, check_hint, check_ok, check_warn_diag};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum PythonEnvironmentOrigin {
@@ -55,9 +56,10 @@ pub(super) fn check_python_files(
                     &format!(".python-version matches {}", runtime.python_version),
                 );
             } else {
-                check_warn(
+                check_warn_diag(
                     config,
                     warnings,
+                    id::PYTHON_VERSION_MISMATCH,
                     &format!(
                         ".python-version is {version} but robo.nix declares {}",
                         runtime.python_version
@@ -70,7 +72,12 @@ pub(super) fn check_python_files(
             }
         }
         Err(_) => {
-            check_warn(config, warnings, ".python-version is missing");
+            check_warn_diag(
+                config,
+                warnings,
+                id::PYTHON_PROJECT_FILES_MISSING,
+                ".python-version is missing",
+            );
             check_hint(
                 config,
                 &format!(
@@ -89,9 +96,10 @@ pub(super) fn check_python_files(
                     &format!("pyproject.toml requires Python {required}"),
                 );
             } else {
-                check_error(
+                check_error_diag(
                     config,
                     issues,
+                    id::PYTHON_VERSION_MISMATCH,
                     &format!(
                         "pyproject.toml requires Python {required} but robo.nix declares {}",
                         runtime.python_version
@@ -106,7 +114,12 @@ pub(super) fn check_python_files(
             }
         }
     } else {
-        check_warn(config, warnings, "pyproject.toml is missing");
+        check_warn_diag(
+            config,
+            warnings,
+            id::PYTHON_PROJECT_FILES_MISSING,
+            "pyproject.toml is missing",
+        );
         check_hint(config, "run `robo init .` or create pyproject.toml for uv");
     }
 }
@@ -114,7 +127,12 @@ pub(super) fn check_python_files(
 pub(super) fn check_python_environment(config: Config, issues: &mut usize, warnings: &mut usize) {
     match python_environment_origin() {
         PythonEnvironmentOrigin::Missing => {
-            check_warn(config, warnings, "Python virtualenv is missing");
+            check_warn_diag(
+                config,
+                warnings,
+                id::PYTHON_ENV_MISSING,
+                "Python virtualenv is missing",
+            );
             check_hint(config, "run `robo shell`, then `uv sync`");
         }
         PythonEnvironmentOrigin::NixBacked(origin) => {
@@ -124,9 +142,10 @@ pub(super) fn check_python_environment(config: Config, issues: &mut usize, warni
             );
         }
         PythonEnvironmentOrigin::HostBacked(origin) => {
-            check_error(
+            check_error_diag(
                 config,
                 issues,
+                id::PYTHON_ENV_HOST_OWNED,
                 "Python virtualenv was created outside robo-nix",
             );
             check_hint(config, &format!("found interpreter origin: {origin}"));

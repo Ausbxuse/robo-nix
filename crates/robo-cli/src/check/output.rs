@@ -12,18 +12,33 @@ pub(super) fn check_line(config: Config, tag: &str, kind: LabelKind, message: &s
     println!("{} {}", label(config, tag, kind), inline(config, message));
 }
 
+pub(super) fn check_diagnostic_line(
+    config: Config,
+    level: &str,
+    kind: LabelKind,
+    id: &str,
+    message: &str,
+) {
+    println!(
+        "{}{} {}",
+        label(config, level, kind),
+        label(config, &format!("[{id}]:"), LabelKind::Hint),
+        inline(config, message)
+    );
+}
+
 pub(super) fn check_ok(config: Config, message: &str) {
     check_line(config, "ok:", LabelKind::Ok, message);
 }
 
-pub(super) fn check_warn(config: Config, warnings: &mut usize, message: &str) {
+pub(super) fn check_warn_diag(config: Config, warnings: &mut usize, id: &str, message: &str) {
     *warnings += 1;
-    check_line(config, "warn:", LabelKind::Warn, message);
+    check_diagnostic_line(config, "warn", LabelKind::Warn, id, message);
 }
 
-pub(super) fn check_error(config: Config, issues: &mut usize, message: &str) {
+pub(super) fn check_error_diag(config: Config, issues: &mut usize, id: &str, message: &str) {
     *issues += 1;
-    check_line(config, "error:", LabelKind::Error, message);
+    check_diagnostic_line(config, "error", LabelKind::Error, id, message);
 }
 
 pub(super) fn check_hint(config: Config, message: &str) {

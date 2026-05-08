@@ -46,6 +46,9 @@
       }
       + ''
 
+        unset PYTHONHOME
+        unset PYTHONPATH
+
         robo_nix_filter_python_flags() {
           filtered=""
           pending_isystem=0
@@ -118,15 +121,11 @@
             *) export PATH="$venv_dir/bin:$PATH" ;;
           esac
           venv_python="$(readlink -f "$venv_dir/bin/python" 2>/dev/null || true)"
-          case "$venv_python" in
-            /nix/store/*) ;;
-            "")
-              ;;
-            *)
-              printf "warn: existing uv environment was not created from robo-nix Python: %s\n" "$venv_python" >&2
-              printf '%s\n' "hint: run 'uv venv --python \"$ROBO_NIX_PYTHON\" --clear' and then 'uv sync'" >&2
-              ;;
-          esac
+          if [ -n "$venv_python" ] && [ "$venv_python" != "$ROBO_NIX_PYTHON" ]; then
+            printf "warn: existing uv environment was not created from the current robo-nix Python: %s\n" "$venv_python" >&2
+            printf "hint: expected %s\n" "$ROBO_NIX_PYTHON" >&2
+            printf '%s\n' "hint: run 'uv venv --python \"$ROBO_NIX_PYTHON\" --clear' and then 'uv sync'" >&2
+          fi
           unset venv_python
         fi
       '';

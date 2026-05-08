@@ -45,6 +45,11 @@ assert_basic_project_init() {
 	assert_file_contains "$tmpdir/project/flake.nix" "mkProjectFlakeFromManifest"
 	assert_file_contains "$tmpdir/project/robo.nix" '"base"'
 	assert_file_contains "$tmpdir/project/robo.nix" '"python-uv"'
+	assert_file_contains "$tmpdir/project/robo.nix" 'profile = "minimal";'
+	assert_file_contains "$tmpdir/project/robo.nix" 'extraPackages = pkgs: ['
+	assert_file_contains "$tmpdir/project/robo.nix" '# pkgs.imagemagick'
+	assert_file_contains "$tmpdir/project/robo.nix" 'extraRuntimeLibraries = pkgs: ['
+	assert_file_contains "$tmpdir/project/robo.nix" '# pkgs.ffmpeg'
 	assert_file_contains "$tmpdir/project/robo.nix" 'pythonVersion = "3.11";'
 	assert_file_contains "$tmpdir/project/.python-version" "3.11"
 	assert_file_contains "$tmpdir/project/pyproject.toml" 'requires-python = ">=3.11"'
@@ -284,11 +289,14 @@ EOF
 	assert_file_contains "$tmpdir/probed-project/robo.nix" '"isaac-sim"'
 	assert_file_contains "$tmpdir/probed-project/robo.nix" '"matplotlib-qt"'
 	assert_file_contains "$tmpdir/probed-project/robo.nix" '"qt6"'
-	assert_file_contains "$tmpdir/probed-project/robo.nix" 'provenance = {'
 	assert_file_contains "$tmpdir/probed-project/robo.nix" '# Inferred from pyproject.toml: pyproject.toml uses MuJoCo/simulation packages'
 	assert_file_contains "$tmpdir/probed-project/robo.nix" '# Inferred from pyproject.toml: pyproject.toml uses Qt bindings that commonly need desktop display and OpenGL runtime libraries'
 	assert_file_contains "$tmpdir/probed-project/robo.nix" 'pythonVersion = "3.12.11";'
 	assert_file_contains "$tmpdir/probed-project/robo.nix" 'profile = "minimal";'
+	assert_file_contains "$tmpdir/probed-project/robo.nix" 'extraPackages = pkgs: ['
+	assert_file_contains "$tmpdir/probed-project/robo.nix" '# pkgs.imagemagick'
+	assert_file_contains "$tmpdir/probed-project/robo.nix" 'extraRuntimeLibraries = pkgs: ['
+	assert_file_contains "$tmpdir/probed-project/robo.nix" '# pkgs.ffmpeg'
 	assert_file_contains "$tmpdir/probed-project/.python-version" "3.12.11"
 	assert_file_contains "$tmpdir/probed-project/pyproject.toml" "opencv-python"
 	if grep -F "requirements = [" "$tmpdir/probed-project/robo.nix" >/dev/null; then
@@ -305,6 +313,10 @@ EOF
 	fi
 	if grep -F "generatedBy =" "$tmpdir/probed-project/robo.nix" >/dev/null; then
 		echo "generated robo.nix should use comments for human-facing generation context" >&2
+		exit 1
+	fi
+	if grep -F "provenance = {" "$tmpdir/probed-project/robo.nix" >/dev/null; then
+		echo "generated robo.nix should keep profile at the top level when no source scripts are present" >&2
 		exit 1
 	fi
 	if grep -F 'kind = "bootstrap";' "$tmpdir/probed-project/robo.nix" >/dev/null; then

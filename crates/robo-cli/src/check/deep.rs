@@ -2,11 +2,12 @@ use std::collections::BTreeSet;
 use std::path::Path;
 use std::process::ExitCode;
 
+use crate::diagnose::id;
 use crate::runtime::ProjectRuntime;
 use crate::{Config, LabelKind, UiProgress, combined_output, run_bootstrap_with_progress};
 
 use super::egl;
-use super::output::{check_error, check_hint, check_line, check_ok, check_warn};
+use super::output::{check_error_diag, check_hint, check_line, check_ok, check_warn_diag};
 use super::runtime_command;
 
 #[derive(serde::Deserialize)]
@@ -71,13 +72,19 @@ fn check_runtime_preview(config: Config, warnings: &mut usize, progress: Option<
                 }
             }
             Ok(output) => {
-                check_warn(config, warnings, "could not preview runtime downloads");
+                check_warn_diag(
+                    config,
+                    warnings,
+                    id::RUNTIME_FILES_MISSING_OR_STALE,
+                    "could not preview runtime downloads",
+                );
                 check_hint(config, &combined_output(&output));
             }
             Err(err) => {
-                check_warn(
+                check_warn_diag(
                     config,
                     warnings,
+                    id::RUNTIME_FILES_MISSING_OR_STALE,
                     &format!("failed to start Nix preview: {err}"),
                 );
             }
@@ -116,13 +123,19 @@ fn check_runtime_tools(config: Config, issues: &mut usize, progress: &mut UiProg
     progress.suspend(|| match output {
         Ok(output) if output.status.success() => check_ok(config, "uv is available"),
         Ok(output) => {
-            check_error(config, issues, "uv is not available in the runtime shell");
+            check_error_diag(
+                config,
+                issues,
+                id::RUNTIME_TOOL_MISSING,
+                "uv is not available in the runtime shell",
+            );
             check_hint(config, &combined_output(&output));
         }
         Err(err) => {
-            check_error(
+            check_error_diag(
                 config,
                 issues,
+                id::RUNTIME_TOOL_MISSING,
                 &format!("failed to probe uv in runtime shell: {err}"),
             );
         }
@@ -154,13 +167,23 @@ fn check_runtime_egl_glvnd_surface(
                 match finding.kind {
                     egl::FindingKind::Ok => check_ok(config, &finding.message),
                     egl::FindingKind::Warn => {
-                        check_warn(config, warnings, &finding.message);
+                        check_warn_diag(
+                            config,
+                            warnings,
+                            egl_diagnostic_id(&finding.message),
+                            &finding.message,
+                        );
                         if let Some(hint) = finding.hint {
                             check_hint(config, hint);
                         }
                     }
                     egl::FindingKind::Error => {
-                        check_error(config, issues, &finding.message);
+                        check_error_diag(
+                            config,
+                            issues,
+                            egl_diagnostic_id(&finding.message),
+                            &finding.message,
+                        );
                         if let Some(hint) = finding.hint {
                             check_hint(config, hint);
                         }
@@ -169,13 +192,19 @@ fn check_runtime_egl_glvnd_surface(
             }
         }
         Ok(output) => {
-            check_warn(config, warnings, "could not inspect EGL/GLVND runtime state");
+            check_warn_diag(
+                config,
+                warnings,
+                id::GRAPHICS_EGL_CONTEXT,
+                "could not inspect EGL/GLVND runtime state",
+            );
             check_hint(config, &combined_output(&output));
         }
         Err(err) => {
-            check_warn(
+            check_warn_diag(
                 config,
                 warnings,
+                id::GRAPHICS_EGL_CONTEXT,
                 &format!("failed to probe EGL/GLVND runtime state: {err}"),
             );
         }
@@ -248,7 +277,12 @@ printf 'root=%s\n' "$root"
             );
         }
         Ok(output) => {
-            check_error(config, issues, "CUDA native build surface is incomplete");
+            check_error_diag(
+                config,
+                issues,
+                id::CUDA_TOOLKIT_NOT_VISIBLE,
+                "CUDA native build surface is incomplete",
+            );
             check_hint(
                 config,
                 "Nix owns nvcc, CUDA headers, CCCL headers, and the libcudart link surface for native extension builds",
@@ -260,9 +294,10 @@ printf 'root=%s\n' "$root"
             check_hint(config, &combined_output(&output));
         }
         Err(err) => {
-            check_error(
+            check_error_diag(
                 config,
                 issues,
+                id::CUDA_TOOLKIT_NOT_VISIBLE,
                 &format!("failed to probe CUDA native build surface: {err}"),
             );
         }
@@ -284,9 +319,10 @@ fn check_runtime_probes(
     if has_dependency(pyproject_dependencies, &["pyqt6", "pyqt5", "pyside6"]) {
         if !Path::new(".venv/bin/python").exists() {
             progress.suspend(|| {
-                check_warn(
+                check_warn_diag(
                     config,
                     warnings,
+                    id::PYTHON_ENV_MISSING,
                     "Python virtualenv is missing; skipped Qt binding import probe",
                 );
                 check_hint(
@@ -303,16 +339,22 @@ fn check_runtime_probes(
                     check_ok(config, "PyQt6 QtCore/QtGui/QtWidgets import works")
                 }
                 Ok(output) => {
-                    check_warn(config, warnings, "PyQt6 GUI import failed");
+                    check_warn_diag(
+                        config,
+                        warnings,
+                        id::GRAPHICS_PYTHON_GUI_IMPORT,
+                        "PyQt6 GUI import failed",
+                    );
                     check_hint(config, &combined_output(&output));
                     check_hint(
                         config,
                         "run 'uv sync' after changing Python dependencies or add missing native runtime components",
                     );
                 }
-                Err(err) => check_warn(
+                Err(err) => check_warn_diag(
                     config,
                     warnings,
+                    id::GRAPHICS_PYTHON_GUI_IMPORT,
                     &format!("failed to run PyQt6 GUI probe: {err}"),
                 ),
             });
@@ -322,9 +364,10 @@ fn check_runtime_probes(
     if has_dependency(pyproject_dependencies, &["matplotlib"]) {
         if !Path::new(".venv/bin/python").exists() {
             progress.suspend(|| {
-                check_warn(
+                check_warn_diag(
                     config,
                     warnings,
+                    id::PYTHON_ENV_MISSING,
                     "Python virtualenv is missing; skipped matplotlib backend probe",
                 );
                 check_hint(
@@ -347,16 +390,22 @@ fn check_runtime_probes(
                     "matplotlib QtAgg backend probe works",
                 ),
                 Ok(output) => {
-                    check_warn(config, warnings, "matplotlib QtAgg backend probe failed");
+                    check_warn_diag(
+                        config,
+                        warnings,
+                        id::GRAPHICS_PYTHON_GUI_IMPORT,
+                        "matplotlib QtAgg backend probe failed",
+                    );
                     check_hint(config, &combined_output(&output));
                     check_hint(
                         config,
                         "install a Qt binding such as pyqt6 and include qt6,desktop-gl when using plt.show()",
                     );
                 }
-                Err(err) => check_warn(
+                Err(err) => check_warn_diag(
                     config,
                     warnings,
+                    id::GRAPHICS_PYTHON_GUI_IMPORT,
                     &format!("failed to run matplotlib QtAgg probe: {err}"),
                 ),
             });
@@ -366,9 +415,10 @@ fn check_runtime_probes(
     if has_dependency(pyproject_dependencies, &["torchcodec"]) {
         if !Path::new(".venv/bin/python").exists() {
             progress.suspend(|| {
-                check_warn(
+                check_warn_diag(
                     config,
                     warnings,
+                    id::PYTHON_ENV_MISSING,
                     "Python virtualenv is missing; skipped TorchCodec import probe",
                 );
                 check_hint(
@@ -386,20 +436,36 @@ fn check_runtime_probes(
                     "TorchCodec import works with the runtime FFmpeg libraries",
                 ),
                 Ok(output) => {
-                    check_warn(config, warnings, "TorchCodec import failed");
+                    check_warn_diag(
+                        config,
+                        warnings,
+                        id::MEDIA_FFMPEG_RUNTIME_MISSING,
+                        "TorchCodec import failed",
+                    );
                     check_hint(
                         config,
                         "TorchCodec needs FFmpeg shared libraries from the media component",
                     );
                     check_hint(config, &combined_output(&output));
                 }
-                Err(err) => check_warn(
+                Err(err) => check_warn_diag(
                     config,
                     warnings,
+                    id::MEDIA_FFMPEG_RUNTIME_MISSING,
                     &format!("failed to run TorchCodec import probe: {err}"),
                 ),
             });
         }
+    }
+}
+
+fn egl_diagnostic_id(message: &str) -> &'static str {
+    if message.contains("LIBGL_ALWAYS_SOFTWARE")
+        || message.contains("OpenGL renderer appears to be software")
+    {
+        id::GRAPHICS_SOFTWARE_RENDERER
+    } else {
+        id::GRAPHICS_EGL_CONTEXT
     }
 }
 

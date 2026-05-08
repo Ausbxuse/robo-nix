@@ -1,6 +1,18 @@
-# Agent Handoff
+# Repository Guidance
 
 Behavioral guidelines in this file bias toward caution over speed. For trivial tasks, use judgment, but keep diffs small and easy to audit.
+
+## Engineering Philosophy
+
+Optimize every change for robustness, extensibility, maintainability, consistency, readability, simplicity, and production-grade behavior.
+
+- Robustness means fixing the owning boundary instead of patching symptoms with narrow heuristics.
+- Extensibility means future coverage should usually be data-driven or localized to the product surface that owns it.
+- Maintainability means fewer moving parts, clear ownership, and tests that lock down the contract being changed.
+- Consistency means matching existing CLI wording, Nix module style, docs structure, and user-facing workflow before inventing new patterns.
+- Readability means direct code, natural names, and comments only where they prevent rediscovery.
+- Simplicity means deleting or tightening before adding abstractions, flags, prompts, or compatibility layers.
+- Production-grade means explicit diagnostics, deterministic behavior, auditable diffs, and no hidden project-specific magic.
 
 ## Current Direction
 
@@ -20,6 +32,8 @@ Do not make Nix-managed Python packaging a first-class product mode unless real 
 Do not make `robo` run `uv sync` implicitly or offer an interactive "run uv sync now?" prompt. `robo` exists to make the uv environment work by providing the native/runtime layer and diagnostics; uv syncing remains an explicit user or project command because dependency groups, extras, package indexes, editable sources, and install policy are project-owned.
 
 Python interpreter selection must prioritize robotics compatibility and cache availability, not only whatever the current nixpkgs happens to expose. `cachix/nixpkgs-python` is the intended interpreter source for broad Python-version coverage, including older versions such as Python 3.11 that may fall out of current nixpkgs. Do not “optimize” `python-uv` to prefer nixpkgs for minor versions just because it evaluates locally; that regresses downstream users when nixpkgs drops older interpreters. If CPython starts compiling, fix substituter/cache wiring (`nixpkgs-python.cachix.org` plus `--accept-flake-config`) before changing interpreter selection.
+
+Keep `nixpkgs-python.inputs.nixpkgs` following the same `nixpkgs` input that provides runtime libraries. Splitting those inputs can make CPython extension modules load ABI-incompatible native libraries at runtime. If that happens, fix the flake input graph and stale uv virtualenv, not package-specific `LD_LIBRARY_PATH` extraction in `python-uv`.
 
 `robo-nix` is not here to adapt to every downstream project's environment policy. It should establish a consistent standard that downstream projects can converge on. Until they do, `robo` should print clear expectations, observed facts, and debugging context, not auto-solve project-specific dependency group choices, optional extras, source pins, or workflow conventions with narrow heuristics.
 
@@ -229,9 +243,6 @@ nix flake check
 - TODO: before the public release branch moves to `master`, update README and docs curl commands from `develop/scripts/install.sh` to `master/scripts/install.sh`.
 - Project-specific robot/source policy should stay in downstream projects unless it becomes broadly reusable.
 - The product north star is filling the native runtime gap implied by `pyproject.toml` and `uv.lock`.
-- Runtime inference rules live in [nix/metadata/runtime-inference.nix](./nix/metadata/runtime-inference.nix:1); known failure modes are documented in [docs/users/diagnostics.md](./docs/users/diagnostics.md:1).
+- Runtime inference rules live in [nix/metadata/runtime-inference.nix](./nix/metadata/runtime-inference.nix:1); known failure modes are documented in [docs/users/troubleshooting.md](./docs/users/troubleshooting.md:1).
 - Keep names user-facing and natural. `robo` is the CLI name; avoid reintroducing `rob` or `project-init` as public surfaces.
 - Keep tests fast for development. Prefer the focused edit-loop checks in `tests/dev-check.sh`, and reserve full validation for broader changes or CI.
-- Recent local profiling baseline on this host was roughly:
-  - default app eval: `2.41s`
-  - `nix flake show --all-systems`: `4.79s`

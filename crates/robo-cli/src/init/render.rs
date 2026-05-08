@@ -408,8 +408,17 @@ pub(super) fn render_project(spec: &ProjectSpec) -> String {
   schemaVersion = 1;
   envName = "{}";
   description = "{}";
+  profile = "{}";
   components = [
 {}
+  ];
+  # Add command-line tools here if the project needs them on PATH.
+  extraPackages = pkgs: [
+    # pkgs.imagemagick
+  ];
+  # Add shared libraries here if uv-installed packages need them at runtime.
+  extraRuntimeLibraries = pkgs: [
+    # pkgs.ffmpeg
   ];
   pythonVersion = "{}";
   supportedSystems = [
@@ -418,6 +427,7 @@ pub(super) fn render_project(spec: &ProjectSpec) -> String {
   workspaceRoot = "{}";"#,
         escape_nix(&spec.env_name),
         escape_nix(&spec.description),
+        escape_nix(&spec.profile_name),
         components,
         escape_nix(&spec.python_version),
         render_list(&spec.supported_systems),
@@ -455,23 +465,11 @@ pub(super) fn render_project(spec: &ProjectSpec) -> String {
         for script in &spec.source_scripts {
             text.push_str(&format!("    . \"$WORKSPACE_ROOT/{}\"\n", script));
         }
-        text.push_str("  '';");
-    }
-    {
-        text.push_str("\n\n  # Kept for diagnostics. Edit components above for runtime changes.\n");
-        text.push_str("  provenance = {\n");
-        text.push_str(&format!(
-            "    profile = \"{}\";\n",
-            escape_nix(&spec.profile_name)
-        ));
-        if !spec.source_scripts.is_empty() {
-            text.push_str("    sourceScripts = [\n");
-            for script in &spec.source_scripts {
-                text.push_str(&format!("      \"{}\"\n", escape_nix(script)));
-            }
-            text.push_str("    ];\n");
+        text.push_str("  '';\n\n  provenance = {\n    sourceScripts = [\n");
+        for script in &spec.source_scripts {
+            text.push_str(&format!("      \"{}\"\n", escape_nix(script)));
         }
-        text.push_str("  };");
+        text.push_str("    ];\n  };");
     }
     text.push_str("\n}");
     text

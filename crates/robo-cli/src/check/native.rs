@@ -2,9 +2,10 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
 
+use crate::diagnose::id;
 use crate::{Config, quoted_value};
 
-use super::output::{check_hint, check_warn};
+use super::output::{check_hint, check_warn_diag};
 
 const NATIVE_TOOL_WHEEL_PACKAGES: &[&str] = &["cmake", "ninja", "patchelf"];
 
@@ -14,9 +15,10 @@ pub(super) fn check_native_tool_wheel_shims(config: Config, warnings: &mut usize
         return;
     }
 
-    check_warn(
+    check_warn_diag(
         config,
         warnings,
+        id::NATIVE_PYTHON_BUILD_TOOL_SHIM,
         &format!(
             "Python virtualenv contains native build tool shims: {}",
             tools.join(", ")

@@ -63,7 +63,8 @@ enum SearchAttempt {
 }
 
 fn run_nix_locate(config: Config, query: &str) -> SearchAttempt {
-    match nix_locate_command("nix-locate", query).output() {
+    let mut command = nix_locate_command("nix-locate", query);
+    match crate::output_with_spinner(config, &mut command, "search: checking local nix-index") {
         Ok(output) if output.status.success() => SearchAttempt::Found(output),
         Ok(output) if nix_index_database_missing(&output) => run_prebuilt_nix_locate(config, query),
         Ok(output) => SearchAttempt::Failed(
@@ -78,7 +79,7 @@ fn run_prebuilt_nix_locate(config: Config, query: &str) -> SearchAttempt {
     let mut command = crate::nix_command(config);
     command.args(["run", "github:nix-community/nix-index-database", "--"]);
     command.args(nix_locate_args(query));
-    match command.output() {
+    match crate::output_with_spinner(config, &mut command, "search: checking prebuilt nix-index") {
         Ok(output) if output.status.success() => SearchAttempt::Found(output),
         Ok(output) => SearchAttempt::Failed(
             "prebuilt nix-index database search failed".to_string(),

@@ -139,6 +139,7 @@ struct ComponentReason {
 struct ProjectManifest {
     schema_version: Option<String>,
     env_name: Option<String>,
+    profile: Option<String>,
     python_version: Option<String>,
     cuda_wheel_version: Option<String>,
     #[serde(default)]
@@ -247,14 +248,11 @@ pub(crate) fn infer_cuda_wheel_version_from_uv_lock_text(text: &str) -> Option<S
         if line.starts_with("version = ")
             && let Some(name) = package_name.as_deref()
             && is_cuda_package_name(name)
+            && let Some(raw) = extract_quoted(line)
+            && let Some(version) = parse_major_minor(raw)
+            && best.is_none_or(|current| version > current)
         {
-            if let Some(raw) = extract_quoted(line) {
-                if let Some(version) = parse_major_minor(raw) {
-                    if best.is_none_or(|current| version > current) {
-                        best = Some(version);
-                    }
-                }
-            }
+            best = Some(version);
         }
     }
 
@@ -566,8 +564,9 @@ fn parse_major_minor(text: &str) -> Option<(u32, u32)> {
 pub(crate) fn build_runtime_why(runtime: &ProjectRuntime) -> RuntimeWhy {
     let manifest = read_project_manifest().unwrap_or_default();
     let runtime_manifest = read_runtime_manifest();
+    let profile = manifest.profile.or(manifest.provenance.profile);
     let provenance = ProjectProvenance {
-        profile: manifest.provenance.profile,
+        profile: profile.clone(),
         inferred: manifest.provenance.inferred,
         component_reasons: component_reasons(manifest.provenance.component_reasons),
         required_dirs: manifest.required_directories,
@@ -585,16 +584,17 @@ pub(crate) fn build_runtime_why(runtime: &ProjectRuntime) -> RuntimeWhy {
         .iter()
         .map(explain_requirement)
         .collect();
+    let pyproject = fs::read_to_string("pyproject.toml").ok();
     if let Some(runtime_manifest) = &runtime_manifest {
-        if let Ok(pyproject) = fs::read_to_string("pyproject.toml") {
+        if let Some(pyproject) = pyproject.as_deref() {
             for component in expected_components_from_pyproject_with_manifest(
                 runtime_manifest,
-                &pyproject,
+                pyproject,
             ) {
                 pyproject_component_reasons.insert(component.name, component.reason);
             }
             requirements.extend(
-                expected_requirements_from_pyproject_with_manifest(runtime_manifest, &pyproject)
+                expected_requirements_from_pyproject_with_manifest(runtime_manifest, pyproject)
                     .into_iter()
                     .map(explain_expected_requirement),
             );
@@ -611,7 +611,7 @@ pub(crate) fn build_runtime_why(runtime: &ProjectRuntime) -> RuntimeWhy {
     RuntimeWhy {
         env_name: runtime.env_name.clone(),
         python_version: runtime.python_version.clone(),
-        profile: provenance.profile.clone(),
+        profile,
         components: runtime
             .components
             .iter()
@@ -973,6 +973,7 @@ fn read_project_manifest() -> Option<ProjectManifest> {
       in builtins.toJSON {
         schemaVersion = if spec ? schemaVersion then toString spec.schemaVersion else null;
         envName = spec.envName or null;
+        profile = spec.profile or provenance.profile or null;
         pythonVersion = spec.pythonVersion or null;
         cudaWheelVersion = spec.cudaWheelVersion or null;
         requirements = spec.requirements or [];
