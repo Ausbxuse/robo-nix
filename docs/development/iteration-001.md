@@ -238,10 +238,13 @@ Confirmed consistency decisions:
 - "Stale" means generated runtime state no longer matches observed project
   facts, such as `.python-version` changing, `pyproject.toml` gaining a package
   that maps to a runtime component, or `flake.lock` no longer matching the
-  generated `flake.nix` inputs. `robo shell` should repair stale owned files
-  automatically and keep the shell up to date.
+  generated `flake.nix` inputs. `robo shell` should repair stale generated
+  plumbing automatically and keep the shell up to date.
 - Do not use ownership markers in generated files. `robo shell` owns
   `flake.nix`, `flake.lock`, `robo.nix`, and `.robo-nix/`.
+- `robo.nix` remains user-editable, like the old repo. `robo shell` may create
+  it when missing and may update generated/default fields, but it must preserve
+  user runtime policy rather than replacing the whole file.
 
 Resolved clarification:
 
@@ -249,13 +252,14 @@ Resolved clarification:
   around `robo shell` and `robo run`, with `robo shell` responsible for detecting
   the project state and preparing the generated runtime files it owns.
 
-Remaining ownership question:
+Resolved ownership clarification:
 
-- If `robo shell` owns and may rewrite all of `robo.nix`, then iteration 002
-  should treat `robo.nix` as generated output, not a user-editable policy file.
-  If users still need to edit runtime policy in iteration 002, that policy needs
-  a separate file or a preservation rule that does not depend on ownership
-  markers.
+- `robo.nix` is both prepared by `robo shell` and user-editable. Iteration 002
+  should use a simple preservation rule instead of ownership markers. For now,
+  that means create `robo.nix` when absent, parse/read the existing fields that
+  matter, merge newly inferred components into the component list, and avoid
+  deleting user additions or comments unless a later iteration introduces a more
+  precise Nix-preserving edit strategy.
 
 ## Supervisor Check
 
