@@ -175,8 +175,8 @@ Open design questions before implementation:
   keeps installation simple; runtime files are easier to patch locally but add
   packaging surface. Recommendation: use checked-in templates plus `include_str!`
   for now.
-- Confirm spelling: uv uses `.python-version` with a hyphen. Treat
-  `.python_version` as a typo unless explicitly corrected.
+- Confirmed spelling: uv uses `.python-version` with a hyphen. The earlier
+  `.python_version` mention was a typo.
 
 Alignment updates from review:
 
@@ -211,6 +211,13 @@ Consistency checks before implementation:
 - `robo shell` may grow quickly if it owns all early diagnostics. The explicit
   review direction is to accept that for now and refactor only when it becomes
   unmanageable.
+
+Confirmed consistency decisions:
+
+- Remove `robo check`.
+- Read `.python-version`.
+- Treat `robo shell` as the canonical command users primarily use.
+- Use `.python-version`, not `.python_version`.
 
 ## Supervisor Check
 
