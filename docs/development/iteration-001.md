@@ -84,6 +84,24 @@ Proposed handling:
   only durable lessons into `AGENTS.md`.
 - Review `AGENTS.md` as part of each iteration close-out, and update it only
   when the change would prevent future churn or rediscovery.
+- Reconsider embedded generated Nix strings in Rust. The current minimal CLI
+  writes `flake.nix` and `robo.nix` from Rust string literals, which is
+  tolerable for iteration 001 but likely not a clean long-term boundary.
+
+Proposed handling:
+
+- Keep Nix source as `.nix` template files once the generated project contract
+  grows beyond a few lines.
+- If Rust must ship templates, use `include_str!` over standalone template
+  files so reviewers can read Nix as Nix and run Nix-specific checks on it.
+- Keep Rust responsible for command parsing, file placement, overwrite policy,
+  and substituting a small number of scalar values.
+- Keep Nix responsible for shell structure, package lists, runtime library
+  behavior, and any future data-driven runtime logic.
+- Add focused tests that render templates into a temporary project and parse the
+  rendered Nix with `nix-instantiate --parse`.
+- Avoid building a Rust-side Nix AST or formatter unless `robo` becomes a
+  general Nix expression generator, which is not the current product goal.
 
 ## Supervisor Check
 
@@ -95,3 +113,5 @@ Before iteration 002, confirm whether this is the right minimal product core:
 - Is Python 3.11 the right initial default for robot-learning compatibility?
 - Should root `AGENTS.md` maintenance be a required close-out check for every
   iteration?
+- Should iteration 002 move generated Nix into template files before any new
+  runtime behavior is added?
