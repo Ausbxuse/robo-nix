@@ -173,8 +173,8 @@ Open design questions before implementation:
   into the `robo` binary at build time. The alternative is installing template
   files beside the binary and reading them at runtime. The compiled-in approach
   keeps installation simple; runtime files are easier to patch locally but add
-  packaging surface. Recommendation: use checked-in templates plus `include_str!`
-  for now.
+  packaging surface. Decision: use checked-in templates plus `include_str!` for
+  iteration 002.
 - Confirmed spelling: uv uses `.python-version` with a hyphen. The earlier
   `.python_version` mention was a typo.
 
@@ -218,6 +218,7 @@ Confirmed consistency decisions:
 - Read `.python-version`.
 - Treat `robo shell` as the canonical command users primarily use.
 - Use `.python-version`, not `.python_version`.
+- Use checked-in template files compiled into the binary with `include_str!`.
 
 ## Supervisor Check
 
