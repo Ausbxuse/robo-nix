@@ -238,8 +238,10 @@ Confirmed consistency decisions:
 - "Stale" means generated runtime state no longer matches observed project
   facts, such as `.python-version` changing, `pyproject.toml` gaining a package
   that maps to a runtime component, or `flake.lock` no longer matching the
-  generated `flake.nix` inputs. `robo shell` should repair stale generated
-  plumbing automatically and keep the shell up to date.
+  generated `flake.nix` inputs. "Repair" means making the smallest safe update
+  to the files `robo shell` owns: write missing `flake.nix`/`robo.nix`, refresh
+  generated plumbing, merge newly inferred components into a simple
+  user-editable `robo.nix`, and refresh `.robo-nix/` cache state.
 - Do not use ownership markers in generated files. `robo shell` owns
   `flake.nix`, `flake.lock`, `robo.nix`, and `.robo-nix/`.
 - `robo.nix` remains user-editable, like the old repo. `robo shell` may create
@@ -260,6 +262,16 @@ Resolved ownership clarification:
   matter, merge newly inferred components into the component list, and avoid
   deleting user additions or comments unless a later iteration introduces a more
   precise Nix-preserving edit strategy.
+- `robo shell` should follow the old repo's Python project logic: require
+  `.python-version`, allow `pyproject.toml` to drive inference when present, and
+  skip inference clearly when `pyproject.toml` is absent rather than failing.
+- Do not eagerly create or refresh `flake.lock` before it is needed. Running
+  `nix develop` can materialize/update the lock as part of normal Nix behavior;
+  extra lock-refresh commands add network/cache friction and should wait for a
+  concrete need.
+- Initial component names for iteration 002 are `python-uv`, `native-build`, and
+  `desktop-gl`. Treat CUDA as a diagnostic note first, not an automatically
+  selected component, unless a later review changes that contract.
 
 ## Supervisor Check
 
