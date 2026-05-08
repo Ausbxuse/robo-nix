@@ -50,3 +50,8 @@ Run for this iteration:
 - Regenerate dexmate runtime files from installed `robo`.
 - `UV_PROJECT_ENVIRONMENT=/tmp/dexmate-robo-verify-venv UV_CACHE_DIR=/tmp/dexmate-robo-verify-uv-cache robo run python -c 'import glfw; print(glfw.init())'`
   in dexmate.
+
+Post-fix result:
+
+- The focused GLFW command returned `1` with no `Failed to load libxkbcommon`
+  warning.
