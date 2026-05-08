@@ -52,3 +52,7 @@ Run for this iteration:
   in dexmate.
 - `UV_PROJECT_ENVIRONMENT=/tmp/dexmate-robo-verify-venv UV_CACHE_DIR=/tmp/dexmate-robo-verify-uv-cache robo run ./scripts/teleop.sh --help`
   in dexmate.
+
+Post-fix result:
+
+- The command printed the teleop CLI help text.
