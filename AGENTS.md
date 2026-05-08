@@ -63,6 +63,8 @@ environment manager.
 - `native-build` must expose the C++ runtime library as well as compiler tools.
   Python wheels such as NumPy can import native extensions that need
   `libstdc++.so.6` even when no package is actively compiling.
+- `native-build` must expose zlib as a runtime library. Native Python wheels can
+  import extensions that need `libz.so.1` even when installation succeeded.
 - `desktop-gl` must cover GLFW's basic Linux windowing path, including
   `libxkbcommon` for Wayland keyboard support.
 

@@ -48,6 +48,7 @@
       extraPackages = spec.extraPackages or (_: []);
       extraRuntimeLibraries = spec.extraRuntimeLibraries or (_: []);
       ccRuntimeLib = lib.getLib pkgs.stdenv.cc.cc;
+      zlibRuntimeLib = lib.getLib pkgs.zlib;
       cudaPackages = pkgs.cudaPackages;
       cudaToolkit = pkgs.symlinkJoin {
         name = "robo-cuda-toolkit-${cudaPackages.cudaMajorMinorVersion}";
@@ -98,7 +99,7 @@
 
       componentRuntimeLibraries = {
         python-uv = [];
-        native-build = [ccRuntimeLib];
+        native-build = [ccRuntimeLib zlibRuntimeLib];
         linux-headers = [];
         desktop-gl = componentPackages.desktop-gl;
         cuda-toolkit = let
