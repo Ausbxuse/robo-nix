@@ -85,6 +85,7 @@
           pkgs.libxext
           pkgs.libxfixes
           pkgs.libxi
+          pkgs.libxkbcommon
           pkgs.libxrandr
           pkgs.libxrender
           pkgs.libxtst
