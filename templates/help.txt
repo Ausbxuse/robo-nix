@@ -1,0 +1,8 @@
+Usage:
+  robo shell
+  robo run <command> [args...]
+
+Project setup:
+  .python-version is required.
+  pyproject.toml is managed by uv/project policy.
+  robo shell creates missing robo runtime files on first use.

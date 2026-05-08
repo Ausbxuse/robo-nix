@@ -1,13 +1,26 @@
 # robo-nix minimal core
 
-This branch is a greenfield rebuild of `robo-nix`.
+This branch is a greenfield rebuild of `robo-nix` around a shell-centered
+workflow for robot-learning projects.
 
-The first product contract is intentionally small:
+The current product contract is intentionally small:
 
-- `robo init [path] [--force]` writes a uv-backed Nix project.
-- `robo check` validates the files that `robo init` owns.
-- `robo shell` enters `nix develop`.
-- `robo run <command> [args...]` runs a command inside `nix develop`.
+- `robo shell` prepares missing runtime files and enters `nix develop`.
+- `robo run <command> [args...]` prepares the same runtime and runs one command.
+- `.python-version` is required.
+- `pyproject.toml` is owned by uv/project policy and is never created by `robo`.
+- `robo.nix` is created only on first bootstrap; after that it is user-managed.
 
-There is no `diagnose` command in this branch. Diagnostics should earn their way
-back as small, reusable checks with clear ownership.
+There is no `robo init`, `robo check`, or `robo diagnose` in this branch.
+
+Typical workflow:
+
+```bash
+uv python pin <version>
+robo shell
+uv sync
+```
+
+Runtime inference is first-bootstrap only. If `pyproject.toml` exists when
+`robo.nix` is missing, `robo shell` uses the small data file in
+`metadata/runtime-inference.tsv` to choose initial runtime components.
