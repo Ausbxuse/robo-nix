@@ -215,6 +215,7 @@ Consistency checks before implementation:
 Confirmed consistency decisions:
 
 - Remove `robo check`.
+- Remove `robo init`.
 - Read `.python-version`.
 - Treat `robo shell` as the canonical command users primarily use.
 - Use `.python-version`, not `.python_version`.
@@ -228,14 +229,26 @@ Confirmed consistency decisions:
   `opencv-python`, and `mujoco`.
 - A small tab-separated rule file is acceptable in principle if it keeps the
   implementation dependency-free and easy to audit.
+- `robo shell` should absorb the useful generated-file behavior from
+  `robo init` through auto-detection/bootstrap, similar to the original repo's
+  HEAD direction, while remaining explicit about what it writes.
 
-Blocking clarification before implementation:
+Resolved clarification:
 
-- Review said "we should not need `robo init`". This conflicts with earlier
-  iteration-002 scope, which still included `robo init` as the command that
-  writes generated project files. Clarify whether `robo init` should be removed
-  entirely, kept only as an optional bootstrap helper, or replaced by
-  `robo shell` creating/repairing generated files.
+- `robo init` should be removed entirely. Iteration 002 should reshape the CLI
+  around `robo shell` and `robo run`, with `robo shell` responsible for detecting
+  the project state and preparing the generated runtime files it owns.
+
+Remaining shell-bootstrap questions:
+
+- When `flake.nix` or `robo.nix` is absent but `.python-version` exists, should
+  `robo shell` write the missing generated files automatically, or should it
+  print the intended diff/path and require an explicit flag?
+- When generated files exist but are stale relative to `pyproject.toml` or
+  `.python-version`, should `robo shell` warn only, repair with a flag, or repair
+  automatically if the generated ownership marker matches?
+- What ownership marker should generated files carry so `robo shell` can
+  distinguish files it may repair from user-owned files it must not overwrite?
 
 ## Supervisor Check
 
