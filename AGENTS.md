@@ -60,6 +60,9 @@ environment manager.
 - Linux input packages such as `evdev` are handled through the `linux-headers`
   component. Keep this as a generic native-header contract, not a downstream
   project workaround.
+- `native-build` must expose the C++ runtime library as well as compiler tools.
+  Python wheels such as NumPy can import native extensions that need
+  `libstdc++.so.6` even when no package is actively compiling.
 
 ## Verification
 
