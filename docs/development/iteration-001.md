@@ -232,6 +232,16 @@ Confirmed consistency decisions:
 - `robo shell` should absorb the useful generated-file behavior from
   `robo init` through auto-detection/bootstrap, similar to the original repo's
   HEAD direction, while remaining explicit about what it writes.
+- `robo shell` should automatically write missing generated runtime files when
+  `.python-version` exists. It should fail clearly when `.python-version` is
+  missing.
+- "Stale" means generated runtime state no longer matches observed project
+  facts, such as `.python-version` changing, `pyproject.toml` gaining a package
+  that maps to a runtime component, or `flake.lock` no longer matching the
+  generated `flake.nix` inputs. `robo shell` should repair stale owned files
+  automatically and keep the shell up to date.
+- Do not use ownership markers in generated files. `robo shell` owns
+  `flake.nix`, `flake.lock`, `robo.nix`, and `.robo-nix/`.
 
 Resolved clarification:
 
@@ -239,16 +249,13 @@ Resolved clarification:
   around `robo shell` and `robo run`, with `robo shell` responsible for detecting
   the project state and preparing the generated runtime files it owns.
 
-Remaining shell-bootstrap questions:
+Remaining ownership question:
 
-- When `flake.nix` or `robo.nix` is absent but `.python-version` exists, should
-  `robo shell` write the missing generated files automatically, or should it
-  print the intended diff/path and require an explicit flag?
-- When generated files exist but are stale relative to `pyproject.toml` or
-  `.python-version`, should `robo shell` warn only, repair with a flag, or repair
-  automatically if the generated ownership marker matches?
-- What ownership marker should generated files carry so `robo shell` can
-  distinguish files it may repair from user-owned files it must not overwrite?
+- If `robo shell` owns and may rewrite all of `robo.nix`, then iteration 002
+  should treat `robo.nix` as generated output, not a user-editable policy file.
+  If users still need to edit runtime policy in iteration 002, that policy needs
+  a separate file or a preservation rule that does not depend on ownership
+  markers.
 
 ## Supervisor Check
 
