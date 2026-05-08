@@ -37,11 +37,9 @@ Examples:
 pyproject dependency: mujoco
 uv.lock wheel: torch 2.7.0+cu128
 uv.lock package: nvidia-cudnn-cu12
-workspace path: third_party/isaac-sim
-workspace file: setup.py containing CUDAExtension
 ```
 
-Facts may come from `pyproject.toml`, `uv.lock`, workspace scans, generated `robo.nix`, or explicit user overrides.
+Facts may come from `pyproject.toml`, `uv.lock`, generated `robo.nix`, or explicit user overrides.
 
 ## Runtime Requirements
 
@@ -98,12 +96,16 @@ component cuda-toolkit
   provides runtime.cuda.headers
   provides runtime.cuda.link.cudart
 
-component x11-gl
+component desktop-gl
   provides runtime.graphics.opengl
   provides runtime.graphics.x11
+  provides runtime.graphics.wayland
+
+component host-nvidia-gl
+  provides host.graphics.nvidia
 ```
 
-Nix components must not claim host-owned capabilities. For example, `cuda-toolkit` must not provide `host.cuda.driver` or `host.cuda.libcuda`.
+Nix-managed runtime components must not claim host-owned capabilities. For example, `cuda-toolkit` must not provide `host.cuda.driver` or `host.cuda.libcuda`. Host bridge components such as `host-nvidia-gl` are explicit contracts for narrowly detected host-owned providers.
 
 When a project requires host CUDA and the CLI can detect `host.cuda.libcuda`,
 `robo` may materialize that host provider into the cached runtime environment.
@@ -167,4 +169,3 @@ Implemented today:
 Still incomplete:
 
 - Host providers are diagnosed by focused checks, but there is not yet one unified provider comparison engine for every host requirement.
-- Low-confidence findings, such as workspace CUDA marker scans, remain suggestions until the user promotes them.

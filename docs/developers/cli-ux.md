@@ -34,6 +34,19 @@ next steps
 
 Do not mix heading styles such as `Project:`, `ok: Generated:`, and `next steps:` in the same summary.
 
+`robo status` uses a compact summary block instead of separate headings:
+
+```text
+dexmate-teleop  ok  python=3.11  1 warning
+/home/zhenyu/src/dev/dexmate/dexmate-teleop
+✓ project: Python contract, uv lockfile
+✓ runtime: runtime files, inferred components, required directories (2)
+✓ environment: Nix-backed Python
+! environment: native build tool shims: cmake
+  Nix owns CMake, Ninja, compilers, and native build tools
+! skipped: deep runtime probes: robo check --deep
+```
+
 ## Shell Workflow
 
 `robo shell` should launch a child runtime shell without requiring shell setup, dotfile edits, or hook installation. The shell prompt should show the `[robo]` marker by default, and plain `exit` should leave the runtime shell.
@@ -98,10 +111,10 @@ inferred
   ✓ Isaac Sim runtime            CUDA and graphics support
 
 attention
-  ! review component cuda-toolkit: workspace contains CUDA extension markers
+  ! missing required directory: ros_ws/src
 ```
 
-Use `inferred` for runtime choices `robo` applied. Use `attention` for weaker signals, skipped bootstrap scripts, missing project-owned paths, or cases where the runtime may be incomplete unless the user reviews the evidence.
+Use `inferred` for runtime choices `robo` applied. Use `attention` for missing project-owned paths or cases where the runtime may be incomplete unless the user reviews the evidence. Do not use `attention` as a prompt to enable discovered bootstrap scripts; bootstrap policy is project-owned and must be explicit.
 
 ## Next Steps
 

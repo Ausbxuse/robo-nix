@@ -46,7 +46,7 @@ Prefer Nix/data files for expandable product coverage:
 - component and profile metadata
 - runtime inference rules in [nix/metadata/runtime-inference.nix](./nix/metadata/runtime-inference.nix:1)
 - package-to-component mappings
-- workspace directory and bootstrap script discovery rules
+- workspace directory rules
 - default profile selection
 - text markers, path roots, and component suggestions used by `robo init`
 
@@ -92,6 +92,7 @@ Host runtime path handling:
 - Do not add package-specific environment variables, path probes, or compatibility workarounds to generic runtime modules just because one downstream Python package fails. Prefer narrow downstream workarounds while debugging, then promote only a documented, product-level contract.
 - For host GPU/driver discovery, prefer explicit diagnostics that report observed facts and ownership boundaries over expanding generated shell behavior. If a generic exported fact is needed, first design the contract, document it, and add focused validation; do not introduce it opportunistically during a playground bring-up.
 - Keep host-driver path logic local to the component or CLI diagnostic that actually owns the behavior. Avoid duplicating or “deduplicating” path lists unless the new shape demonstrably reduces product surface area and has tests.
+- Keep desktop graphics libraries separate from host NVIDIA GLVND bridging. `desktop-gl` owns Nix-managed OpenGL/EGL/X11/Wayland runtime libraries; `host-nvidia-gl` is the explicit opt-in for detected host NVIDIA EGL/Vulkan manifests. Do not make shell startup ask interactive questions about adding host graphics policy; report observed facts and suggest component changes through diagnostics.
 - Do not use `bwrap`, `proot`, ad hoc chroot wrappers, or alternate-store execution wrappers as a robo-nix workaround for daemon cache trust or store execution issues. If Nix cannot use the intended cache or execute the prepared runtime directly, diagnose that host/Nix boundary instead of adding a container-like execution layer.
 
 Comment style:
@@ -188,7 +189,7 @@ These are not a standing plan. Revisit them as downstream usage proves or dispro
    Catch and explain common robotics failures such as missing `libstdc++.so.6`, `libGL.so.1`, FFmpeg libraries, CUDA driver/runtime mismatch, and native extension build failures.
 
 5. Tighten graphics support without overstating it.
-   Current `x11-gl` handling bridges detected host NVIDIA GLVND libraries for desktop OpenGL, but AMD/Intel edge cases, PRIME/offload policy, Wayland-specific failures, headless/remote rendering modes, and a nixGL-style one-command launcher are not solved product surfaces yet. Keep these gaps explicit in docs and diagnostics. When expanding graphics support, prefer learning from nixGL's provider detection and command-wrapper model over mutating the whole development shell.
+   `desktop-gl` provides Nix-managed desktop graphics libraries, and `host-nvidia-gl` opts into detected host NVIDIA GLVND bridging. AMD/Intel edge cases, PRIME/offload policy, Wayland-specific failures, headless/remote rendering modes, and a nixGL-style one-command launcher are not solved product surfaces yet. Keep these gaps explicit in docs and diagnostics. When expanding graphics support, prefer learning from nixGL's provider detection and command-wrapper model over mutating the whole development shell.
 
 6. Keep templates non-product until explicit maintainer approval.
    Use `robo init` and `robo shell` as the onboarding path. Keep `robo build` available as an explicit prebuild/cache command, not as a required beginner step. Placeholder template files may exist to define layout, but do not expose them as a public workflow until real usage proves them.

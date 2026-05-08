@@ -40,10 +40,6 @@ pub(super) struct RuntimeInference {
     pub(super) default_profile: String,
     pub(super) dependency_rules: Vec<DependencyRule>,
     pub(super) compound_dependency_rules: Vec<CompoundDependencyRule>,
-    pub(super) workspace_directory_rules: Vec<WorkspaceDirectoryRule>,
-    pub(super) script_discovery: ScriptDiscovery,
-    pub(super) script_rules: Vec<ScriptRule>,
-    pub(super) cuda_marker_scan: CudaMarkerScan,
 }
 
 #[derive(Deserialize)]
@@ -65,55 +61,6 @@ pub(super) struct CompoundDependencyRule {
     pub(super) requires: Vec<String>,
     #[serde(default)]
     pub(super) components: Vec<String>,
-    pub(super) note: String,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub(super) struct WorkspaceDirectoryRule {
-    pub(super) root: String,
-    pub(super) name_contains: Vec<String>,
-    #[serde(default)]
-    pub(super) requires: Vec<String>,
-    #[serde(default)]
-    pub(super) components: Vec<String>,
-    pub(super) note: String,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub(super) struct ScriptDiscovery {
-    pub(super) roots: Vec<String>,
-    pub(super) names: Vec<String>,
-    pub(super) prefixes: Vec<String>,
-    pub(super) daemon_text_contains: Vec<String>,
-    pub(super) checkout_function: String,
-    pub(super) path_root: String,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub(super) struct ScriptRule {
-    pub(super) text_contains: Vec<String>,
-    #[serde(default)]
-    pub(super) requires: Vec<String>,
-    #[serde(default)]
-    pub(super) components: Vec<String>,
-    pub(super) note: String,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub(super) struct CudaMarkerScan {
-    pub(super) max_depth: usize,
-    pub(super) max_files: usize,
-    pub(super) source_extensions: Vec<String>,
-    pub(super) build_files: Vec<String>,
-    pub(super) text_contains: Vec<String>,
-    pub(super) skip_names: Vec<String>,
-    #[serde(default)]
-    pub(super) requires: Vec<String>,
-    pub(super) component: String,
     pub(super) note: String,
 }
 
@@ -201,36 +148,6 @@ pub(super) fn validate(manifest: &Manifest, spec: &ProjectSpec) -> Result<(), St
                 ));
             }
         }
-    }
-    for rule in &manifest.runtime_inference.workspace_directory_rules {
-        validate_requirements(manifest, &rule.requires)?;
-        for component in &rule.components {
-            if !manifest.components.contains_key(component) {
-                return Err(format!(
-                    "workspace runtime inference rule references unknown component: {component}"
-                ));
-            }
-        }
-    }
-    for rule in &manifest.runtime_inference.script_rules {
-        validate_requirements(manifest, &rule.requires)?;
-        for component in &rule.components {
-            if !manifest.components.contains_key(component) {
-                return Err(format!(
-                    "script runtime inference rule references unknown component: {component}"
-                ));
-            }
-        }
-    }
-    validate_requirements(manifest, &manifest.runtime_inference.cuda_marker_scan.requires)?;
-    if !manifest
-        .components
-        .contains_key(&manifest.runtime_inference.cuda_marker_scan.component)
-    {
-        return Err(format!(
-            "CUDA marker scan references unknown component: {}",
-            manifest.runtime_inference.cuda_marker_scan.component
-        ));
     }
     Ok(())
 }

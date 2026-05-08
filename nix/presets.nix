@@ -35,7 +35,8 @@ in {
       "base"
       "python-uv"
       "native-build"
-      "x11-gl"
+      "desktop-gl"
+      "host-nvidia-gl"
       "cuda-toolkit"
       "isaac-sim"
     ];

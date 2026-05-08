@@ -44,7 +44,7 @@ outside_status="$tmpdir/outside-status.txt"
 	cd "$project"
 	"$robo" status >"$outside_status"
 )
-assert_file_contains "$outside_status" "checked shell-shell-project"
+assert_file_contains "$outside_status" "shell-shell-project  ok  python=3.11"
 assert_file_contains "$outside_status" "uv.lock missing"
 assert_file_contains "$outside_status" "Python environment missing"
 
@@ -75,6 +75,7 @@ test "${SHELL:-}" = "${EXPECTED_SHELL:?}"
 test "${ROBO_NIX_PROMPT_PREFIX:-}" = "[robo]"
 command -v robo >/dev/null
 robo status >/dev/null
+robo shell
 EOF
 	chmod +x "$path"
 	printf '%s\n' "$path"
@@ -92,7 +93,82 @@ for shell_name in sh bash zsh fish nu; do
 	assert_file_contains "$output" "env=shell-shell-project"
 	assert_file_contains "$output" "shell=$fake_shell"
 	assert_file_contains "$output" "prompt-prefix=[robo]"
+	assert_file_contains "$output" "run exit to leave this runtime shell"
 done
+
+stale_shell="$(make_fake_shell stale-shell)"
+stale_output="$tmpdir/stale-shell.txt"
+cat >"$stale_shell" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+old_key="${ROBO_NIX_RUNTIME_INPUT_KEY:-}"
+printf '\n# edited after shell launch\n' >> pyproject.toml
+eval "$(robo __shell-refresh bash)"
+test -n "${ROBO_NIX_RUNTIME_INPUT_KEY:-}"
+test "${ROBO_NIX_RUNTIME_INPUT_KEY:-}" != "$old_key"
+robo shell
+EOF
+chmod +x "$stale_shell"
+(
+	cd "$project"
+	ROBO_NIX_SHELL="$stale_shell" EXPECTED_SHELL="$stale_shell" \
+		"$robo" shell >"$stale_output" 2>&1
+)
+assert_file_contains "$stale_output" "shell: detected runtime changes in $project"
+assert_file_contains "$stale_output" "run exit to leave this runtime shell"
+
+comment_shell="$tmpdir/comment-shell"
+comment_output="$tmpdir/comment-shell.txt"
+cat >"$comment_shell" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+old_key="${ROBO_NIX_RUNTIME_INPUT_KEY:-}"
+printf '\n# comment-only edit after shell launch\n' >> robo.nix
+eval "$(robo __shell-refresh bash)"
+test -n "${ROBO_NIX_RUNTIME_INPUT_KEY:-}"
+test "${ROBO_NIX_RUNTIME_INPUT_KEY:-}" = "$old_key"
+robo shell
+EOF
+chmod +x "$comment_shell"
+(
+	cd "$project"
+	ROBO_NIX_SHELL="$comment_shell" EXPECTED_SHELL="$comment_shell" \
+		"$robo" shell >"$comment_output"
+)
+assert_file_contains "$comment_output" "run exit to leave this runtime shell"
+
+shell_init_shell="$tmpdir/shell-init-shell"
+shell_init_output="$tmpdir/shell-init-shell.txt"
+cat >"$shell_init_shell" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+old_key="${ROBO_NIX_RUNTIME_INPUT_KEY:-}"
+tmp="$(mktemp)"
+awk '
+  /^}$/ && !done {
+    print "  shellInit = \"export ROBO_SHELL_REFRESH_TEST=1\";"
+    done = 1
+  }
+  { print }
+' robo.nix >"$tmp"
+mv "$tmp" robo.nix
+eval "$(robo __shell-refresh bash)"
+test -n "${ROBO_NIX_RUNTIME_INPUT_KEY:-}"
+test "${ROBO_NIX_RUNTIME_INPUT_KEY:-}" != "$old_key"
+test "${ROBO_SHELL_REFRESH_TEST:-}" = "1"
+robo shell
+EOF
+chmod +x "$shell_init_shell"
+(
+	cd "$project"
+	ROBO_NIX_SHELL="$shell_init_shell" EXPECTED_SHELL="$shell_init_shell" \
+		"$robo" shell >"$shell_init_output" 2>&1
+)
+assert_file_contains "$shell_init_output" "shell: detected runtime changes in $project"
+assert_file_contains "$shell_init_output" "run exit to leave this runtime shell"
 
 prompt_init_project="$tmpdir/prompt-init-project"
 prompt_init_shell="$(make_fake_shell prompt-init-shell)"
@@ -134,7 +210,7 @@ active_status="$tmpdir/active-status.txt"
 		ROBO_NIX_PROMPT_PREFIX="[robo]" \
 		"$robo" status >"$active_status"
 )
-assert_file_contains "$active_status" "checked shell-shell-project"
+assert_file_contains "$active_status" "shell-shell-project  ok  python=3.11"
 assert_file_contains "$active_status" "uv.lock missing"
 assert_file_contains "$active_status" "Python environment missing"
 
@@ -159,7 +235,7 @@ exit
 EOF
 	} | ROBO_NIX_SHELL="$(command -v bash)" "$robo" shell >"$bash_prompt_status"
 )
-assert_file_contains "$bash_prompt_status" "checked shell-shell-project"
+assert_file_contains "$bash_prompt_status" "shell-shell-project  ok  python=3.11"
 
 if command -v zsh >/dev/null 2>&1; then
 	zsh_prompt_status="$tmpdir/zsh-prompt-status.txt"
@@ -195,7 +271,7 @@ exit
 EOF
 		} | ROBO_NIX_SHELL="$(command -v zsh)" "$robo" shell >"$zsh_prompt_status"
 	)
-	assert_file_contains "$zsh_prompt_status" "checked shell-shell-project"
+	assert_file_contains "$zsh_prompt_status" "shell-shell-project  ok  python=3.11"
 
 	if command -v script >/dev/null 2>&1; then
 		zsh_blank_prompt_output="$tmpdir/zsh-blank-prompts.txt"
@@ -232,5 +308,5 @@ exit
 EOF
 		} | ROBO_NIX_SHELL="$(command -v fish)" "$robo" shell >"$fish_prompt_status"
 	)
-	assert_file_contains "$fish_prompt_status" "checked shell-shell-project"
+	assert_file_contains "$fish_prompt_status" "shell-shell-project  ok  python=3.11"
 fi

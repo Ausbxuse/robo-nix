@@ -5,9 +5,7 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use crate::runtime::{ProjectRuntime, RuntimeWhy};
-use crate::{
-    Config, LabelKind, UiSpinner, exact_python_requirement, field, inline, label, section,
-};
+use crate::{Config, LabelKind, UiSpinner, exact_python_requirement, inline, label};
 
 use super::CheckArgs;
 use super::cuda::{CudaCheckPlan, cuda_check_plan};
@@ -51,14 +49,16 @@ pub(super) fn run_summary(
 
     let mut issues = 0usize;
     let mut warnings = 0usize;
-    let mut ready = Vec::new();
+    let mut project_ready = Vec::new();
+    let mut runtime_ready = Vec::new();
+    let mut environment_ready = Vec::new();
     let mut attention = Vec::new();
 
     if Path::new("robo.nix").exists()
         && Path::new("flake.nix").exists()
         && runtime.schema_version.as_deref() == Some("1")
     {
-        ready.push("runtime files".to_string());
+        runtime_ready.push("runtime files".to_string());
     } else {
         warnings += 1;
         attention.push(
@@ -79,7 +79,7 @@ pub(super) fn run_summary(
             .is_none_or(|required| required == runtime.python_version)
     });
     if python_file_matches && pyproject_matches {
-        ready.push("Python contract".to_string());
+        project_ready.push("Python contract".to_string());
     } else if pyproject.is_none() {
         warnings += 1;
         attention.push(
@@ -97,7 +97,7 @@ pub(super) fn run_summary(
     }
 
     if Path::new("uv.lock").exists() {
-        ready.push("uv lockfile".to_string());
+        project_ready.push("uv lockfile".to_string());
     } else {
         warnings += 1;
         attention.push(
@@ -116,8 +116,8 @@ pub(super) fn run_summary(
                     .detail("     uv sync"),
             );
         }
-        PythonEnvironmentOrigin::NixBacked(origin) => {
-            ready.push(format!("Python environment ({origin})"));
+        PythonEnvironmentOrigin::NixBacked(_origin) => {
+            environment_ready.push(format!("Nix-backed Python"));
         }
         PythonEnvironmentOrigin::HostBacked(origin) => {
             issues += 1;
@@ -151,7 +151,7 @@ pub(super) fn run_summary(
             }
         }
         if missing.is_empty() {
-            ready.push("inferred components".to_string());
+            runtime_ready.push("inferred components".to_string());
         } else {
             warnings += missing.len();
             attention.push(
@@ -170,7 +170,7 @@ pub(super) fn run_summary(
         .collect();
     if missing_directories.is_empty() {
         if !why.required_directories.is_empty() {
-            ready.push(format!(
+            runtime_ready.push(format!(
                 "required directories ({})",
                 why.required_directories.len()
             ));
@@ -188,7 +188,7 @@ pub(super) fn run_summary(
         args.deep,
         &mut issues,
         &mut warnings,
-        &mut ready,
+        &mut environment_ready,
         &mut attention,
     );
     summarize_graphics_environment(&runtime, &mut warnings, &mut attention);
@@ -207,7 +207,16 @@ pub(super) fn run_summary(
     }
 
     print_summary(
-        config, &runtime, &workspace, &ready, &attention, args.deep, issues, warnings,
+        config,
+        &runtime,
+        &workspace,
+        &project_ready,
+        &runtime_ready,
+        &environment_ready,
+        &attention,
+        args.deep,
+        issues,
+        warnings,
     );
 
     if issues == 0 {
@@ -222,7 +231,7 @@ fn summarize_cuda_requirements(
     deep: bool,
     issues: &mut usize,
     warnings: &mut usize,
-    ready: &mut Vec<String>,
+    environment_ready: &mut Vec<String>,
     attention: &mut Vec<Attention>,
 ) {
     let plan = cuda_check_plan(runtime);
@@ -231,10 +240,10 @@ fn summarize_cuda_requirements(
     }
 
     if plan.host_required {
-        summarize_cuda_host_requirement(&plan, issues, warnings, ready, attention);
+        summarize_cuda_host_requirement(&plan, issues, warnings, environment_ready, attention);
     }
     if plan.toolkit_required {
-        summarize_cuda_toolkit_requirement(&plan, deep, issues, warnings, ready, attention);
+        summarize_cuda_toolkit_requirement(&plan, deep, issues, warnings, environment_ready, attention);
     }
 }
 
@@ -279,7 +288,7 @@ fn summarize_cuda_host_requirement(
     plan: &CudaCheckPlan,
     issues: &mut usize,
     warnings: &mut usize,
-    ready: &mut Vec<String>,
+    environment_ready: &mut Vec<String>,
     attention: &mut Vec<Attention>,
 ) {
     if env::consts::OS != "linux" {
@@ -310,14 +319,14 @@ fn summarize_cuda_host_requirement(
                     .detail("fix: upgrade the NVIDIA driver or regenerate uv.lock with older CUDA wheels"),
             );
         } else {
-            ready.push(format!("CUDA host driver ({host_version}, needs {expected})"));
+            environment_ready.push(format!("CUDA host driver ({host_version}, needs {expected})"));
         }
     } else {
-        ready.push(format!("CUDA host driver ({host_version})"));
+        environment_ready.push(format!("CUDA host driver ({host_version})"));
     }
 
     if let Some(path) = crate::runtime::find_host_libcuda() {
-        ready.push(format!("CUDA driver library ({path})"));
+        environment_ready.push(format!("CUDA driver library ({path})"));
     } else {
         *warnings += 1;
         attention.push(
@@ -333,7 +342,7 @@ fn summarize_cuda_toolkit_requirement(
     deep: bool,
     issues: &mut usize,
     warnings: &mut usize,
-    ready: &mut Vec<String>,
+    environment_ready: &mut Vec<String>,
     attention: &mut Vec<Attention>,
 ) {
     let Some(cuda_root) = crate::runtime::cuda_root_from_env() else {
@@ -352,7 +361,7 @@ fn summarize_cuda_toolkit_requirement(
     };
 
     let Some(expected) = plan.expected_wheel_version.as_deref() else {
-        ready.push(format!("CUDA toolkit ({cuda_root})"));
+        environment_ready.push(format!("CUDA toolkit ({cuda_root})"));
         return;
     };
 
@@ -367,7 +376,7 @@ fn summarize_cuda_toolkit_requirement(
     };
 
     if actual == expected {
-        ready.push(format!("CUDA toolkit ({actual})"));
+        environment_ready.push(format!("CUDA toolkit ({actual})"));
     } else {
         *issues += 1;
         attention.push(
@@ -382,74 +391,138 @@ fn print_summary(
     config: Config,
     runtime: &ProjectRuntime,
     workspace: &str,
-    ready: &[String],
+    project_ready: &[String],
+    runtime_ready: &[String],
+    environment_ready: &[String],
     attention: &[Attention],
     deep: bool,
     issues: usize,
     warnings: usize,
 ) {
-    println!(
-        "{} {}\n",
-        label(config, "checked", LabelKind::Status),
-        runtime.env_name
-    );
-
-    section(config, "project");
-    field(config, "python", &runtime.python_version);
-    field(config, "workspace", workspace);
-
-    if !ready.is_empty() {
-        println!();
-        section(config, "ready");
-        for item in ready {
-            println!("  {} {}", label(config, "✓", LabelKind::Ok), item);
-        }
-    }
-
-    if !attention.is_empty() {
-        println!();
-        section(config, "attention");
-        for item in attention {
-            println!("  {} {}", label(config, "!", LabelKind::Warn), item.title);
-            for detail in &item.details {
-                println!("    {}", summary_detail(config, detail));
-            }
-            println!();
-        }
-    }
-
-    if !deep {
-        section(config, "skipped");
-        println!("  deep runtime probes");
-        println!("    {}", summary_detail(config, "run: robo check --deep"));
-        println!();
-    }
-
-    section(config, "status");
+    let status = if issues == 0 { "ok" } else { "error" };
     let status_kind = if issues == 0 {
         LabelKind::Ok
     } else {
         LabelKind::Error
     };
-    let status = if issues == 0 { "ok" } else { "error" };
+
     println!(
-        "  {}, {}{}",
+        "{}  {}  python={}  {}{}",
+        runtime.env_name,
         label(config, status, status_kind),
+        runtime.python_version,
         count_label(config, warnings, "warning", LabelKind::Warn),
         if issues == 0 {
             String::new()
         } else {
             format!(
-                ", {}",
+                "  {}",
                 count_label(config, issues, "issue", LabelKind::Error)
             )
         }
     );
+    println!("{}", workspace);
+
+    if !project_ready.is_empty() {
+        print_compact_row(config, LabelKind::Ok, "project", &project_ready.join(", "));
+    }
+
+    if !runtime_ready.is_empty() {
+        print_compact_row(config, LabelKind::Ok, "runtime", &runtime_ready.join(", "));
+    }
+
+    if !environment_ready.is_empty() {
+        print_compact_row(
+            config,
+            LabelKind::Ok,
+            "environment",
+            &environment_ready.join(", "),
+        );
+    }
+
+    for item in attention {
+        print_compact_attention(config, item);
+    }
+
+    if !deep {
+        print_compact_command_row(
+            config,
+            LabelKind::Warn,
+            "skipped",
+            "deep runtime probes",
+            "robo check --deep",
+        );
+    }
 }
 
 fn count_label(config: Config, count: usize, noun: &str, kind: LabelKind) -> String {
     let suffix = if count == 1 { "" } else { "s" };
     format!("{} {noun}{suffix}", label(config, &count.to_string(), kind))
+}
+
+fn print_compact_row(config: Config, kind: LabelKind, label_text: &str, body: &str) {
+    println!(
+        "{} {}: {}",
+        label(config, "✓", kind),
+        label(config, &format!("{label_text}:"), LabelKind::Status),
+        inline(config, body),
+    );
+}
+
+fn print_compact_command_row(
+    config: Config,
+    kind: LabelKind,
+    label_text: &str,
+    body: &str,
+    command: &str,
+) {
+    print!(
+        "{} {}: {}: ",
+        label(config, "!", kind),
+        label(config, &format!("{label_text}:"), LabelKind::Status),
+        inline(config, body),
+    );
+    println!("{}", label(config, command, LabelKind::Command));
+}
+
+fn print_compact_attention(config: Config, item: &Attention) {
+    let label_text = compact_attention_label(&item.title);
+    let body = compact_attention_body(item);
+    println!(
+        "{} {}: {}",
+        label(config, "!", LabelKind::Warn),
+        label(config, &format!("{label_text}:"), LabelKind::Status),
+        inline(config, &body),
+    );
+    for detail in &item.details {
+        println!("  {}", summary_detail(config, detail));
+    }
+}
+
+fn compact_attention_label(title: &str) -> &str {
+    if title.starts_with("Python version mismatch")
+        || title.starts_with("pyproject.toml missing")
+        || title.starts_with("uv.lock missing")
+    {
+        "project"
+    } else if title.starts_with("runtime files")
+        || title.starts_with("runtime components")
+        || title.starts_with("required directories")
+    {
+        "runtime"
+    } else {
+        "environment"
+    }
+}
+
+fn compact_attention_body(item: &Attention) -> String {
+    if item.title == "Python environment contains native build tool shims" {
+        if let Some(found) = item.details.iter().find_map(|detail| detail.strip_prefix("found: ")) {
+            return format!("native build tool shims: {found}");
+        }
+    }
+
+    item.title.clone()
 }
 
 fn summary_detail(config: Config, detail: &str) -> String {

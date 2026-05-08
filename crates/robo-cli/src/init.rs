@@ -141,16 +141,13 @@ fn run_inner(args: InitArgs, config: Config, quiet: bool) -> ExitCode {
         }
     }
 
-    let mut draft = match build_draft(&args, &manifest) {
+    let draft = match build_draft(&args, &manifest) {
         Ok(draft) => draft,
         Err(message) => {
             error(config, &message);
             return ExitCode::from(1);
         }
     };
-    if args.interactive {
-        interactive::apply_component_suggestions(&mut draft.spec, config);
-    }
     let plan = match finish_plan(&args, &manifest, draft) {
         Ok(plan) => plan,
         Err(message) => {

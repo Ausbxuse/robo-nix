@@ -141,14 +141,14 @@ Contributor setup, repository layout, and local documentation commands live in t
 
 `robo-nix` is built around these tools and ecosystems:
 
-| Project                                                          | Relationship                                                                   |
-| ---------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Project                                                          | Relationship                                                                    |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------------- |
 | [Nix](https://nixos.org/)                                        | Reproducible Python interpreter, native runtime dependencies, and environments. |
 | [uv](https://github.com/astral-sh/uv)                            | Python version requests, packages, virtual environments, and lockfiles.         |
 | [nixpkgs-python](https://github.com/cachix/nixpkgs-python)       | Cached CPython interpreter coverage for uv-managed projects.                    |
-| [nix-ros-overlay](https://github.com/lopsided98/nix-ros-overlay) | ROS package coverage for ROS-facing runtime components.                        |
-| [nixGL](https://github.com/nix-community/nixGL)                  | Reference point for host graphics driver bridging.                             |
-| [uv2nix](https://github.com/pyproject-nix/uv2nix)                | Nix-native Python packaging for projects that want Nix to own Python packages. |
+| [nix-ros-overlay](https://github.com/lopsided98/nix-ros-overlay) | ROS package coverage for ROS-facing runtime components.                         |
+| [nixGL](https://github.com/nix-community/nixGL)                  | Reference point for host graphics driver bridging.                              |
+| [uv2nix](https://github.com/pyproject-nix/uv2nix)                | Nix-native Python packaging for projects that want Nix to own Python packages.  |
 
 ## TODO
 

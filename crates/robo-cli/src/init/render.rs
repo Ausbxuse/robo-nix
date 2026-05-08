@@ -283,24 +283,13 @@ fn print_summary(
     if config.debug {
         crate::field_err(config, "source", source_url);
     }
-    let mut inferred_notes = Vec::new();
-    let mut attention_notes = Vec::new();
-    for note in &spec.probe_notes {
-        if note_needs_attention(note) {
-            attention_notes.push(note);
-        } else {
-            inferred_notes.push(note);
-        }
-    }
-
-    if !inferred_notes.is_empty() {
+    if !spec.probe_notes.is_empty() {
         eprintln!();
         crate::section_err(config, "inferred");
-        for note in inferred_notes {
+        for note in &spec.probe_notes {
             print_inferred_note(config, note);
         }
     }
-    print_attention(spec, &attention_notes, config);
     eprintln!();
     crate::section_err(config, "generated");
     print_file_change(config, "wrote", &target.join("flake.nix"));
@@ -359,10 +348,6 @@ fn print_inferred_note(config: Config, note: &str) {
     }
 }
 
-fn note_needs_attention(note: &str) -> bool {
-    note.starts_with("skipped bootstrap ")
-}
-
 fn inferred_note_summary(note: &str) -> (String, Option<String>) {
     if let Some(rest) = note.strip_prefix("cudaWheelVersion=") {
         if let Some((version, reason)) = rest.split_once(": ") {
@@ -383,48 +368,11 @@ fn inferred_note_summary(note: &str) -> (String, Option<String>) {
             "Isaac Sim runtime".to_string(),
             Some("CUDA and graphics support".to_string()),
         ),
-        "workspace contains Qt service paths" => (
-            "Qt service paths".to_string(),
-            Some("workspace scan".to_string()),
-        ),
         _ => match note.split_once(": ") {
             Some((fact, reason)) => (fact.to_string(), Some(reason.to_string())),
             None => (note.to_string(), None),
         },
     }
-}
-
-fn print_attention(spec: &ProjectSpec, notes: &[&String], config: Config) {
-    if notes.is_empty() && spec.suggestions.is_empty() && spec.component_suggestions.is_empty() {
-        return;
-    }
-    eprintln!();
-    crate::section_err(config, "attention");
-    for note in notes {
-        print_attention_line(config, note);
-    }
-    for item in &spec.suggestions {
-        print_attention_line(
-            config,
-            &format!("review {} {}: {}", item.kind, item.path, item.reason),
-        );
-    }
-    for item in &spec.component_suggestions {
-        print_attention_line(
-            config,
-            &format!(
-                "review component {}: {}; {}",
-                item.name, item.reason, item.evidence
-            ),
-        );
-    }
-}
-
-fn print_attention_line(config: Config, message: &str) {
-    eprintln!(
-        "  {} {message}",
-        crate::label(config, "!", crate::LabelKind::Warn)
-    );
 }
 
 pub(super) fn render_flake(source_url: &str) -> String {
@@ -454,6 +402,7 @@ pub(super) fn render_flake(source_url: &str) -> String {
 }
 
 pub(super) fn render_project(spec: &ProjectSpec) -> String {
+    let components = render_components(spec);
     let mut text = format!(
         r#"{{
   schemaVersion = 1;
@@ -469,7 +418,7 @@ pub(super) fn render_project(spec: &ProjectSpec) -> String {
   workspaceRoot = "{}";"#,
         escape_nix(&spec.env_name),
         escape_nix(&spec.description),
-        render_list(&spec.components),
+        components,
         escape_nix(&spec.python_version),
         render_list(&spec.supported_systems),
         escape_nix(&spec.workspace_root)
@@ -509,8 +458,8 @@ pub(super) fn render_project(spec: &ProjectSpec) -> String {
         text.push_str("  '';");
     }
     {
-        text.push_str("\n\n  provenance = {\n");
-        text.push_str("    generatedBy = \"robo init\";\n");
+        text.push_str("\n\n  # Kept for diagnostics. Edit components above for runtime changes.\n");
+        text.push_str("  provenance = {\n");
         text.push_str(&format!(
             "    profile = \"{}\";\n",
             escape_nix(&spec.profile_name)
@@ -522,41 +471,38 @@ pub(super) fn render_project(spec: &ProjectSpec) -> String {
             }
             text.push_str("    ];\n");
         }
-        if !spec.suggestions.is_empty() {
-            text.push_str("    suggestions = [\n");
-            for item in &spec.suggestions {
-                text.push_str("      {\n");
-                text.push_str(&format!("        kind = \"{}\";\n", escape_nix(&item.kind)));
-                text.push_str(&format!("        path = \"{}\";\n", escape_nix(&item.path)));
-                text.push_str(&format!(
-                    "        reason = \"{}\";\n",
-                    escape_nix(&item.reason)
-                ));
-                text.push_str("      }\n");
-            }
-            text.push_str("    ];\n");
-        }
-        if !spec.component_suggestions.is_empty() {
-            text.push_str("    componentSuggestions = [\n");
-            for item in &spec.component_suggestions {
-                text.push_str("      {\n");
-                text.push_str(&format!("        name = \"{}\";\n", escape_nix(&item.name)));
-                text.push_str(&format!(
-                    "        evidence = \"{}\";\n",
-                    escape_nix(&item.evidence)
-                ));
-                text.push_str(&format!(
-                    "        reason = \"{}\";\n",
-                    escape_nix(&item.reason)
-                ));
-                text.push_str("      }\n");
-            }
-            text.push_str("    ];\n");
-        }
         text.push_str("  };");
     }
     text.push_str("\n}");
     text
+}
+
+fn render_components(spec: &ProjectSpec) -> String {
+    let mut lines = Vec::new();
+    for item in &spec.components {
+        if let Some(comment) = component_comment(spec, item) {
+            lines.push(format!("    # {comment}"));
+        }
+        lines.push(format!("    \"{}\"", escape_nix(item)));
+    }
+    lines.join("\n")
+}
+
+fn component_comment(spec: &ProjectSpec, component: &str) -> Option<String> {
+    let provenance = spec
+        .component_provenance
+        .iter()
+        .find(|item| item.name == component)?;
+    if provenance.source == "profile" {
+        return None;
+    }
+
+    let source = match provenance.source.as_str() {
+        "pyproject inference" => "Inferred from pyproject.toml",
+        "inference" => "Inferred",
+        source => source,
+    };
+    Some(format!("{}: {}", source, component_reason(&provenance.reason)))
 }
 
 fn render_pyproject(spec: &ProjectSpec) -> String {
@@ -582,6 +528,19 @@ fn render_list(items: &[String]) -> String {
 
 fn escape_nix(text: &str) -> String {
     text.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+fn nix_comment(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn component_reason(reason: &str) -> String {
+    let reason = reason
+        .strip_prefix("provides `")
+        .and_then(|rest| rest.split_once("`: "))
+        .map(|(_, rest)| rest)
+        .unwrap_or(reason);
+    nix_comment(reason)
 }
 
 fn escape_toml(text: &str) -> String {

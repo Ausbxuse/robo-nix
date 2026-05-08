@@ -8,8 +8,8 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use crate::command::{
-    run_internal_exec, run_internal_shell_env, run_project_app, run_project_command,
-    run_project_build, run_project_shell, run_project_up,
+    run_internal_exec, run_internal_shell_env, run_internal_shell_refresh, run_project_app,
+    run_project_build, run_project_command, run_project_shell, run_project_up,
 };
 use crate::shell::{SUPPORTED_INTERACTIVE_SHELLS, requested_shell_name};
 use crate::{Config, LabelKind, check, contract, cuda, diagnose, error, init, label, search};
@@ -93,6 +93,9 @@ enum CliCommand {
     #[command(name = "__shell-env", hide = true)]
     InternalShellEnv,
 
+    #[command(name = "__shell-refresh", hide = true)]
+    InternalShellRefresh(PassthroughArgs),
+
     #[command(about = "Show help")]
     Help,
 }
@@ -164,6 +167,9 @@ pub(crate) fn run() -> ExitCode {
         Some(CliCommand::CudaCheck) => cuda::check(config),
         Some(CliCommand::InternalExec(args)) => run_internal_exec(args.args, config),
         Some(CliCommand::InternalShellEnv) => run_internal_shell_env(config),
+        Some(CliCommand::InternalShellRefresh(args)) => {
+            run_internal_shell_refresh(args.args, config)
+        }
         Some(CliCommand::Help) | None => print_help(config),
     }
 }

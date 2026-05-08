@@ -50,7 +50,8 @@ fn default_command_shell() -> Option<PathBuf> {
         .or_else(|| find_shell_in_path("sh"))
 }
 
-pub(crate) fn shell_launch_label(launch: &ShellLaunch) -> String {
+#[cfg(test)]
+fn shell_launch_label(launch: &ShellLaunch) -> String {
     let mut args = launch.args.iter();
     if args.next().is_some_and(|arg| arg == "-c") {
         let Some(shell) = args.next() else {
@@ -333,7 +334,10 @@ __robo_prompt_prefix() {
   done
   PS1="${__robo_prompt_color}${__robo_prompt_base}"
 }
-if [ -n "${ROBO_NIX_PROMPT_PREFIX:-}" ]; then PROMPT_COMMAND="${PROMPT_COMMAND:+${PROMPT_COMMAND}; }__robo_prompt_prefix"; __robo_prompt_prefix; fi
+__robo_shell_refresh() {
+  eval "$(robo __shell-refresh bash)"
+}
+if [ -n "${ROBO_NIX_PROMPT_PREFIX:-}" ]; then PROMPT_COMMAND="${PROMPT_COMMAND:+${PROMPT_COMMAND}; }__robo_shell_refresh; __robo_prompt_prefix"; __robo_shell_refresh; __robo_prompt_prefix; fi
 "#,
     )
     .ok()?;
@@ -394,7 +398,10 @@ __robo_prompt_prefix() {
   PROMPT="${color_prefix}${base}"
   PS1="$PROMPT"
 }
-if [ -n "${ROBO_NIX_PROMPT_PREFIX:-}" ]; then if (( $+functions[precmd] )); then functions -c precmd __robo_user_precmd; fi; precmd() { if (( $+functions[__robo_user_precmd] )); then __robo_user_precmd "$@"; fi; __robo_prompt_prefix; }; __robo_prompt_prefix; fi
+__robo_shell_refresh() {
+  eval "$(robo __shell-refresh zsh)"
+}
+if [ -n "${ROBO_NIX_PROMPT_PREFIX:-}" ]; then if (( $+functions[precmd] )); then functions -c precmd __robo_user_precmd; fi; precmd() { if (( $+functions[__robo_user_precmd] )); then __robo_user_precmd "$@"; fi; __robo_shell_refresh; __robo_prompt_prefix; }; __robo_shell_refresh; __robo_prompt_prefix; fi
 "#,
     )
     .ok()?;
@@ -421,7 +428,7 @@ fn prompted_fish_args() -> (Vec<OsString>, Vec<(String, OsString)>) {
         vec![
             OsString::from("--init-command"),
             OsString::from(
-                r#"if test -n "$ROBO_NIX_PROMPT_PREFIX"; functions -q fish_prompt; and functions -c fish_prompt __robo_fish_prompt_orig; function fish_prompt --description 'robo prompt prefix'; set_color brblack; printf '['; set_color white; printf 'ro'; set_color cyan; printf 'bo'; set_color brblack; printf ']'; set_color normal; functions -q __robo_fish_prompt_orig; and __robo_fish_prompt_orig; end; end"#,
+                r#"if test -n "$ROBO_NIX_PROMPT_PREFIX"; functions -q fish_prompt; and functions -c fish_prompt __robo_fish_prompt_orig; function fish_prompt --description 'robo prompt prefix'; robo __shell-refresh fish | source; set_color brblack; printf '['; set_color white; printf 'ro'; set_color cyan; printf 'bo'; set_color brblack; printf ']'; set_color normal; functions -q __robo_fish_prompt_orig; and __robo_fish_prompt_orig; end; end"#,
             ),
             OsString::from("-i"),
         ],

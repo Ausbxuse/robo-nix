@@ -26,7 +26,7 @@ use deep::run_deep_checks;
 use native::{check_native_tool_wheel_shims, native_tool_wheel_shims};
 use output::{
     check_error, check_field, check_hint, check_line, check_next, check_ok, check_status, check_warn,
-    check_why,
+    check_why, check_why_item,
 };
 use python::{
     check_python_environment, check_python_files, python_environment_origin, PythonEnvironmentOrigin,
@@ -287,10 +287,10 @@ fn run_graphics_check(config: Config, runtime: &ProjectRuntime, verbose: bool) -
     if !has_display_gl(runtime) {
         println!("Graphics runtime is not selected for this project.\n");
         println!(
-            "This runtime appears to need desktop graphics, but robo.nix does not include `x11-gl` or `wayland-gl`."
+            "This runtime appears to need desktop graphics, but robo.nix does not include `desktop-gl`."
         );
         println!();
-        println!("Add `x11-gl` to components in robo.nix, or explicitly choose `wayland-gl`, then run:");
+        println!("Add `desktop-gl` to components in robo.nix, then run:");
         print_command(config, "robo build");
         return ExitCode::from(1);
     }
@@ -501,8 +501,7 @@ fn run_ros_check(_config: Config, runtime: &ProjectRuntime) -> ExitCode {
 
 fn graphics_relevant(runtime: &ProjectRuntime) -> bool {
     [
-        "x11-gl",
-        "wayland-gl",
+        "desktop-gl",
         "mujoco",
         "qt6",
         "matplotlib-qt",
@@ -513,7 +512,7 @@ fn graphics_relevant(runtime: &ProjectRuntime) -> bool {
 }
 
 fn has_display_gl(runtime: &ProjectRuntime) -> bool {
-    runtime_has_component(runtime, "x11-gl") || runtime_has_component(runtime, "wayland-gl")
+    runtime_has_component(runtime, "desktop-gl")
 }
 
 fn native_relevant(runtime: &ProjectRuntime) -> bool {
@@ -691,9 +690,9 @@ fn print_why_group(config: Config, title: &str, entries: &[WhyEntry]) {
     }
     check_why(config, title);
     for entry in entries {
-        check_why(
+        check_why_item(
             config,
-            &format!("  {} <- {}: {}", entry.name, entry.source, entry.reason),
+            &format!("{} <- {}: {}", entry.name, entry.source, entry.reason),
         );
     }
 }
@@ -860,10 +859,7 @@ fn check_suggestions(config: Config, runtime: &ProjectRuntime) {
         if suggestion.kind == "bootstrap" {
             check_hint(
                 config,
-                &format!(
-                    "add `{}` to the bootstrap block in robo.nix only if this project should run it automatically",
-                    suggestion.path
-                ),
+                "delete this stale bootstrap suggestion; bootstrap blocks should come from explicit project policy",
             );
         } else {
             check_hint(

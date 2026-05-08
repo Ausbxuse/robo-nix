@@ -62,7 +62,8 @@ assert_component_catalog_contract() {
       assert builtins.elem "media" components;
       assert builtins.elem "ros2-jazzy" components;
       assert builtins.elem "isaac-sim" components;
-      assert builtins.elem "wayland-gl" components;
+      assert builtins.elem "desktop-gl" components;
+      assert builtins.elem "host-nvidia-gl" components;
       true
   '
 	assert_expr "$expr"
@@ -77,8 +78,9 @@ assert_component_metadata_contract() {
     in
       assert metadata.base.category == "core";
       assert builtins.elem "runtime.shell.base" metadata.base.provides;
-      assert builtins.elem "runtime.graphics.opengl" metadata.x11-gl.provides;
-      assert builtins.elem "runtime.graphics.wayland" metadata.wayland-gl.provides;
+      assert builtins.elem "runtime.graphics.opengl" metadata.desktop-gl.provides;
+      assert builtins.elem "runtime.graphics.wayland" metadata.desktop-gl.provides;
+      assert builtins.elem "host.graphics.nvidia" metadata.host-nvidia-gl.provides;
       assert builtins.elem "runtime.cuda.nvcc" metadata.cuda-toolkit.provides;
       assert !(builtins.elem "host.cuda.driver" metadata.cuda-toolkit.provides);
       assert metadata.isaac-sim.scaffoldDirectories == [];
@@ -96,7 +98,7 @@ assert_profile_metadata_contract() {
     in
       assert profiles.minimal.components == [ "base" "python-uv" "native-build" ];
       assert profiles.ros2-workspace.supportedSystems == [ "x86_64-linux" "aarch64-linux" ];
-      assert profiles.isaac-ros2.components == [ "base" "python-uv" "native-build" "x11-gl" "cuda-toolkit" "isaac-sim" "ros2-jazzy" "ros-workspace" ];
+      assert profiles.isaac-ros2.components == [ "base" "python-uv" "native-build" "desktop-gl" "host-nvidia-gl" "cuda-toolkit" "isaac-sim" "ros2-jazzy" "ros-workspace" ];
       true
   '
 	assert_expr "$expr"
@@ -110,14 +112,10 @@ assert_runtime_inference_contract() {
       inference = flake.lib.runtimeInference;
       ruleComponents = builtins.concatMap (rule: rule.components) inference.dependencyRules;
       compoundRuleComponents = builtins.concatMap (rule: rule.components) inference.compoundDependencyRules;
-      workspaceRuleComponents = builtins.concatMap (rule: rule.components) inference.workspaceDirectoryRules;
-      scriptRuleComponents = builtins.concatMap (rule: rule.components) inference.scriptRules;
-      inferredComponents = ruleComponents ++ compoundRuleComponents ++ workspaceRuleComponents ++ scriptRuleComponents;
+      inferredComponents = ruleComponents ++ compoundRuleComponents;
       ruleRequirements = builtins.concatMap (rule: rule.requires or []) inference.dependencyRules;
       compoundRuleRequirements = builtins.concatMap (rule: rule.requires or []) inference.compoundDependencyRules;
-      workspaceRuleRequirements = builtins.concatMap (rule: rule.requires or []) inference.workspaceDirectoryRules;
-      scriptRuleRequirements = builtins.concatMap (rule: rule.requires or []) inference.scriptRules;
-      inferredRequirements = ruleRequirements ++ compoundRuleRequirements ++ workspaceRuleRequirements ++ scriptRuleRequirements;
+      inferredRequirements = ruleRequirements ++ compoundRuleRequirements;
       knownComponent = name: builtins.hasAttr name flake.lib.componentMetadata;
       knownRequirement = requirement:
         builtins.substring 0 5 requirement == "host."
@@ -127,24 +125,24 @@ assert_runtime_inference_contract() {
     in
       assert inference.defaultProfile == "minimal";
       assert builtins.length inference.dependencyRules > 0;
+      assert !(builtins.hasAttr "workspaceDirectoryRules" inference);
+      assert !(builtins.hasAttr "cudaMarkerScan" inference);
       assert builtins.all knownComponent inferredComponents;
       assert builtins.all knownRequirement inferredRequirements;
       assert builtins.any (rule: builtins.elem "opencv-python" rule.dependencies && builtins.elem "runtime.media.ffmpeg" rule.requires) inference.dependencyRules;
       assert builtins.any (rule: builtins.elem "isaacsim" rule.dependencies && builtins.elem "host.cuda.driver" rule.requires && !(builtins.elem "runtime.cuda.toolkit" rule.requires)) inference.dependencyRules;
       assert builtins.any (rule: builtins.elem "opencv-python" rule.dependencies && builtins.elem "media" rule.components) inference.dependencyRules;
       assert builtins.any (rule: builtins.elem "torchcodec" rule.dependencies && builtins.elem "media" rule.components) inference.dependencyRules;
-      assert builtins.any (rule: builtins.elem "pyqt6" rule.dependencies && builtins.elem "qt6" rule.components && builtins.elem "x11-gl" rule.components) inference.dependencyRules;
+      assert builtins.any (rule: builtins.elem "pyqt6" rule.dependencies && builtins.elem "qt6" rule.components && builtins.elem "desktop-gl" rule.components) inference.dependencyRules;
       assert builtins.any (rule: builtins.elem [ "matplotlib" ] rule.dependenciesAll && builtins.elem [ "pyside6" "pyqt6" "pyqt5" ] rule.dependenciesAll && builtins.elem "matplotlib-qt" rule.components) inference.compoundDependencyRules;
       assert builtins.any (rule: builtins.elem "cuda-python" rule.dependencies && builtins.elem "cuda-toolkit" rule.components) inference.dependencyRules;
       assert builtins.any (rule: builtins.elem "cupy-cuda12x" rule.dependencies && builtins.elem "cuda-toolkit" rule.components) inference.dependencyRules;
-      assert builtins.any (rule: builtins.elem "isaacsim" rule.dependencies && builtins.elem "isaac-sim" rule.components && builtins.elem "x11-gl" rule.components && !(builtins.elem "cuda-toolkit" rule.components)) inference.dependencyRules;
+      assert builtins.any (rule: builtins.elem "isaacsim" rule.dependencies && builtins.elem "isaac-sim" rule.components && builtins.elem "desktop-gl" rule.components && builtins.elem "host-nvidia-gl" rule.components && !(builtins.elem "cuda-toolkit" rule.components)) inference.dependencyRules;
       assert builtins.any (rule: builtins.elem "flash-attn" rule.dependencies && builtins.elem "cuda-toolkit" rule.components) inference.dependencyRules;
       assert builtins.any (rule: builtins.elem "flash-attn" rule.dependencies && builtins.elem "native-build" rule.components) inference.dependencyRules;
       assert builtins.any (rule: builtins.elem "pytorch3d" rule.dependencies && builtins.elem "cuda-toolkit" rule.components) inference.dependencyRules;
       assert builtins.any (rule: builtins.elem "torch3d" rule.dependencies && builtins.elem "cuda-toolkit" rule.components) inference.dependencyRules;
       assert builtins.any (rule: builtins.elem "evdev" rule.dependencies && builtins.elem "linux-headers" rule.components) inference.dependencyRules;
-      assert builtins.any (rule: builtins.elem "xrobot" rule.nameContains && builtins.elem "qt6" rule.components) inference.workspaceDirectoryRules;
-      assert builtins.elem "bootstrap_" inference.scriptDiscovery.prefixes;
       true
   '
 	assert_expr "$expr"
@@ -315,7 +313,7 @@ assert_x11_gl_exports_matching_egl_vendor() {
         runtimeLibs = [ pkgs.libGL pkgs.mesa ];
         system = "x86_64-linux";
       };
-      component = flake.lib.components."x11-gl" ctx;
+      component = flake.lib.components."desktop-gl" ctx;
       packageNames = builtins.map (package: package.name) component.packages;
       shellInit = builtins.unsafeDiscardStringContext component.shellInit;
       mesaEglVendor = builtins.unsafeDiscardStringContext "${pkgs.mesa}/share/glvnd/egl_vendor.d/50_mesa.json";

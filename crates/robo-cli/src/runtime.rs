@@ -640,13 +640,8 @@ pub(crate) fn build_runtime_why(runtime: &ProjectRuntime) -> RuntimeWhy {
             .iter()
             .map(|path| WhyEntry {
                 name: path.clone(),
-                source: if provenance.inferred.is_empty() {
-                    "manual config".to_string()
-                } else {
-                    "workspace inference".to_string()
-                },
-                reason: first_inference(&provenance)
-                    .unwrap_or_else(|| "listed in the bootstrap block in robo.nix".to_string()),
+                source: "manual config".to_string(),
+                reason: "listed in provenance.sourceScripts in robo.nix".to_string(),
                 remove_hint: format!("remove `{path}` from the bootstrap block in robo.nix"),
                 remediation_hint: format!(
                     "create `{path}` or remove it if this project does not need that bootstrap step"
@@ -658,7 +653,7 @@ pub(crate) fn build_runtime_why(runtime: &ProjectRuntime) -> RuntimeWhy {
             .iter()
             .map(|suggestion| WhyEntry {
                 name: suggestion.path.clone(),
-                source: "workspace inference".to_string(),
+                source: "provenance.suggestions".to_string(),
                 reason: suggestion.reason.clone(),
                 remove_hint: "delete this entry from provenance.suggestions in robo.nix".to_string(),
                 remediation_hint: suggestion_remediation_hint(suggestion),
@@ -669,10 +664,7 @@ pub(crate) fn build_runtime_why(runtime: &ProjectRuntime) -> RuntimeWhy {
 
 fn suggestion_remediation_hint(suggestion: &RuntimeSuggestion) -> String {
     if suggestion.kind == "bootstrap" {
-        format!(
-            "add `{}` to the bootstrap block in robo.nix only if this project should run it automatically",
-            suggestion.path
-        )
+        "delete this stale bootstrap suggestion; bootstrap blocks should come from explicit project policy".to_string()
     } else {
         format!(
             "promote `{}` to requiredFiles or requiredDirectories only if bootstrap truly depends on it",
@@ -871,7 +863,7 @@ fn explain_component(
             name: component.to_string(),
             source: "inference".to_string(),
             reason: first_inference(provenance)
-                .unwrap_or_else(|| "inferred from pyproject.toml or workspace probes".to_string()),
+                .unwrap_or_else(|| "inferred from project metadata".to_string()),
             remove_hint: format!(
                 "remove `{component}` from `components` in robo.nix if the inference is wrong"
             ),
@@ -931,28 +923,17 @@ fn dedupe_why_entries(entries: Vec<WhyEntry>) -> Vec<WhyEntry> {
         .collect()
 }
 
-fn explain_required_path(kind: &str, path: &str, provenance: &ProjectProvenance) -> WhyEntry {
-    let (source, reason) = if provenance.inferred.is_empty() {
-        (
-            "manual config".to_string(),
-            format!("listed in required {kind}s in robo.nix"),
-        )
-    } else if path.starts_with("third_party/") {
-        (
-            "workspace scan".to_string(),
-            "third_party checkout detected during init".to_string(),
-        )
+fn explain_required_path(kind: &str, path: &str, _provenance: &ProjectProvenance) -> WhyEntry {
+    let config_name = if kind == "file" {
+        "requiredFiles"
     } else {
-        (
-            "workspace inference".to_string(),
-            format!("listed in required {kind}s in robo.nix"),
-        )
+        "requiredDirectories"
     };
 
     WhyEntry {
         name: path.to_string(),
-        source,
-        reason,
+        source: "manual config".to_string(),
+        reason: format!("listed in {config_name} in robo.nix"),
         remove_hint: format!(
             "remove `{path}` from required{} in robo.nix",
             if kind == "file" {

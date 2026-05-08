@@ -97,7 +97,7 @@ fn runtime_needs_host_nvidia_graphics(runtime: &crate::runtime::ProjectRuntime) 
     runtime
         .components
         .iter()
-        .any(|component| matches!(component.as_str(), "x11-gl" | "isaac-sim"))
+        .any(|component| component == "host-nvidia-gl")
 }
 
 fn egl_vendor_is_nix_mesa(value: Option<&String>) -> bool {
@@ -347,16 +347,16 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
-    fn x11_gl_and_isaac_runtime_require_host_nvidia_graphics_bridge() {
-        let x11_gl_runtime = crate::runtime::ProjectRuntime {
+    fn host_nvidia_gl_runtime_requires_host_nvidia_graphics_bridge() {
+        let host_nvidia_gl_runtime = crate::runtime::ProjectRuntime {
             schema_version: None,
             env_name: "test".to_string(),
             python_version: "3.11".to_string(),
             cuda_wheel_version: None,
-            components: vec!["x11-gl".to_string()],
+            components: vec!["host-nvidia-gl".to_string()],
             suggestions: Vec::new(),
         };
-        let isaac_runtime = crate::runtime::ProjectRuntime {
+        let isaac_runtime_without_host_bridge = crate::runtime::ProjectRuntime {
             schema_version: None,
             env_name: "test".to_string(),
             python_version: "3.11".to_string(),
@@ -373,8 +373,10 @@ mod tests {
             suggestions: Vec::new(),
         };
 
-        assert!(runtime_needs_host_nvidia_graphics(&x11_gl_runtime));
-        assert!(runtime_needs_host_nvidia_graphics(&isaac_runtime));
+        assert!(runtime_needs_host_nvidia_graphics(&host_nvidia_gl_runtime));
+        assert!(!runtime_needs_host_nvidia_graphics(
+            &isaac_runtime_without_host_bridge
+        ));
         assert!(!runtime_needs_host_nvidia_graphics(&base_runtime));
     }
 

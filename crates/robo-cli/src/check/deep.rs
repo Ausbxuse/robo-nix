@@ -139,7 +139,7 @@ fn check_runtime_egl_glvnd_surface(
     if !runtime
         .components
         .iter()
-        .any(|component| matches!(component.as_str(), "x11-gl" | "wayland-gl"))
+        .any(|component| component == "desktop-gl")
     {
         progress.step("skipping EGL/GLVND graphics surface");
         return;
@@ -351,7 +351,7 @@ fn check_runtime_probes(
                     check_hint(config, &combined_output(&output));
                     check_hint(
                         config,
-                        "install a Qt binding such as pyqt6 and include qt6,x11-gl when using plt.show()",
+                        "install a Qt binding such as pyqt6 and include qt6,desktop-gl when using plt.show()",
                     );
                 }
                 Err(err) => check_warn(

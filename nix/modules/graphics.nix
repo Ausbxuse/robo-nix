@@ -1,5 +1,5 @@
-{common}: {
-  x11-gl = {
+{common}: let
+  desktopGl = componentName: {
     pkgs,
     runtimeLibPath,
     runtimeLibs,
@@ -13,24 +13,15 @@
         __EGL_VENDOR_LIBRARY_FILENAMES = "${pkgs.mesa}/share/glvnd/egl_vendor.d/50_mesa.json";
       };
     supportedSystems = common.linuxSystems;
-    check = common.mkComponentCheck "x11-gl" [];
+    check = common.mkComponentCheck componentName [];
   };
+in {
+  desktop-gl = desktopGl "desktop-gl";
 
-  wayland-gl = {
-    pkgs,
-    runtimeLibPath,
-    runtimeLibs,
-    ...
-  }: {
-    packages = runtimeLibs ++ [pkgs.vulkan-tools];
-    shellInit =
-      common.prependPath "LD_LIBRARY_PATH" runtimeLibPath
-      + "\n"
-      + common.exportDefaults {
-        __EGL_VENDOR_LIBRARY_FILENAMES = "${pkgs.mesa}/share/glvnd/egl_vendor.d/50_mesa.json";
-      };
+  host-nvidia-gl = _: {
+    shellInit = "";
     supportedSystems = common.linuxSystems;
-    check = common.mkComponentCheck "wayland-gl" [];
+    check = common.mkComponentCheck "host-nvidia-gl" [];
   };
 
   matplotlib-qt = _: {

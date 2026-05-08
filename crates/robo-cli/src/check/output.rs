@@ -36,6 +36,10 @@ pub(super) fn check_why(config: Config, message: &str) {
     check_line(config, "why:", LabelKind::Why, message);
 }
 
+pub(super) fn check_why_item(config: Config, message: &str) {
+    println!("  {}", inline(config, message));
+}
+
 pub(super) fn check_next(config: Config, message: &str) {
     check_line(config, "next:", LabelKind::Status, message);
 }

@@ -21,8 +21,6 @@ pub(super) struct ProjectSpec {
     pub(super) env: Vec<String>,
     pub(super) probe_notes: Vec<String>,
     pub(super) component_provenance: Vec<ComponentProvenance>,
-    pub(super) suggestions: Vec<InferenceSuggestion>,
-    pub(super) component_suggestions: Vec<ComponentSuggestion>,
 }
 
 impl ProjectSpec {
@@ -68,8 +66,6 @@ impl ProjectSpec {
                     reason: format!("selected by the `{name}` profile"),
                 })
                 .collect(),
-            suggestions: Vec::new(),
-            component_suggestions: Vec::new(),
         })
     }
 
@@ -143,45 +139,6 @@ impl ProjectSpec {
         push_unique(&mut self.required_files, path);
     }
 
-    pub(super) fn add_suggestion(&mut self, kind: &str, path: &str, reason: impl Into<String>) {
-        if !self
-            .suggestions
-            .iter()
-            .any(|item| item.kind == kind && item.path == path)
-        {
-            self.suggestions.push(InferenceSuggestion {
-                kind: kind.to_string(),
-                path: path.to_string(),
-                reason: reason.into(),
-            });
-        }
-    }
-
-    pub(super) fn add_source_script(&mut self, path: &str) {
-        push_unique(&mut self.source_scripts, path);
-    }
-
-    pub(super) fn add_component_suggestion(
-        &mut self,
-        component: &str,
-        evidence: &str,
-        reason: impl Into<String>,
-    ) {
-        if self.components.iter().any(|item| item == component)
-            || self
-                .component_suggestions
-                .iter()
-                .any(|item| item.name == component && item.evidence == evidence)
-        {
-            return;
-        }
-        self.component_suggestions.push(ComponentSuggestion {
-            name: component.to_string(),
-            evidence: evidence.to_string(),
-            reason: reason.into(),
-        });
-    }
-
     pub(super) fn apply_probe(&mut self, manifest: &Manifest, probe: ProbeResult) {
         if self.env_name == "project" {
             if let Some(name) = probe.env_name {
@@ -211,16 +168,6 @@ impl ProjectSpec {
             self.add_required_dir(&path);
         }
         self.probe_notes.extend(probe.notes);
-        for suggestion in probe.suggestions {
-            self.add_suggestion(&suggestion.kind, &suggestion.path, suggestion.reason);
-        }
-        for suggestion in probe.component_suggestions {
-            self.add_component_suggestion(
-                &suggestion.name,
-                &suggestion.evidence,
-                suggestion.reason,
-            );
-        }
     }
 }
 
@@ -236,20 +183,6 @@ pub(super) struct RuntimeRequirement {
     pub(super) id: String,
 }
 
-#[derive(Clone)]
-pub(super) struct InferenceSuggestion {
-    pub(super) kind: String,
-    pub(super) path: String,
-    pub(super) reason: String,
-}
-
-#[derive(Clone)]
-pub(super) struct ComponentSuggestion {
-    pub(super) name: String,
-    pub(super) evidence: String,
-    pub(super) reason: String,
-}
-
 fn inference_source(note: &str) -> &'static str {
     let lower = note.to_ascii_lowercase();
     if lower.contains("pyproject.toml")
@@ -258,8 +191,6 @@ fn inference_source(note: &str) -> &'static str {
         || lower.contains("workflows")
     {
         "pyproject inference"
-    } else if lower.contains("workspace") || lower.contains("bootstrap script") {
-        "workspace inference"
     } else {
         "inference"
     }
@@ -295,27 +226,6 @@ pub(super) fn dedupe_all(spec: &mut ProjectSpec) {
             .cmp(&right.name)
             .then_with(|| left.source.cmp(&right.source))
             .then_with(|| left.reason.cmp(&right.reason))
-    });
-    spec.suggestions.sort_by(|left, right| {
-        left.kind
-            .cmp(&right.kind)
-            .then_with(|| left.path.cmp(&right.path))
-            .then_with(|| left.reason.cmp(&right.reason))
-    });
-    spec.component_suggestions.retain(|suggestion| {
-        !spec
-            .components
-            .iter()
-            .any(|component| component == &suggestion.name)
-    });
-    spec.component_suggestions.sort_by(|left, right| {
-        left.name
-            .cmp(&right.name)
-            .then_with(|| left.evidence.cmp(&right.evidence))
-            .then_with(|| left.reason.cmp(&right.reason))
-    });
-    spec.component_suggestions.dedup_by(|left, right| {
-        left.name == right.name && left.evidence == right.evidence && left.reason == right.reason
     });
 }
 

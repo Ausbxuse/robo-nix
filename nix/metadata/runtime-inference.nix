@@ -1,4 +1,4 @@
-# Add rules here when a common Python package or workspace shape reliably
+# Add rules here when a common Python package reliably
 # implies reusable native runtime support. Keep rules generic: do not encode
 # project-specific uv groups, extras, source pins, package indexes, or install
 # modes here. `note` is shown to users by `robo init`, so write it as concise
@@ -19,7 +19,7 @@
       ];
       components = [
         "mujoco"
-        "x11-gl"
+        "desktop-gl"
       ];
       requires = [
         "runtime.sim.mujoco"
@@ -34,7 +34,7 @@
         "glfw"
         "pyglet"
       ];
-      components = ["x11-gl"];
+      components = ["desktop-gl"];
       requires = [
         "runtime.graphics.egl"
         "runtime.graphics.opengl"
@@ -47,7 +47,7 @@
         "opencv-contrib-python"
       ];
       components = [
-        "x11-gl"
+        "desktop-gl"
         "media"
       ];
       requires = [
@@ -73,7 +73,7 @@
       dependencies = ["lerobot"];
       components = [
         "media"
-        "x11-gl"
+        "desktop-gl"
       ];
       requires = [
         "runtime.graphics.opengl"
@@ -95,7 +95,7 @@
       ];
       components = [
         "qt6"
-        "x11-gl"
+        "desktop-gl"
       ];
       requires = [
         "runtime.graphics.opengl"
@@ -144,7 +144,8 @@
       dependencies = ["isaacsim"];
       components = [
         "isaac-sim"
-        "x11-gl"
+        "desktop-gl"
+        "host-nvidia-gl"
       ];
       requires = [
         "host.cuda.driver"
@@ -194,99 +195,4 @@
       note = "pyproject.toml uses Matplotlib with Qt bindings";
     }
   ];
-
-  workspaceDirectoryRules = [
-    {
-      root = "third_party";
-      nameContains = [
-        "xrobot"
-        "qt"
-      ];
-      components = [
-        "qt6"
-        "linux-headers"
-      ];
-      requires = [
-        "runtime.native.linux-headers"
-        "runtime.ui.qt6"
-      ];
-      note = "workspace contains Qt service paths";
-    }
-  ];
-
-  scriptDiscovery = {
-    roots = ["scripts"];
-    names = [];
-    prefixes = ["bootstrap_"];
-    daemonTextContains = [
-      "systemctl "
-      "ros2 launch"
-      "sleep infinity"
-    ];
-    checkoutFunction = "source_checkout_ready";
-    pathRoot = "third_party/";
-  };
-
-  scriptRules = [
-    {
-      textContains = [
-        "qt"
-        "xrobot"
-      ];
-      components = ["qt6"];
-      requires = ["runtime.ui.qt6"];
-      note = "bootstrap script references Qt GUI runtime";
-    }
-    {
-      textContains = [
-        "linux/"
-        "linuxheaders"
-        "linux-headers"
-      ];
-      components = ["linux-headers"];
-      requires = ["runtime.native.linux-headers"];
-      note = "bootstrap script references Linux headers";
-    }
-  ];
-
-  cudaMarkerScan = {
-    maxDepth = 6;
-    maxFiles = 2000;
-    sourceExtensions = [
-      "cu"
-      "cuh"
-    ];
-    buildFiles = [
-      "pyproject.toml"
-      "setup.cfg"
-      "setup.py"
-      "CMakeLists.txt"
-      "Makefile"
-      "makefile"
-    ];
-    textContains = [
-      "cudaextension"
-      "cuda_extension"
-      "cudatoolkit"
-      "nvcc"
-    ];
-    skipNames = [
-      ".git"
-      ".hg"
-      ".mypy_cache"
-      ".nox"
-      ".pytest_cache"
-      ".robo-nix"
-      ".tox"
-      ".venv"
-      "__pycache__"
-      "node_modules"
-    ];
-    component = "cuda-toolkit";
-    requires = [
-      "runtime.cuda.headers"
-      "runtime.cuda.nvcc"
-    ];
-    note = "workspace contains CUDA extension markers";
-  };
 }

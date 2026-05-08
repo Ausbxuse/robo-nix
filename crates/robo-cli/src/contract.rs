@@ -7,8 +7,8 @@ use std::process::ExitCode;
 
 use crate::runtime::{build_runtime_why, read_project_runtime, WhyEntry};
 use crate::{
-    add_runtime_source_override, error, ensure_project_runtime, label, nix_command, quoted_value,
-    Config, LabelKind,
+    add_runtime_source_override, error, ensure_project_runtime, inline, label, nix_command,
+    quoted_value, Config, LabelKind,
 };
 
 #[derive(Args)]
@@ -72,7 +72,7 @@ pub(crate) fn run(args: ContractArgs, config: Config) -> ExitCode {
         return ExitCode::SUCCESS;
     }
 
-    contract_field(config, &format!("env={}", contract.env_name));
+    contract_heading(config, &format!("env={}", contract.env_name));
     if let Some(version) = &contract.schema_version {
         contract_field(config, &format!("schemaVersion={version}"));
     }
@@ -123,7 +123,15 @@ pub(crate) fn run(args: ContractArgs, config: Config) -> ExitCode {
 }
 
 fn contract_field(config: Config, message: &str) {
-    println!("{} {message}", label(config, "contract:", LabelKind::Status));
+    println!("  {}", inline(config, message));
+}
+
+fn contract_heading(config: Config, message: &str) {
+    println!(
+        "{} {}",
+        label(config, "contract:", LabelKind::Status),
+        inline(config, message)
+    );
 }
 
 fn default_derivation_name(config: Config) -> Option<String> {

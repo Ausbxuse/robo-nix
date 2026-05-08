@@ -1,10 +1,8 @@
-use std::collections::BTreeSet;
 use std::io::{self, IsTerminal, Write};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
 use super::manifest::{list_profiles, profile_names, resolve_profile_selection, Manifest};
-use super::spec::ProjectSpec;
 use super::InitArgs;
 use crate::{error, Config};
 
@@ -46,57 +44,6 @@ pub(super) fn run(args: &mut InitArgs, manifest: &Manifest, config: Config) -> R
         return Err(ExitCode::SUCCESS);
     }
     Ok(())
-}
-
-pub(super) fn apply_component_suggestions(spec: &mut ProjectSpec, config: Config) {
-    apply_bootstrap_suggestions(spec, config);
-
-    let suggestions = spec.component_suggestions.clone();
-    let mut accepted = BTreeSet::new();
-    for suggestion in suggestions {
-        let answer = match ask(
-            &format!("Add component {}? {}", suggestion.name, suggestion.reason),
-            "yes",
-            config,
-        ) {
-            Ok(answer) => answer,
-            Err(_) => "no".to_string(),
-        };
-        if matches!(answer.as_str(), "yes" | "y") {
-            spec.add_component_with_source(
-                &suggestion.name,
-                "interactive workspace inference",
-                format!("{}: {}", suggestion.reason, suggestion.evidence),
-            );
-            accepted.insert(suggestion.name);
-        }
-    }
-    spec.component_suggestions
-        .retain(|suggestion| !accepted.contains(&suggestion.name));
-}
-
-fn apply_bootstrap_suggestions(spec: &mut ProjectSpec, config: Config) {
-    let suggestions = spec.suggestions.clone();
-    let mut accepted = BTreeSet::new();
-    for suggestion in suggestions {
-        if suggestion.kind != "bootstrap" {
-            continue;
-        }
-        let answer = match ask(
-            &format!("Enable bootstrap script {}? {}", suggestion.path, suggestion.reason),
-            "no",
-            config,
-        ) {
-            Ok(answer) => answer,
-            Err(_) => "no".to_string(),
-        };
-        if matches!(answer.as_str(), "yes" | "y") {
-            spec.add_source_script(&suggestion.path);
-            accepted.insert(suggestion.path);
-        }
-    }
-    spec.suggestions
-        .retain(|suggestion| suggestion.kind != "bootstrap" || !accepted.contains(&suggestion.path));
 }
 
 fn ask(prompt: &str, default: &str, config: Config) -> Result<String, ExitCode> {

@@ -182,7 +182,7 @@ extraRuntimeLibraries = pkgs: [
 ];
 ```
 
-If the result points at a broader component such as `media`, `x11-gl`, or `native-build`, prefer adding that component when the project needs the broader runtime contract.
+If the result points at a broader component such as `media`, `desktop-gl`, or `native-build`, prefer adding that component when the project needs the broader runtime contract.
 
 ## Failure Ownership
 

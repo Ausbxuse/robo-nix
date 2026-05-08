@@ -41,7 +41,7 @@
       "base"
       "python-uv"
       "native-build"
-      "x11-gl"
+      "desktop-gl"
       "mujoco"
     ];
     pythonVersion = "3.11";
@@ -58,7 +58,8 @@
       "base"
       "python-uv"
       "native-build"
-      "x11-gl"
+      "desktop-gl"
+      "host-nvidia-gl"
       "cuda-toolkit"
       "isaac-sim"
       "ros2-jazzy"

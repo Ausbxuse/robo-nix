@@ -28,6 +28,10 @@ const SHELL_ENV_CAPTURE_SCRIPT: &str = "source /dev/stdin >/dev/null; \
      env -0";
 const SHELL_PROGRESS_SPINNER_FRAMES: &[&str] =
     &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+const SHELL_STEP_WIDTH: usize = 34;
+const SHELL_META_WIDTH: usize = 12;
+const SHELL_DURATION_WIDTH: usize = 6;
+const SHELL_READY_WIDTH: usize = 51;
 
 pub(super) fn load_shell_env_script(
     config: Config,
@@ -211,6 +215,16 @@ pub(super) fn load_cached_or_refresh_shell_env(
             refresh_shell_env_cache(config, progress)
         }
     }
+}
+
+pub(super) fn refresh_shell_env_for_hook(
+    config: Config,
+    progress: Option<&ShellProgress>,
+) -> Result<Vec<(String, String)>, ExitCode> {
+    let script = load_shell_env_script(config, progress)?;
+    let env = materialize_shell_env(&script, config, progress)?;
+    write_shell_env_cache_if_possible(&env, config);
+    Ok(env)
 }
 
 pub(super) fn write_shell_env_cache_if_possible(env: &[(String, String)], config: Config) {
@@ -475,16 +489,16 @@ fn tree_bar(config: Config) -> ProgressBar {
             .tick_strings(SHELL_PROGRESS_SPINNER_FRAMES),
     );
     bar.enable_steady_tick(Duration::from_millis(80));
-    bar.set_message(inline(config, "robo shell"));
+    bar.set_message(shell_tree_heading(config));
     bar
 }
 
 fn render_live_tree(config: Config, state: &ShellProgressTreeState) -> String {
-    let mut lines = vec![inline(config, "robo shell")];
+    let mut lines = vec![shell_tree_heading(config)];
     lines.extend(state.completed.iter().cloned());
     if !state.active_message.is_empty() {
         let active_elapsed = state.active_started_at.elapsed();
-        let mut line = format!(
+        let line = format!(
             "  {} {} {}",
             label(config, "└", LabelKind::Hint),
             label(
@@ -492,20 +506,13 @@ fn render_live_tree(config: Config, state: &ShellProgressTreeState) -> String {
                 active_spinner_for_elapsed(active_elapsed),
                 LabelKind::Hint
             ),
-            secondary_tree_message(config, &state.active_message)
+            progress_tree_fields(
+                config,
+                &state.active_message,
+                state.evaluated_packages.len(),
+                active_elapsed,
+            )
         );
-        if let Some(count) =
-            progress_package_count(config, &state.active_message, state.evaluated_packages.len())
-        {
-            line.push(' ');
-            line.push_str(&count);
-        }
-        line.push(' ');
-        line.push_str(&label(
-            config,
-            &human_duration(active_elapsed),
-            LabelKind::Hint,
-        ));
         lines.push(line);
     }
     for detail in &state.details {
@@ -520,14 +527,27 @@ fn active_spinner_for_elapsed(elapsed: Duration) -> &'static str {
 }
 
 fn render_finished_tree(config: Config, completed: &[String], duration: Duration) -> String {
-    let mut lines = vec![format!(
+    let mut lines = vec![format_ready_line(config, duration)];
+    lines.extend(
+        completed
+            .iter()
+            .filter(|line| !line.is_empty())
+            .cloned(),
+    );
+    lines.join("\n")
+}
+
+fn format_ready_line(config: Config, duration: Duration) -> String {
+    format!(
         "{} {} {}",
         label(config, "✓", LabelKind::Ok),
-        inline(config, "robo ready"),
-        label(config, &human_duration(duration), LabelKind::Ok)
-    )];
-    lines.extend(completed.iter().cloned());
-    lines.join("\n")
+        pad_display(label(config, "robo ready", LabelKind::Ok), SHELL_READY_WIDTH),
+        label(
+            config,
+            &format!("{:>SHELL_DURATION_WIDTH$}", human_duration(duration)),
+            LabelKind::Ok,
+        )
+    )
 }
 
 fn completed_tree_line(
@@ -537,50 +557,109 @@ fn completed_tree_line(
     evaluated_packages: usize,
     duration: Duration,
 ) -> String {
-    let mut line = format!(
+    if message == "shell: launching shell" {
+        return String::new();
+    }
+
+    format!(
         "  {} {} {}",
         label(config, "└", LabelKind::Hint),
         label(config, "✓", LabelKind::SecondaryOk),
-        secondary_tree_message(config, message)
-    );
-    if let Some(suffix) = suffix {
-        line.push(' ');
-        line.push_str(&label(config, suffix, LabelKind::Hint));
-    }
-    if evaluated_packages > 0 && message == "shell: evaluating and realizing dev shell" {
-        line.push(' ');
-        line.push_str(&label(
-            config,
-            &format!("{evaluated_packages} packages"),
-            LabelKind::Hint,
-        ));
-    }
-    line.push(' ');
-    line.push_str(&label(config, &human_duration(duration), LabelKind::Hint));
-    line
+        completed_tree_fields(config, message, suffix, evaluated_packages, duration)
+    )
 }
 
-fn progress_package_count(
+fn completed_tree_fields(
+    config: Config,
+    message: &str,
+    suffix: Option<&str>,
+    evaluated_packages: usize,
+    duration: Duration,
+) -> String {
+    tree_fields(
+        config,
+        message,
+        tree_metadata(message, suffix, evaluated_packages),
+        duration,
+    )
+}
+
+fn progress_tree_fields(
     config: Config,
     message: &str,
     evaluated_packages: usize,
-) -> Option<String> {
-    if evaluated_packages == 0 || message != "shell: evaluating and realizing dev shell" {
-        return None;
-    }
-    Some(label(
+    duration: Duration,
+) -> String {
+    tree_fields(
         config,
-        &format!("{evaluated_packages} packages"),
-        LabelKind::Hint,
-    ))
+        message,
+        tree_metadata(message, None, evaluated_packages),
+        duration,
+    )
+}
+
+fn tree_fields(
+    config: Config,
+    message: &str,
+    metadata: Option<TreeMetadata>,
+    duration: Duration,
+) -> String {
+    let metadata = metadata
+        .map(|metadata| label(config, &metadata.text, metadata.kind))
+        .unwrap_or_default();
+    format!(
+        "{} {} {}",
+        pad_display(inline(config, display_shell_step(message)), SHELL_STEP_WIDTH),
+        pad_display(metadata, SHELL_META_WIDTH),
+        label(
+            config,
+            &format!("{:>SHELL_DURATION_WIDTH$}", human_duration(duration)),
+            LabelKind::Hint,
+        )
+    )
+}
+
+struct TreeMetadata {
+    text: String,
+    kind: LabelKind,
+}
+
+fn tree_metadata(
+    message: &str,
+    suffix: Option<&str>,
+    evaluated_packages: usize,
+) -> Option<TreeMetadata> {
+    if evaluated_packages > 0 && message == "shell: evaluating and realizing dev shell" {
+        return Some(TreeMetadata {
+            text: format!("{evaluated_packages} packages"),
+            kind: LabelKind::Status,
+        });
+    }
+    suffix.map(|suffix| TreeMetadata {
+        text: suffix.to_string(),
+        kind: match suffix {
+            "skipped" => LabelKind::Warn,
+            "cached" => LabelKind::SecondaryOk,
+            _ => LabelKind::Hint,
+        },
+    })
 }
 
 fn tree_finished_style() -> ProgressStyle {
     ProgressStyle::with_template("{msg}").unwrap_or_else(|_| ProgressStyle::default_bar())
 }
 
-fn secondary_tree_message(config: Config, message: &str) -> String {
-    inline(config, message)
+fn shell_tree_heading(config: Config) -> String {
+    label(config, "robo shell", LabelKind::Status)
+}
+
+fn display_shell_step(message: &str) -> &str {
+    message.strip_prefix("shell: ").unwrap_or(message)
+}
+
+fn pad_display(value: String, width: usize) -> String {
+    let padding = width.saturating_sub(console::measure_text_width(&value));
+    format!("{value}{}", " ".repeat(padding))
 }
 
 pub(super) fn shell_env_value<'a>(envs: &'a [(String, String)], name: &str) -> Option<&'a String> {
@@ -636,6 +715,11 @@ fn append_shell_state(envs: &mut Vec<(String, String)>) {
         envs,
         "ROBO_NIX_PROMPT_PREFIX",
         "[robo]".to_string(),
+    );
+    set_shell_env(
+        envs,
+        "ROBO_NIX_RUNTIME_INPUT_KEY",
+        runtime_input_key_for(Path::new(".")),
     );
 
     if let Ok(current_exe) = env::current_exe() {
@@ -725,7 +809,16 @@ fn parse_cached_shell_env(bytes: &[u8]) -> Result<Vec<(String, String)>, String>
 }
 
 fn shell_env_cache_key() -> String {
+    shell_env_cache_key_for(Path::new("."))
+}
+
+pub(super) fn current_runtime_input_key_for(workspace: &Path) -> String {
+    runtime_input_key_for(workspace)
+}
+
+fn shell_env_cache_key_for(workspace: &Path) -> String {
     let mut hasher = DefaultHasher::new();
+    "shell-env-v2".hash(&mut hasher);
     nix_system_name().hash(&mut hasher);
     env::current_exe()
         .ok()
@@ -752,27 +845,96 @@ fn shell_env_cache_key() -> String {
         env::var(name).ok().hash(&mut hasher);
     }
 
-    for path in [
-        "flake.nix",
-        "flake.lock",
-        "robo.nix",
-        ".python-version",
-        "pyproject.toml",
-        "uv.lock",
-    ] {
-        path.hash(&mut hasher);
-        match fs::read(path) {
-            Ok(bytes) => bytes.hash(&mut hasher),
-            Err(_) => 0_u8.hash(&mut hasher),
-        }
-    }
-    hash_venv_cmake_prefixes(&mut hasher);
+    hash_runtime_input_files(workspace, &mut hasher);
+    hash_venv_cmake_prefixes(workspace, &mut hasher);
 
     format!("{:016x}", hasher.finish())
 }
 
-fn hash_venv_cmake_prefixes<H: Hasher>(hasher: &mut H) {
-    let pyvenv = Path::new(".venv/pyvenv.cfg");
+fn runtime_input_key_for(workspace: &Path) -> String {
+    let mut hasher = DefaultHasher::new();
+    "runtime-input-v1".hash(&mut hasher);
+    hash_runtime_input_files(workspace, &mut hasher);
+    format!("{:016x}", hasher.finish())
+}
+
+fn hash_runtime_input_files<H: Hasher>(workspace: &Path, hasher: &mut H) {
+    for path in [
+        "flake.nix",
+        "flake.lock",
+        ".python-version",
+        "pyproject.toml",
+        "uv.lock",
+    ] {
+        path.hash(hasher);
+        match fs::read(workspace.join(path)) {
+            Ok(bytes) => bytes.hash(hasher),
+            Err(_) => 0_u8.hash(hasher),
+        }
+    }
+    "robo.nix".hash(hasher);
+    match normalized_robo_manifest(workspace) {
+        Some(manifest) => manifest.hash(hasher),
+        None => match fs::read(workspace.join("robo.nix")) {
+            Ok(bytes) => bytes.hash(hasher),
+            Err(_) => 0_u8.hash(hasher),
+        },
+    }
+}
+
+fn normalized_robo_manifest(workspace: &Path) -> Option<Vec<u8>> {
+    let expr = r#"
+      let
+        spec = import ./robo.nix;
+        provenance = spec.provenance or {};
+        extraRuntimeLibraries = spec.extraRuntimeLibraries or [];
+      in builtins.toJSON {
+        schemaVersion = if spec ? schemaVersion then toString spec.schemaVersion else null;
+        envName = spec.envName or null;
+        pythonVersion = spec.pythonVersion or null;
+        cudaWheelVersion = spec.cudaWheelVersion or null;
+        supportedSystems = spec.supportedSystems or [];
+        workspaceRoot = spec.workspaceRoot or null;
+        requirements = spec.requirements or [];
+        components = spec.components or [];
+        requiredDirectories = spec.requiredDirectories or [];
+        requiredFiles = spec.requiredFiles or [];
+        shellInit = spec.shellInit or "";
+        bootstrap = spec.bootstrap or "";
+        diagnostics = spec.diagnostics or "";
+        extraRuntimeLibraries =
+          if builtins.typeOf extraRuntimeLibraries == "lambda"
+          then throw "function-valued extraRuntimeLibraries requires raw hash"
+          else extraRuntimeLibraries;
+        provenance = {
+          profile = provenance.profile or null;
+          sourceScripts = provenance.sourceScripts or [];
+          suggestions = provenance.suggestions or [];
+        };
+      }
+    "#;
+    let output = Command::new("nix")
+        .current_dir(workspace)
+        .args([
+            "--extra-experimental-features",
+            "nix-command",
+            "--extra-experimental-features",
+            "flakes",
+            "--no-warn-dirty",
+            "--quiet",
+            "eval",
+            "--json",
+            "--impure",
+            "--expr",
+            expr,
+        ])
+        .output()
+        .ok()?;
+    output.status.success().then_some(output.stdout)
+}
+
+fn hash_venv_cmake_prefixes<H: Hasher>(workspace: &Path, hasher: &mut H) {
+    let pyvenv = workspace.join(".venv/pyvenv.cfg");
     pyvenv.hash(hasher);
     match fs::read(pyvenv) {
         Ok(bytes) => bytes.hash(hasher),
@@ -780,7 +942,7 @@ fn hash_venv_cmake_prefixes<H: Hasher>(hasher: &mut H) {
     }
 
     let mut prefixes = Vec::new();
-    let Ok(python_dirs) = fs::read_dir(".venv/lib") else {
+    let Ok(python_dirs) = fs::read_dir(workspace.join(".venv/lib")) else {
         prefixes.hash(hasher);
         return;
     };
@@ -932,7 +1094,7 @@ mod tests {
 
         assert_eq!(
             live,
-            "robo shell\n  └ ✓ shell: evaluating and realizing dev shell cached 79ms\n  └ ⠋ shell: launching shell 812ms\n    evaluating file '/workspace/flake.nix'\n    copying '/workspace/' to the store"
+            "robo shell\n  └ ✓ evaluating and realizing dev shell cached         79ms\n  └ ⠋ launching shell                                  812ms\n    evaluating file '/workspace/flake.nix'\n    copying '/workspace/' to the store"
         );
         assert!(!live.contains("robo shell  └"));
         assert!(!live.contains("robo shell └"));
@@ -963,7 +1125,7 @@ mod tests {
 
         assert_eq!(
             render_finished_tree(config, &completed, Duration::from_millis(14)),
-            "✓ robo ready 14ms\n  └ ✓ shell: evaluating and realizing dev shell cached 13ms\n  └ ✓ shell: launching shell 0ms"
+            "✓ robo ready                                            14ms\n  └ ✓ evaluating and realizing dev shell cached         13ms"
         );
     }
 
@@ -986,7 +1148,7 @@ mod tests {
 
         assert_eq!(
             render_live_tree(config, &state),
-            "robo shell\n  └ ⠋ shell: evaluating and realizing dev shell 2 packages 812ms"
+            "robo shell\n  └ ⠋ evaluating and realizing dev shell 2 packages    812ms"
         );
         assert_eq!(
             completed_tree_line(
@@ -996,7 +1158,7 @@ mod tests {
                 2,
                 Duration::from_secs(15),
             ),
-            "  └ ✓ shell: evaluating and realizing dev shell 2 packages 15.0s"
+            "  └ ✓ evaluating and realizing dev shell 2 packages    15.0s"
         );
     }
 

@@ -4,9 +4,9 @@ These files are the data-driven extension point for `robo-nix`.
 
 - `components.nix` describes reusable runtime components implemented in `../modules`.
 - `profiles.nix` defines starter profiles exposed by `robo init --list-profiles`.
-- `runtime-inference.nix` maps common Python packages, workspace paths, and bootstrap script markers to runtime requirements.
+- `runtime-inference.nix` maps common Python packages and lockfile markers to runtime requirements.
 
-Prefer metadata changes when adding support for a new package or common workspace shape. Rust should stay generic: read the project, apply these rules, and explain the result.
+Prefer metadata changes when adding support for a new package or common lockfile marker. Rust should stay generic: read the project, apply these rules, and explain the result.
 
 The model is capability-based rather than component-first. See
 `docs/developers/runtime-capability-model.md`. Rules infer runtime
@@ -22,3 +22,7 @@ When adding inference coverage:
 5. Write `note` as user-facing text. It appears in `robo init` output.
 6. Keep `components` only as a compatibility fallback while older generated files and checks still understand component-first rules.
 7. Add a focused regression assertion in `tests/regression-api.sh` or `tests/robo-init-validation.sh`.
+
+Do not infer runtime policy from discovered bootstrap scripts. Bootstrap scripts
+are project-owned code and should enter generated config only when the user
+passes an explicit `--source-script` or edits `robo.nix`.

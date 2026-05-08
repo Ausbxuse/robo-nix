@@ -75,14 +75,16 @@
     ];
   };
 
-  x11-gl = {
+  desktop-gl = {
     category = "ui";
-    description = "Linux X11/XWayland desktop OpenGL, font, DBus, and XCB runtime libraries for GUI and simulator workloads.";
+    description = "Linux desktop OpenGL, EGL, GLVND, Vulkan loader, font, DBus, X11/XWayland, and Wayland runtime libraries for GUI and simulator workloads.";
     provides = [
       "runtime.graphics.egl"
       "runtime.graphics.opengl"
       "runtime.graphics.vulkan-loader"
+      "runtime.graphics.desktop"
       "runtime.graphics.x11"
+      "runtime.graphics.wayland"
     ];
     scaffoldDirectories = [];
     supportedSystems = [
@@ -91,15 +93,10 @@
     ];
   };
 
-  wayland-gl = {
-    category = "ui";
-    description = "Linux Wayland desktop OpenGL, font, DBus, and Wayland runtime libraries for GUI and simulator workloads.";
-    provides = [
-      "runtime.graphics.egl"
-      "runtime.graphics.opengl"
-      "runtime.graphics.vulkan-loader"
-      "runtime.graphics.wayland"
-    ];
+  host-nvidia-gl = {
+    category = "gpu";
+    description = "Host NVIDIA EGL/Vulkan GLVND bridge for workloads that require the host driver graphics provider.";
+    provides = ["host.graphics.nvidia"];
     scaffoldDirectories = [];
     supportedSystems = [
       "x86_64-linux"

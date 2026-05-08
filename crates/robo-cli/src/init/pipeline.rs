@@ -35,9 +35,6 @@ pub(super) fn build_draft(args: &InitArgs, manifest: &Manifest) -> Result<Projec
         spec.apply_probe(manifest, probe_project(&target_dir, manifest));
     }
     apply_cli_overrides(args, &mut spec);
-    if let Some(display_gl) = explicit_display_gl(args) {
-        apply_display_gl_selection(&mut spec, display_gl, "manual config", "selected explicitly");
-    }
     dedupe_all(&mut spec);
 
     Ok(ProjectDraft { target_dir, spec })
@@ -77,57 +74,6 @@ fn apply_target_defaults(target_dir: &PathBuf, spec: &mut ProjectSpec) {
             spec.env_name = name.to_string();
         }
     }
-}
-
-fn explicit_display_gl(args: &InitArgs) -> Option<&'static str> {
-    let mut selected = Vec::new();
-    for list in [args.components.as_deref(), args.with_components.as_deref()]
-        .into_iter()
-        .flatten()
-    {
-        for component in parse_list(list) {
-            if component == "x11-gl" || component == "wayland-gl" {
-                push_unique(&mut selected, &component);
-            }
-        }
-    }
-
-    match selected.as_slice() {
-        [component] if component == "x11-gl" => Some("x11-gl"),
-        [component] if component == "wayland-gl" => Some("wayland-gl"),
-        _ => None,
-    }
-}
-
-fn apply_display_gl_selection(
-    spec: &mut ProjectSpec,
-    preferred: &str,
-    source: &str,
-    reason: impl Into<String>,
-) {
-    let other = if preferred == "wayland-gl" {
-        "x11-gl"
-    } else {
-        "wayland-gl"
-    };
-
-    if !spec.components.iter().any(|component| component == preferred)
-        && !spec.components.iter().any(|component| component == other)
-    {
-        return;
-    }
-
-    spec.components.retain(|component| component != other);
-    if !spec.components.iter().any(|component| component == preferred) {
-        spec.components.push(preferred.to_string());
-    }
-    spec.component_provenance
-        .retain(|item| item.name != other && item.name != preferred);
-    spec.component_provenance.push(ComponentProvenance {
-        name: preferred.to_string(),
-        source: source.to_string(),
-        reason: reason.into(),
-    });
 }
 
 fn apply_cli_overrides(args: &InitArgs, spec: &mut ProjectSpec) {
@@ -184,8 +130,7 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::super::manifest::{
-        Component, CompoundDependencyRule, CudaMarkerScan, DependencyRule, Manifest, Profile,
-        RuntimeInference, ScriptDiscovery, ScriptRule,
+        Component, CompoundDependencyRule, DependencyRule, Manifest, Profile, RuntimeInference,
     };
     use super::*;
 
@@ -282,27 +227,6 @@ dependencies = ["opencv-python"]
                     note: "OpenCV wheels commonly need graphics runtime libraries".to_string(),
                 }],
                 compound_dependency_rules: Vec::<CompoundDependencyRule>::new(),
-                workspace_directory_rules: Vec::new(),
-                script_discovery: ScriptDiscovery {
-                    roots: Vec::new(),
-                    names: Vec::new(),
-                    prefixes: Vec::new(),
-                    daemon_text_contains: Vec::new(),
-                    checkout_function: "checkout".to_string(),
-                    path_root: "third_party".to_string(),
-                },
-                script_rules: Vec::<ScriptRule>::new(),
-                cuda_marker_scan: CudaMarkerScan {
-                    max_depth: 0,
-                    max_files: 0,
-                    source_extensions: Vec::new(),
-                    build_files: Vec::new(),
-                    text_contains: Vec::new(),
-                    skip_names: Vec::new(),
-                    requires: Vec::new(),
-                    component: "core".to_string(),
-                    note: "CUDA marker scan disabled".to_string(),
-                },
             },
         }
     }

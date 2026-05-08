@@ -1,8 +1,8 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
 
-use super::manifest::{CudaMarkerScan, Manifest, ScriptDiscovery};
+use super::manifest::Manifest;
 
 // Flat facts from project probing. Keep policy decisions in spec/pipeline, not here.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -14,8 +14,6 @@ pub(super) struct ProbeResult {
     pub(super) components: Vec<ProbeComponent>,
     pub(super) required_dirs: Vec<String>,
     pub(super) notes: Vec<String>,
-    pub(super) suggestions: Vec<ProbeSuggestion>,
-    pub(super) component_suggestions: Vec<ProbeComponentSuggestion>,
 }
 
 impl ProbeResult {
@@ -54,20 +52,6 @@ pub(super) struct ProbeRequirement {
     pub(super) note: String,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(super) struct ProbeSuggestion {
-    pub(super) kind: String,
-    pub(super) path: String,
-    pub(super) reason: String,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(super) struct ProbeComponentSuggestion {
-    pub(super) name: String,
-    pub(super) evidence: String,
-    pub(super) reason: String,
-}
-
 pub(super) fn probe_project(target: &Path, manifest: &Manifest) -> ProbeResult {
     let mut probe = ProbeResult::default();
     let pyproject = target.join("pyproject.toml");
@@ -76,7 +60,6 @@ pub(super) fn probe_project(target: &Path, manifest: &Manifest) -> ProbeResult {
         probe_python_version(&text, &mut probe);
         probe_dependencies(&text, manifest, &mut probe);
     }
-    probe_workspace(target, manifest, &mut probe);
     probe_cuda_lock_version(target, &mut probe);
     probe
 }
@@ -161,11 +144,10 @@ fn probe_dependencies(text: &str, manifest: &Manifest, probe: &mut ProbeResult) 
     let deps = crate::pyproject::dependency_names(text);
     for rule in &manifest.runtime_inference.dependency_rules {
         if has_dep(&deps, &rule.dependencies) {
-            if rule.requires.is_empty() {
-                for component in &rule.components {
-                    probe.add_component(component, &rule.note);
-                }
-            } else {
+            for component in &rule.components {
+                probe.add_component(component, &rule.note);
+            }
+            if !rule.requires.is_empty() {
                 probe.add_requirements(&rule.requires, &rule.note);
             }
         }
@@ -176,239 +158,16 @@ fn probe_dependencies(text: &str, manifest: &Manifest, probe: &mut ProbeResult) 
             .iter()
             .all(|group| has_dep(&deps, group))
         {
-            if rule.requires.is_empty() {
-                for component in &rule.components {
-                    probe.add_component(component, &rule.note);
-                }
-            } else {
+            for component in &rule.components {
+                probe.add_component(component, &rule.note);
+            }
+            if !rule.requires.is_empty() {
                 probe.add_requirements(&rule.requires, &rule.note);
             }
         }
     }
-}
-
-fn probe_workspace(target: &Path, manifest: &Manifest, probe: &mut ProbeResult) {
-    probe_workspace_directories(target, manifest, probe);
-    probe_workspace_scripts(target, manifest, probe);
-    probe_workspace_cuda_markers(target, &manifest.runtime_inference.cuda_marker_scan, probe);
-}
-
-fn probe_workspace_directories(target: &Path, manifest: &Manifest, probe: &mut ProbeResult) {
-    for rule in &manifest.runtime_inference.workspace_directory_rules {
-        if let Ok(entries) = fs::read_dir(target.join(&rule.root)) {
-            for entry in entries.flatten() {
-                if entry.file_type().is_ok_and(|ty| ty.is_dir()) {
-                    let name = entry.file_name().to_string_lossy().to_string();
-                    if contains_any(&name.to_ascii_lowercase(), &rule.name_contains) {
-                        let path = format!("{}/{}", rule.root, name);
-                        probe.required_dirs.push(path);
-                        if rule.requires.is_empty() {
-                            for component in &rule.components {
-                                probe.add_component(component, &rule.note);
-                            }
-                        } else {
-                            probe.add_requirements(&rule.requires, &rule.note);
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-fn probe_workspace_scripts(target: &Path, manifest: &Manifest, probe: &mut ProbeResult) {
-    let discovery = &manifest.runtime_inference.script_discovery;
-    for root in &discovery.roots {
-        let root_path = target.join(root);
-        if let Ok(entries) = fs::read_dir(&root_path) {
-            for entry in entries.flatten() {
-                if !entry.file_type().is_ok_and(|ty| ty.is_file()) {
-                    continue;
-                }
-                let name = entry.file_name().to_string_lossy().to_string();
-                if !is_discovered_script(&name, discovery) {
-                    continue;
-                }
-                let relative = format!("{root}/{name}");
-                if let Ok(text) = fs::read_to_string(entry.path()) {
-                    if looks_like_daemon(&text, discovery) {
-                        probe.notes.push(format!(
-                            "skipped bootstrap {relative}: appears to start a long-running process"
-                        ));
-                    } else {
-                        probe.suggestions.push(ProbeSuggestion {
-                            kind: "bootstrap".to_string(),
-                            path: relative.clone(),
-                            reason: "discovered bootstrap script; review before enabling"
-                                .to_string(),
-                        });
-                    }
-                    probe_script_rules(&text, manifest, probe);
-                    probe_script_paths(&text, discovery, probe);
-                }
-            }
-        }
-    }
-}
-
-fn probe_workspace_cuda_markers(target: &Path, scan: &CudaMarkerScan, probe: &mut ProbeResult) {
-    let mut remaining = scan.max_files;
-    if let Some(evidence) = find_cuda_marker(target, target, scan, 0, &mut remaining) {
-        probe.component_suggestions.push(ProbeComponentSuggestion {
-            name: scan.component.clone(),
-            evidence,
-            reason: scan.note.clone(),
-        });
-    }
-}
-
-fn find_cuda_marker(
-    root: &Path,
-    path: &Path,
-    scan: &CudaMarkerScan,
-    depth: usize,
-    remaining: &mut usize,
-) -> Option<String> {
-    if depth > scan.max_depth || *remaining == 0 {
-        return None;
-    }
-    let entries = fs::read_dir(path).ok()?;
-    for entry in entries.flatten() {
-        if *remaining == 0 {
-            return None;
-        }
-        let entry_path = entry.path();
-        let name = entry.file_name().to_string_lossy().to_string();
-        if scan.skip_names.iter().any(|item| item == &name) {
-            continue;
-        }
-        let Ok(file_type) = entry.file_type() else {
-            continue;
-        };
-        if file_type.is_dir() {
-            if let Some(evidence) = find_cuda_marker(root, &entry_path, scan, depth + 1, remaining)
-            {
-                return Some(evidence);
-            }
-        } else if file_type.is_file() {
-            *remaining -= 1;
-            let relative = entry_path
-                .strip_prefix(root)
-                .unwrap_or(&entry_path)
-                .display()
-                .to_string();
-            if entry_path
-                .extension()
-                .and_then(|extension| extension.to_str())
-                .is_some_and(|extension| {
-                    scan.source_extensions.iter().any(|item| item == extension)
-                })
-            {
-                return Some(format!("{relative}: CUDA source file"));
-            }
-            if scan.build_files.iter().any(|item| item == &name) {
-                if let Ok(text) = fs::read_to_string(&entry_path) {
-                    let lower = text.to_ascii_lowercase();
-                    if contains_any(&lower, &scan.text_contains) {
-                        return Some(format!("{relative}: CUDA build marker"));
-                    }
-                }
-            }
-        }
-    }
-    None
-}
-
-fn probe_script_rules(text: &str, manifest: &Manifest, probe: &mut ProbeResult) {
-    let lower = text.to_ascii_lowercase();
-    for rule in &manifest.runtime_inference.script_rules {
-        if contains_any(&lower, &rule.text_contains) {
-            if rule.requires.is_empty() {
-                for component in &rule.components {
-                    probe.add_component(component, &rule.note);
-                }
-            } else {
-                probe.add_requirements(&rule.requires, &rule.note);
-            }
-        }
-    }
-}
-
-fn probe_script_paths(text: &str, discovery: &ScriptDiscovery, probe: &mut ProbeResult) {
-    let mut roots = BTreeMap::new();
-    for line in text.lines() {
-        if let Some((name, rest)) = line.split_once('=') {
-            if let Some(index) = rest.find(&discovery.path_root) {
-                let path = rest[index..]
-                    .trim_matches(|ch: char| {
-                        ch == '"' || ch == '\'' || ch == '$' || ch == '{' || ch == '}'
-                    })
-                    .split(|ch: char| ch == '"' || ch == '\'' || ch.is_whitespace())
-                    .next()
-                    .unwrap_or("");
-                if !path.is_empty() {
-                    roots.insert(name.trim().to_string(), path.to_string());
-                }
-            }
-        }
-    }
-    for line in text.lines() {
-        if !line.contains(&discovery.checkout_function) {
-            continue;
-        }
-        let mut tokens = line.split_whitespace().skip(1);
-        let Some(root_token) = tokens.next() else {
-            continue;
-        };
-        let var = root_token.trim_matches(|ch| ch == '"' || ch == '\'' || ch == '$');
-        let Some(base) = roots.get(var) else {
-            continue;
-        };
-        for token in tokens {
-            let token = token.trim_matches(|ch| ch == '"' || ch == '\'' || ch == ';');
-            if token.is_empty() {
-                continue;
-            }
-            let path = format!("{base}/{token}");
-            if token.contains('.') || token.contains('/') {
-                probe.suggestions.push(ProbeSuggestion {
-                    kind: "file".to_string(),
-                    path,
-                    reason: "bootstrap script referenced a local source checkout file".to_string(),
-                });
-            } else {
-                probe.suggestions.push(ProbeSuggestion {
-                    kind: "directory".to_string(),
-                    path,
-                    reason: "bootstrap script referenced a local source checkout directory"
-                        .to_string(),
-                });
-            }
-        }
-    }
-}
-
-fn is_discovered_script(name: &str, discovery: &ScriptDiscovery) -> bool {
-    discovery.names.iter().any(|item| item == name)
-        || discovery
-            .prefixes
-            .iter()
-            .any(|prefix| name.starts_with(prefix))
-}
-
-fn looks_like_daemon(text: &str, discovery: &ScriptDiscovery) -> bool {
-    discovery
-        .daemon_text_contains
-        .iter()
-        .any(|pattern| text.contains(pattern))
 }
 
 fn has_dep(dependencies: &BTreeSet<String>, names: &[String]) -> bool {
     crate::pyproject::has_dependency_name(dependencies, names.iter().map(String::as_str))
-}
-
-fn contains_any(text: &str, patterns: &[String]) -> bool {
-    patterns
-        .iter()
-        .any(|pattern| text.contains(&pattern.to_ascii_lowercase()))
 }

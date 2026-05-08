@@ -213,7 +213,7 @@ pub(crate) fn findings(probe: &Probe) -> Vec<Finding> {
     if probe.vendor_unset {
         findings.push(Finding::warn(
             "EGL vendor file selection is unset",
-            "EGL may fall through to host or container GLVND vendor files; x11-gl should set __EGL_VENDOR_LIBRARY_FILENAMES by default",
+            "EGL may fall through to host or container GLVND vendor files; desktop-gl should set __EGL_VENDOR_LIBRARY_FILENAMES by default",
         ));
         return findings;
     }
@@ -283,7 +283,7 @@ fn libegl_finding(probe: &Probe) -> Finding {
         Some(path) => Finding::ok(format!("libEGL is visible at {path}")),
         None => Finding::error(
             "libEGL.so.1 is not visible in the runtime library path",
-            "include the x11-gl component for desktop OpenGL/EGL clients",
+            "include the desktop-gl component for desktop OpenGL/EGL clients",
         ),
     }
 }

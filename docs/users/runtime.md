@@ -58,7 +58,7 @@ export ROBO_NIX_DISABLE_HOST_CUDA_AUTO=1
 
 ## Graphics
 
-Graphics support is selected through named runtime pieces such as `x11-gl`, `wayland-gl`, and `qt6`. You may see these names in `robo.nix` or `robo check` output.
+Graphics support is selected through named runtime pieces such as `desktop-gl`, `host-nvidia-gl`, and `qt6`. You may see these names in `robo.nix` or `robo check` output.
 
 Select graphics support when the project uses:
 
@@ -69,11 +69,11 @@ Select graphics support when the project uses:
 - OpenCV GUI paths
 - plotting backends that need native display libraries
 
-`x11-gl` is the default desktop graphics component because X11/XWayland remains the more conservative compatibility target for many robotics viewers and simulators. `wayland-gl` is available when a project explicitly wants native Wayland graphics support.
+`desktop-gl` is the default desktop graphics component. It provides Nix-managed userspace graphics libraries for OpenGL/EGL clients that may run through X11, XWayland, or native Wayland depending on the app and host session.
 
-Both graphics components provide Nix-managed userspace graphics libraries and point EGL at a matching Nix Mesa GLVND vendor file by default.
+`desktop-gl` points EGL at a matching Nix Mesa GLVND vendor file by default.
 
-On NVIDIA systems, desktop OpenGL viewers often need the host NVIDIA GLVND provider rather than Nix Mesa. For runtimes with `x11-gl`, `robo` may bridge detected host NVIDIA EGL/Vulkan manifests and a small project-local vendor library directory.
+Some NVIDIA workloads need the host NVIDIA GLVND provider rather than Nix Mesa. When a runtime includes `host-nvidia-gl`, `robo` may bridge detected host NVIDIA EGL/Vulkan manifests and a small project-local vendor library directory.
 
 This is not an offload launcher. PRIME/offload remains host policy. Use the host's normal launch policy, such as `nvidia-offload`, when the machine needs it.
 
@@ -92,7 +92,7 @@ robo check graphics --verbose
 Known limits:
 
 - AMD and Intel hosts currently rely on the Nix Mesa path.
-- Wayland is explicit: choose `wayland-gl` in `robo.nix` when a native Wayland viewer needs it. `robo init` does not bake the current desktop session into generated project files.
+- `robo init` does not bake the current desktop session into generated project files.
 - Headless and remote rendering modes such as EGL-only rendering, OSMesa, VirtualGL, and container display forwarding still need explicit project or host setup.
 - There is no nixGL-style one-command wrapper yet.
 

@@ -21,7 +21,8 @@ mod shell_launch;
 use flake_repair::repair_managed_flake_source;
 use shell_card::print_shell_card;
 use shell_env::{
-    ShellProgress, load_cached_or_refresh_shell_env, load_shell_env_script, materialize_shell_env,
+    ShellProgress, current_runtime_input_key_for, load_cached_or_refresh_shell_env,
+    load_shell_env_script, materialize_shell_env, refresh_shell_env_for_hook,
     write_shell_env_cache_if_possible,
 };
 use shell_launch::{
@@ -52,7 +53,7 @@ fn ensure_shell_project_runtime(config: Config) -> Result<(), ExitCode> {
         hint(config, "run `robo init .` first, then `robo shell`.");
         return Err(ExitCode::from(1));
     }
-    status(config, "init: writing runtime files");
+    status(config, "writing runtime files");
     let code = crate::init::run_quiet(
         crate::init::InitArgs::generated(PathBuf::from("."), false, false),
         config,
@@ -137,7 +138,7 @@ pub(crate) fn run_project_up(
 
     if !runtime_files_exist() {
         if open_shell {
-            status(config, "init: writing runtime files");
+            status(config, "writing runtime files");
         } else if !implicit_yes && !confirm_init_runtime_files(config) {
             hint(config, "run `robo init . --build` to initialize non-interactively.");
             return ExitCode::from(1);
@@ -257,7 +258,7 @@ fn confirm_init_runtime_files(config: Config) -> bool {
         );
         return false;
     }
-    println!("No robo runtime files were found in this project.\n");
+    println!("No robo runtime files were found in this project.");
     print!(
         "{} ",
         label(
@@ -331,6 +332,61 @@ pub(crate) fn run_internal_shell_env(config: Config) -> ExitCode {
     ExitCode::SUCCESS
 }
 
+pub(crate) fn run_internal_shell_refresh(args: Vec<OsString>, config: Config) -> ExitCode {
+    let shell = args
+        .first()
+        .and_then(|arg| arg.to_str())
+        .unwrap_or("sh");
+    let state = RuntimeState::read();
+    if !state.active {
+        return ExitCode::SUCCESS;
+    }
+    match active_shell_freshness(&state) {
+        ShellFreshness::Current => return ExitCode::SUCCESS,
+        ShellFreshness::Stale => status(
+            config,
+            &format!("shell: detected runtime changes in {}", state.workspace),
+        ),
+        ShellFreshness::Unknown => status(
+            config,
+            &format!("shell: refreshing runtime environment in {}", state.workspace),
+        ),
+    }
+    if !Path::new(&state.workspace).join("robo.nix").exists() {
+        hint(
+            config,
+            "runtime freshness could not be checked outside the workspace",
+        );
+        return ExitCode::SUCCESS;
+    }
+
+    let original_dir = env::current_dir().ok();
+    if let Err(err) = env::set_current_dir(&state.workspace) {
+        hint(
+            config,
+            &format!("failed to refresh shell from {}: {err}", state.workspace),
+        );
+        return ExitCode::SUCCESS;
+    }
+    let mut progress = ShellProgress::new(config, "shell: evaluating and realizing dev shell");
+    let env = match refresh_shell_env_for_hook(config, Some(&progress)) {
+        Ok(env) => env,
+        Err(code) => {
+            progress.finish();
+            if let Some(dir) = original_dir {
+                let _ = env::set_current_dir(dir);
+            }
+            return code;
+        }
+    };
+    progress.finish_ready();
+    if let Some(dir) = original_dir {
+        let _ = env::set_current_dir(dir);
+    }
+    print_shell_refresh_exports(shell, &env);
+    ExitCode::SUCCESS
+}
+
 fn run_shell(
     launch: ShellLaunch,
     env: Vec<(String, String)>,
@@ -351,7 +407,7 @@ fn run_shell(
     for (name, value) in launch.env {
         command.env(name, value);
     }
-    exec_command(command)
+    exec_command(command, config)
 }
 
 fn apply_env(command: &mut Command, env: &[(String, String)]) {
@@ -363,6 +419,17 @@ fn apply_env(command: &mut Command, env: &[(String, String)]) {
 fn print_exports(env: &[(String, String)]) {
     for (name, value) in env {
         println!("export {name}={}", shell_quote(&value));
+    }
+}
+
+fn print_shell_refresh_exports(shell: &str, env: &[(String, String)]) {
+    match shell {
+        "fish" => {
+            for (name, value) in env {
+                println!("set -gx {name} {}", shell_quote(value));
+            }
+        }
+        _ => print_exports(env),
     }
 }
 
@@ -401,23 +468,23 @@ pub(crate) fn run_internal_exec(args: Vec<OsString>, config: Config) -> ExitCode
 
     let mut command = Command::new(&args[0]);
     command.args(&args[1..]);
-    exec_command(command)
+    exec_command(command, config)
 }
 
 #[cfg(unix)]
-fn exec_command(mut command: Command) -> ExitCode {
+fn exec_command(mut command: Command, config: Config) -> ExitCode {
     use std::os::unix::process::CommandExt;
     let err = command.exec();
-    eprintln!("error: failed to exec command: {err}");
+    error(config, &format!("failed to exec command: {err}"));
     ExitCode::from(1)
 }
 
 #[cfg(not(unix))]
-fn exec_command(mut command: Command) -> ExitCode {
+fn exec_command(mut command: Command, config: Config) -> ExitCode {
     match command.status() {
         Ok(status) => exit_code(status.code()),
         Err(err) => {
-            eprintln!("error: failed to exec command: {err}");
+            error(config, &format!("failed to exec command: {err}"));
             ExitCode::from(1)
         }
     }
@@ -456,6 +523,7 @@ pub(super) struct RuntimeState {
     pub(super) env_name: String,
     pub(super) python_version: String,
     pub(super) workspace: String,
+    runtime_input_key: Option<String>,
 }
 
 impl RuntimeState {
@@ -481,12 +549,14 @@ impl RuntimeState {
         let workspace = env::var("WORKSPACE_ROOT").unwrap_or_else(|_| {
             env::current_dir().map_or_else(|_| ".".into(), |path| path.display().to_string())
         });
+        let runtime_input_key = env::var("ROBO_NIX_RUNTIME_INPUT_KEY").ok();
 
         Self {
             active,
             env_name,
             python_version,
             workspace,
+            runtime_input_key,
         }
     }
 }
@@ -497,6 +567,27 @@ fn print_already_active(config: Config, _state: &RuntimeState) {
         "run {} to leave this runtime shell",
         label(config, "exit", LabelKind::Command)
     );
+}
+
+enum ShellFreshness {
+    Current,
+    Stale,
+    Unknown,
+}
+
+fn active_shell_freshness(state: &RuntimeState) -> ShellFreshness {
+    let Some(active_key) = &state.runtime_input_key else {
+        return ShellFreshness::Unknown;
+    };
+    let workspace = Path::new(&state.workspace);
+    if !workspace.join("robo.nix").exists() || !workspace.join("flake.nix").exists() {
+        return ShellFreshness::Unknown;
+    }
+    if active_key == &current_runtime_input_key_for(workspace) {
+        ShellFreshness::Current
+    } else {
+        ShellFreshness::Stale
+    }
 }
 
 fn action_row(config: Config, command: &str, description: &str) {
