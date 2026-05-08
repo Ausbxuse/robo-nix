@@ -113,6 +113,12 @@ pub(crate) struct ExpectedComponent {
     pub(crate) reason: String,
 }
 
+struct ExpectedRequirement {
+    name: String,
+    source: String,
+    reason: String,
+}
+
 struct ProjectProvenance {
     profile: Option<String>,
     inferred: Vec<String>,
@@ -559,6 +565,7 @@ fn parse_major_minor(text: &str) -> Option<(u32, u32)> {
 
 pub(crate) fn build_runtime_why(runtime: &ProjectRuntime) -> RuntimeWhy {
     let manifest = read_project_manifest().unwrap_or_default();
+    let runtime_manifest = read_runtime_manifest();
     let provenance = ProjectProvenance {
         profile: manifest.provenance.profile,
         inferred: manifest.provenance.inferred,
@@ -570,8 +577,36 @@ pub(crate) fn build_runtime_why(runtime: &ProjectRuntime) -> RuntimeWhy {
     let profile_components = provenance
         .profile
         .as_deref()
-        .and_then(profile_components)
+        .and_then(|profile| profile_components(runtime_manifest.as_ref()?, profile))
         .unwrap_or_default();
+    let mut pyproject_component_reasons = HashMap::new();
+    let mut requirements: Vec<WhyEntry> = manifest
+        .requirements
+        .iter()
+        .map(explain_requirement)
+        .collect();
+    if let Some(runtime_manifest) = &runtime_manifest {
+        if let Ok(pyproject) = fs::read_to_string("pyproject.toml") {
+            for component in expected_components_from_pyproject_with_manifest(
+                runtime_manifest,
+                &pyproject,
+            ) {
+                pyproject_component_reasons.insert(component.name, component.reason);
+            }
+            requirements.extend(
+                expected_requirements_from_pyproject_with_manifest(runtime_manifest, &pyproject)
+                    .into_iter()
+                    .map(explain_expected_requirement),
+            );
+        }
+        requirements.extend(component_requirements(
+            runtime,
+            &provenance,
+            &profile_components,
+            &pyproject_component_reasons,
+            runtime_manifest,
+        ));
+    }
 
     RuntimeWhy {
         env_name: runtime.env_name.clone(),
@@ -580,13 +615,16 @@ pub(crate) fn build_runtime_why(runtime: &ProjectRuntime) -> RuntimeWhy {
         components: runtime
             .components
             .iter()
-            .map(|component| explain_component(component, &provenance, &profile_components))
+            .map(|component| {
+                explain_component(
+                    component,
+                    &provenance,
+                    &profile_components,
+                    &pyproject_component_reasons,
+                )
+            })
             .collect(),
-        requirements: manifest
-            .requirements
-            .iter()
-            .map(explain_requirement)
-            .collect(),
+        requirements: dedupe_why_entries(requirements),
         required_directories: provenance
             .required_dirs
             .iter()
@@ -655,6 +693,13 @@ pub(crate) fn expected_components_from_pyproject(text: &str) -> Vec<ExpectedComp
     let Some(manifest) = read_runtime_manifest() else {
         return Vec::new();
     };
+    expected_components_from_pyproject_with_manifest(&manifest, text)
+}
+
+fn expected_components_from_pyproject_with_manifest(
+    manifest: &RuntimeManifest,
+    text: &str,
+) -> Vec<ExpectedComponent> {
     let dependencies = crate::pyproject::dependency_names(text);
     let mut seen = HashSet::new();
     let mut expected = Vec::new();
@@ -679,6 +724,36 @@ pub(crate) fn expected_components_from_pyproject(text: &str) -> Vec<ExpectedComp
             if seen.insert(component.clone()) {
                 expected.push(ExpectedComponent {
                     name: component,
+                    reason: rule.note.clone(),
+                });
+            }
+        }
+    }
+
+    expected
+}
+
+fn expected_requirements_from_pyproject_with_manifest(
+    manifest: &RuntimeManifest,
+    text: &str,
+) -> Vec<ExpectedRequirement> {
+    let dependencies = crate::pyproject::dependency_names(text);
+    let mut seen = HashSet::new();
+    let mut expected = Vec::new();
+
+    for rule in &manifest.runtime_inference.dependency_rules {
+        if !rule
+            .dependencies
+            .iter()
+            .any(|name| crate::pyproject::has_dependency_name(&dependencies, [name.as_str()]))
+        {
+            continue;
+        }
+        for requirement in &rule.requires {
+            if seen.insert(requirement.clone()) {
+                expected.push(ExpectedRequirement {
+                    name: requirement.clone(),
+                    source: "pyproject inference".to_string(),
                     reason: rule.note.clone(),
                 });
             }
@@ -730,10 +805,34 @@ fn explain_requirement(requirement: &ProjectManifestRequirement) -> WhyEntry {
     }
 }
 
+fn explain_expected_requirement(requirement: ExpectedRequirement) -> WhyEntry {
+    WhyEntry {
+        remove_hint: format!(
+            "remove the dependency that inferred `{}` or edit `components` in robo.nix if the provider is unnecessary",
+            requirement.name
+        ),
+        remediation_hint: if requirement.name.starts_with("host.") {
+            format!(
+                "fix host/container visibility for `{}`; Nix components cannot provide host-owned capabilities",
+                requirement.name
+            )
+        } else {
+            format!(
+                "keep a component that provides `{}` or rerun `robo init . --force` after dependency changes",
+                requirement.name
+            )
+        },
+        name: requirement.name,
+        source: requirement.source,
+        reason: requirement.reason,
+    }
+}
+
 fn explain_component(
     component: &str,
     provenance: &ProjectProvenance,
     profile_components: &[String],
+    pyproject_component_reasons: &HashMap<String, String>,
 ) -> WhyEntry {
     if let Some(profile) = provenance
         .profile
@@ -752,6 +851,16 @@ fn explain_component(
             name: component.to_string(),
             source: reason.source.clone(),
             reason: reason.reason.clone(),
+            remove_hint: format!(
+                "remove `{component}` from `components` in robo.nix if the inference is wrong"
+            ),
+            remediation_hint: "run `robo check --why` after edits to confirm the runtime contract still matches the project".to_string(),
+        }
+    } else if let Some(reason) = pyproject_component_reasons.get(component) {
+        WhyEntry {
+            name: component.to_string(),
+            source: "pyproject inference".to_string(),
+            reason: reason.clone(),
             remove_hint: format!(
                 "remove `{component}` from `components` in robo.nix if the inference is wrong"
             ),
@@ -777,6 +886,49 @@ fn explain_component(
             remediation_hint: "keep manual components that provide native libraries, simulators, GPU, graphics, ROS, or compiler tooling this project needs".to_string(),
         }
     }
+}
+
+fn component_requirements(
+    runtime: &ProjectRuntime,
+    provenance: &ProjectProvenance,
+    profile_components: &[String],
+    pyproject_component_reasons: &HashMap<String, String>,
+    manifest: &RuntimeManifest,
+) -> Vec<WhyEntry> {
+    let mut entries = Vec::new();
+    for component in &runtime.components {
+        let Some(metadata) = manifest.components.get(component) else {
+            continue;
+        };
+        let component_reason = explain_component(
+            component,
+            provenance,
+            profile_components,
+            pyproject_component_reasons,
+        );
+        for requirement in &metadata.provides {
+            entries.push(WhyEntry {
+                name: requirement.clone(),
+                source: component_reason.source.clone(),
+                reason: format!("provided by `{component}`: {}", component_reason.reason),
+                remove_hint: format!(
+                    "remove `{component}` from `components` in robo.nix if `{requirement}` is unnecessary"
+                ),
+                remediation_hint: format!(
+                    "keep `{component}` or another component that provides `{requirement}`"
+                ),
+            });
+        }
+    }
+    entries
+}
+
+fn dedupe_why_entries(entries: Vec<WhyEntry>) -> Vec<WhyEntry> {
+    let mut seen = HashSet::new();
+    entries
+        .into_iter()
+        .filter(|entry| seen.insert(entry.name.clone()))
+        .collect()
 }
 
 fn explain_required_path(kind: &str, path: &str, provenance: &ProjectProvenance) -> WhyEntry {
@@ -819,13 +971,11 @@ fn first_inference(provenance: &ProjectProvenance) -> Option<String> {
     provenance.inferred.first().cloned()
 }
 
-fn profile_components(profile: &str) -> Option<Vec<String>> {
-    read_runtime_manifest().and_then(|manifest| {
-        manifest
-            .profiles
-            .get(profile)
-            .map(|profile| profile.components.clone())
-    })
+fn profile_components(manifest: &RuntimeManifest, profile: &str) -> Option<Vec<String>> {
+    manifest
+        .profiles
+        .get(profile)
+        .map(|profile| profile.components.clone())
 }
 
 fn read_runtime_manifest() -> Option<RuntimeManifest> {

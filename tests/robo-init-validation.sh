@@ -277,10 +277,6 @@ EOF
 
 	assert_file_contains "$tmpdir/probed-project/robo.nix" 'envName = "probed-project";'
 	assert_file_contains "$tmpdir/probed-project/robo.nix" 'schemaVersion = 1;'
-	assert_file_contains "$tmpdir/probed-project/robo.nix" 'requirements = ['
-	assert_file_contains "$tmpdir/probed-project/robo.nix" 'id = "runtime.graphics.opengl";'
-	assert_file_contains "$tmpdir/probed-project/robo.nix" 'id = "runtime.media.ffmpeg";'
-	assert_file_contains "$tmpdir/probed-project/robo.nix" 'id = "host.cuda.driver";'
 	assert_file_contains "$tmpdir/probed-project/robo.nix" '"mujoco"'
 	assert_file_contains "$tmpdir/probed-project/robo.nix" '"x11-gl"'
 	assert_file_contains "$tmpdir/probed-project/robo.nix" '"media"'
@@ -288,8 +284,6 @@ EOF
 	assert_file_contains "$tmpdir/probed-project/robo.nix" '"matplotlib-qt"'
 	assert_file_contains "$tmpdir/probed-project/robo.nix" '"qt6"'
 	assert_file_contains "$tmpdir/probed-project/robo.nix" 'provenance = {'
-	assert_file_contains "$tmpdir/probed-project/robo.nix" 'componentReasons = ['
-	assert_file_contains "$tmpdir/probed-project/robo.nix" 'source = "pyproject inference";'
 	assert_file_contains "$tmpdir/probed-project/robo.nix" 'suggestions = ['
 	assert_file_contains "$tmpdir/probed-project/robo.nix" 'path = "scripts/bootstrap_local_sdk.sh";'
 	assert_file_contains "$tmpdir/probed-project/robo.nix" 'kind = "bootstrap";'
@@ -299,6 +293,18 @@ EOF
 	assert_file_contains "$tmpdir/probed-project/robo.nix" 'profile = "minimal";'
 	assert_file_contains "$tmpdir/probed-project/.python-version" "3.12.11"
 	assert_file_contains "$tmpdir/probed-project/pyproject.toml" "opencv-python"
+	if grep -F "requirements = [" "$tmpdir/probed-project/robo.nix" >/dev/null; then
+		echo "generated robo.nix should keep inferred requirements out of the editable config" >&2
+		exit 1
+	fi
+	if grep -F "componentReasons = [" "$tmpdir/probed-project/robo.nix" >/dev/null; then
+		echo "generated robo.nix should derive component reasons during diagnostics" >&2
+		exit 1
+	fi
+	if grep -F "inferred = [" "$tmpdir/probed-project/robo.nix" >/dev/null; then
+		echo "generated robo.nix should keep inference notes in init/check output" >&2
+		exit 1
+	fi
 	if [ "$(grep -F -c "OpenCV wheels commonly need graphics and media runtime libraries" "$probed_init_output")" -ne 1 ]; then
 		echo "OpenCV inference note should appear once in init output" >&2
 		exit 1
@@ -391,10 +397,13 @@ EOF
 		--interactive \
 		--robo-nix-url "path:${repo_root}" >"$interactive_output" 2>&1
 	assert_file_contains "$tmpdir/cuda-interactive-project/robo.nix" '"cuda-toolkit"'
-	assert_file_contains "$tmpdir/cuda-interactive-project/robo.nix" 'source = "interactive workspace inference";'
-	assert_file_contains "$tmpdir/cuda-interactive-project/robo.nix" "setup.py: CUDA build marker"
+	assert_file_contains "$interactive_output" "setup.py: CUDA build marker"
 	if grep -F "componentSuggestions" "$tmpdir/cuda-interactive-project/robo.nix" >/dev/null; then
 		echo "accepted interactive CUDA suggestion should not remain pending" >&2
+		exit 1
+	fi
+	if grep -F 'source = "interactive workspace inference";' "$tmpdir/cuda-interactive-project/robo.nix" >/dev/null; then
+		echo "accepted interactive CUDA suggestion should not leave verbose provenance in robo.nix" >&2
 		exit 1
 	fi
 }
@@ -462,7 +471,6 @@ EOF
 	assert_file_contains "$tmpdir/tricky-project/robo.nix" '"x11-gl"'
 	assert_file_contains "$tmpdir/tricky-project/robo.nix" '"cuda-toolkit"'
 	assert_file_contains "$tmpdir/tricky-project/robo.nix" '"linux-headers"'
-	assert_file_contains "$tmpdir/tricky-project/robo.nix" 'source = "pyproject inference";'
 
 	(
 		cd "$tmpdir/tricky-project"

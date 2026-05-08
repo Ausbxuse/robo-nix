@@ -44,12 +44,8 @@ impl ProjectSpec {
                         .get(component)
                         .into_iter()
                         .flat_map(|metadata| &metadata.provides)
-                        .map(move |requirement| RuntimeRequirement {
+                        .map(|requirement| RuntimeRequirement {
                             id: requirement.clone(),
-                            source: "profile".to_string(),
-                            reason: format!("provided by `{component}` from the `{name}` profile"),
-                            evidence: None,
-                            severity: "required".to_string(),
                         })
                 })
                 .collect(),
@@ -113,16 +109,11 @@ impl ProjectSpec {
         id: &str,
         source: &str,
         reason: impl Into<String>,
-        evidence: Option<String>,
     ) {
         let reason = reason.into();
         if !self.requirements.iter().any(|item| item.id == id) {
             self.requirements.push(RuntimeRequirement {
                 id: id.to_string(),
-                source: source.to_string(),
-                reason: reason.clone(),
-                evidence,
-                severity: "required".to_string(),
             });
         }
         for component in providers_for(manifest, id) {
@@ -214,7 +205,6 @@ impl ProjectSpec {
                 &requirement.id,
                 inference_source(&requirement.note),
                 requirement.note,
-                None,
             );
         }
         for path in probe.required_dirs {
@@ -244,10 +234,6 @@ pub(super) struct ComponentProvenance {
 #[derive(Clone)]
 pub(super) struct RuntimeRequirement {
     pub(super) id: String,
-    pub(super) source: String,
-    pub(super) reason: String,
-    pub(super) evidence: Option<String>,
-    pub(super) severity: String,
 }
 
 #[derive(Clone)]
@@ -294,12 +280,8 @@ pub(super) fn push_unique(items: &mut Vec<String>, value: &str) {
 }
 
 pub(super) fn dedupe_all(spec: &mut ProjectSpec) {
-    spec.requirements.sort_by(|left, right| {
-        left.id
-            .cmp(&right.id)
-            .then_with(|| left.source.cmp(&right.source))
-            .then_with(|| left.reason.cmp(&right.reason))
-    });
+    spec.requirements
+        .sort_by(|left, right| left.id.cmp(&right.id));
     spec.requirements.dedup_by(|left, right| left.id == right.id);
     spec.components = dedupe(mem::take(&mut spec.components));
     spec.supported_systems = dedupe(mem::take(&mut spec.supported_systems));

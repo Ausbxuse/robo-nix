@@ -147,11 +147,11 @@ CUDA Python wheels do not imply `runtime.cuda.toolkit` by themselves. They usual
 1. collect project facts
 2. infer runtime requirements
 3. choose Nix components that provide runtime-owned requirements
-4. write the selected components and the requirement contract into `robo.nix`
+4. write the selected components into `robo.nix`
 
 `robo check` should:
 
-1. load the requirement contract
+1. load the selected runtime components and project facts
 2. probe host capabilities
 3. read selected Nix component providers
 4. compare requirements against providers
@@ -161,7 +161,7 @@ Implemented today:
 
 - `nix/metadata/runtime-inference.nix` rules can emit `requires`.
 - `nix/metadata/components.nix` components declare `provides`.
-- `robo init` records `requirements` in generated `robo.nix` and resolves runtime-owned requirements to components.
+- `robo init` keeps generated `robo.nix` focused on editable selections and resolves runtime-owned requirements to components.
 - `robo check --why` and `robo contract` expose the requirement contract.
 
 Still incomplete:
