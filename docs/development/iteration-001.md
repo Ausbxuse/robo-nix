@@ -69,7 +69,21 @@ should group accepted concerns into the smallest coherent change.
 
 Pending concerns:
 
-- None yet.
+- Maintain an effective root `AGENTS.md` as part of the rebuild. It should be
+  refined during iterations when durable working rules emerge, not left as a
+  stale copy of the old repository guidance.
+
+Proposed handling:
+
+- Add a root `AGENTS.md` in the next implementation iteration before growing
+  product code further.
+- Keep `AGENTS.md` short and operational: project north star, code ownership
+  boundaries, iteration/review rules, verification expectations, and known
+  failure-mode policy.
+- Keep iteration-specific debate in `docs/development/iteration-*.md`; promote
+  only durable lessons into `AGENTS.md`.
+- Review `AGENTS.md` as part of each iteration close-out, and update it only
+  when the change would prevent future churn or rediscovery.
 
 ## Supervisor Check
 
@@ -79,3 +93,5 @@ Before iteration 002, confirm whether this is the right minimal product core:
 - Should `robo check` stay static for now, or should it run a bounded Nix
   preflight?
 - Is Python 3.11 the right initial default for robot-learning compatibility?
+- Should root `AGENTS.md` maintenance be a required close-out check for every
+  iteration?
