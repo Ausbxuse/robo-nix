@@ -238,15 +238,14 @@ Confirmed consistency decisions:
 - "Stale" means generated runtime state no longer matches observed project
   facts, such as `.python-version` changing, `pyproject.toml` gaining a package
   that maps to a runtime component, or `flake.lock` no longer matching the
-  generated `flake.nix` inputs. "Repair" means making the smallest safe update
-  to the files `robo shell` owns: write missing `flake.nix`/`robo.nix`, refresh
-  generated plumbing, merge newly inferred components into a simple
-  user-editable `robo.nix`, and refresh `.robo-nix/` cache state.
+  generated `flake.nix` inputs. For `robo shell`, "repair" is limited to writing
+  missing generated files during first bootstrap, refreshing generated plumbing
+  it owns, and refreshing `.robo-nix/` cache state.
 - Do not use ownership markers in generated files. `robo shell` owns
   `flake.nix`, `flake.lock`, `robo.nix`, and `.robo-nix/`.
 - `robo.nix` remains user-editable, like the old repo. `robo shell` may create
-  it when missing and may update generated/default fields, but it must preserve
-  user runtime policy rather than replacing the whole file.
+  it during first bootstrap when missing. After that, `robo.nix` is
+  user-managed and `robo shell` should not maintain or rewrite it.
 
 Resolved clarification:
 
@@ -256,12 +255,12 @@ Resolved clarification:
 
 Resolved ownership clarification:
 
-- `robo.nix` is both prepared by `robo shell` and user-editable. Iteration 002
-  should use a simple preservation rule instead of ownership markers. For now,
-  that means create `robo.nix` when absent, parse/read the existing fields that
-  matter, merge newly inferred components into the component list, and avoid
-  deleting user additions or comments unless a later iteration introduces a more
-  precise Nix-preserving edit strategy.
+- `robo.nix` is prepared by `robo shell` only for first initialization. Once the
+  file exists, it is user-managed. `robo shell` may read it and warn when current
+  project metadata suggests it could be incomplete, but it must not update the
+  file after first creation.
+- Future correctness checks or repair commands may inspect or suggest changes to
+  `robo.nix`, but that should be a separate command surface, not `robo shell`.
 - `robo shell` should follow the old repo's Python project logic: require
   `.python-version`, allow `pyproject.toml` to drive inference when present, and
   skip inference clearly when `pyproject.toml` is absent rather than failing.
