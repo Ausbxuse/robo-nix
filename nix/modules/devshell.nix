@@ -97,15 +97,10 @@
     packages = [
       pkgs.mujoco
     ];
-    shellInit =
-      common.exportVars {
-        MUJOCO_PATH = pkgs.mujoco;
-        ROBO_NIX_MUJOCO_GL_DEFAULT = "egl";
-      }
-      + "\n"
-      + common.exportDefaults {
-        MUJOCO_GL = "egl";
-      };
+    shellInit = common.exportVars {
+      MUJOCO_PATH = pkgs.mujoco;
+      ROBO_NIX_MUJOCO_GL_DEFAULT = "egl";
+    };
     supportedSystems = common.linuxSystems;
     check = common.mkComponentCheck "mujoco" [];
   };

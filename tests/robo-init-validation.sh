@@ -249,6 +249,8 @@ assert_runtime_probe_inference() {
 
 	mkdir -p "$tmpdir/probed-project"
 	mkdir -p "$tmpdir/probed-project/scripts" "$tmpdir/probed-project/third_party/local-sdk"
+	mkdir -p "$tmpdir/probed-project/third_party/vega-navigation-stack"
+	mkdir -p "$tmpdir/probed-project/third_party/local-sdk.orig"
 	cat >"$tmpdir/probed-project/pyproject.toml" <<'EOF'
 [project]
 name = "probed-project"
@@ -303,6 +305,10 @@ EOF
 	fi
 	if grep -F "requiredFiles" "$tmpdir/probed-project/robo.nix" >/dev/null; then
 		echo "low-confidence source file inference became a hard requirement" >&2
+		exit 1
+	fi
+	if grep -F "requiredDirectories" "$tmpdir/probed-project/robo.nix" >/dev/null; then
+		echo "unmatched third_party directories became hard requirements" >&2
 		exit 1
 	fi
 	if grep -F 'bootstrap = ' "$tmpdir/probed-project/robo.nix" >/dev/null; then

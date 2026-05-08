@@ -20,6 +20,10 @@ pub(crate) fn combined_output(output: &std::process::Output) -> String {
 }
 
 pub(crate) fn nix_command(config: Config) -> Command {
+    nix_command_with_quiet(config, !config.debug)
+}
+
+fn nix_command_with_quiet(config: Config, quiet: bool) -> Command {
     let mut command = Command::new("nix");
     command.env("ROBO_NIX_COLOR", if config.color { "1" } else { "0" });
     command.args([
@@ -30,7 +34,7 @@ pub(crate) fn nix_command(config: Config) -> Command {
         "--accept-flake-config",
     ]);
     command.arg("--no-warn-dirty");
-    if !config.debug {
+    if quiet {
         command.arg("--quiet");
     }
     command
@@ -38,6 +42,15 @@ pub(crate) fn nix_command(config: Config) -> Command {
 
 pub(crate) fn command_for_runtime(config: Config) -> Command {
     let mut command = nix_command(config);
+    if !config.debug {
+        command.env("ROBO_NIX_QUIET", "1");
+    }
+    command
+}
+
+pub(crate) fn command_for_runtime_progress(config: Config) -> Command {
+    let mut command = nix_command_with_quiet(config, false);
+    command.arg("-vv");
     if !config.debug {
         command.env("ROBO_NIX_QUIET", "1");
     }

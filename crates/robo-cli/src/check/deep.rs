@@ -136,7 +136,11 @@ fn check_runtime_egl_glvnd_surface(
     warnings: &mut usize,
     progress: &mut UiProgress,
 ) {
-    if !runtime.components.iter().any(|component| component == "x11-gl") {
+    if !runtime
+        .components
+        .iter()
+        .any(|component| matches!(component.as_str(), "x11-gl" | "wayland-gl"))
+    {
         progress.step("skipping EGL/GLVND graphics surface");
         return;
     }

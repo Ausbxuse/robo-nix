@@ -12,7 +12,7 @@ use crate::command::{
     run_project_build, run_project_shell, run_project_up,
 };
 use crate::shell::{SUPPORTED_INTERACTIVE_SHELLS, requested_shell_name};
-use crate::{Config, LabelKind, check, contract, cuda, diagnose, error, init, label};
+use crate::{Config, LabelKind, check, contract, cuda, diagnose, error, init, label, search};
 
 #[derive(Parser)]
 #[command(
@@ -59,6 +59,9 @@ enum CliCommand {
 
     #[command(about = "Classify an existing runtime error log")]
     Diagnose(diagnose::DiagnoseArgs),
+
+    #[command(about = "Search for the Nix package that provides a missing shared library")]
+    Search(search::SearchArgs),
 
     #[command(about = "Run project bootstrap scripts")]
     Bootstrap(PassthroughArgs),
@@ -151,6 +154,7 @@ pub(crate) fn run() -> ExitCode {
         Some(CliCommand::Status) => check::run_status(config),
         Some(CliCommand::Check(args)) => check::run_check(args, config),
         Some(CliCommand::Diagnose(args)) => diagnose::run(args, config),
+        Some(CliCommand::Search(args)) => search::run(args, config),
         Some(CliCommand::Bootstrap(args)) => run_project_app(None, args.args, config),
         Some(CliCommand::Doctor(args)) => check::run(args, config),
         Some(CliCommand::Contract(args)) => contract::run(args, config),
@@ -201,6 +205,7 @@ fn print_help(config: Config) -> ExitCode {
     help_row(config, "robo check", "summarize runtime diagnostics");
     help_row(config, "robo check --deep", "run slower runtime probes");
     help_row(config, "robo diagnose -", "classify piped error logs");
+    help_row(config, "robo search libassimp.so", "find a Nix runtime library package");
     help_row(config, "robo status", "summarize runtime health");
     help_row(config, "robo shell", "open an interactive runtime shell");
 

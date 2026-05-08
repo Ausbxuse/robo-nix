@@ -77,13 +77,28 @@
 
   x11-gl = {
     category = "ui";
-    description = "Linux desktop display, OpenGL, font, DBus, and XCB runtime libraries for GUI and simulator workloads.";
+    description = "Linux X11/XWayland desktop OpenGL, font, DBus, and XCB runtime libraries for GUI and simulator workloads.";
+    provides = [
+      "runtime.graphics.egl"
+      "runtime.graphics.opengl"
+      "runtime.graphics.vulkan-loader"
+      "runtime.graphics.x11"
+    ];
+    scaffoldDirectories = [];
+    supportedSystems = [
+      "x86_64-linux"
+      "aarch64-linux"
+    ];
+  };
+
+  wayland-gl = {
+    category = "ui";
+    description = "Linux Wayland desktop OpenGL, font, DBus, and Wayland runtime libraries for GUI and simulator workloads.";
     provides = [
       "runtime.graphics.egl"
       "runtime.graphics.opengl"
       "runtime.graphics.vulkan-loader"
       "runtime.graphics.wayland"
-      "runtime.graphics.x11"
     ];
     scaffoldDirectories = [];
     supportedSystems = [

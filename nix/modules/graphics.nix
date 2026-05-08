@@ -16,6 +16,23 @@
     check = common.mkComponentCheck "x11-gl" [];
   };
 
+  wayland-gl = {
+    pkgs,
+    runtimeLibPath,
+    runtimeLibs,
+    ...
+  }: {
+    packages = runtimeLibs ++ [pkgs.vulkan-tools];
+    shellInit =
+      common.prependPath "LD_LIBRARY_PATH" runtimeLibPath
+      + "\n"
+      + common.exportDefaults {
+        __EGL_VENDOR_LIBRARY_FILENAMES = "${pkgs.mesa}/share/glvnd/egl_vendor.d/50_mesa.json";
+      };
+    supportedSystems = common.linuxSystems;
+    check = common.mkComponentCheck "wayland-gl" [];
+  };
+
   matplotlib-qt = _: {
     shellInit = common.exportDefaults {
       MPLBACKEND = "QtAgg";

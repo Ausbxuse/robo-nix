@@ -74,8 +74,17 @@ For interactive shell setup, use a compact live tree with a parent setup line an
 
 ```text
 ✓ robo ready 42ms
-  ├ ✓ shell: loading cached runtime shell 1ms
+  └ ✓ shell: evaluating and realizing dev shell cached 1ms
   └ ✓ shell: launching shell 0ms
+```
+
+Long Nix phases may show a small rolling set of dim detail rows under the active child:
+
+```text
+⠋ robo shell
+  └ ⠋ shell: evaluating and realizing dev shell 1.2s
+    evaluating file '/workspace/flake.nix'
+    instantiated 'python3-3.11.15'
 ```
 
 Do not imply background reload, file watching, or hot-swap behavior unless that product surface exists.

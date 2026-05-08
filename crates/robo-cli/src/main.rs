@@ -7,6 +7,7 @@ mod diagnose;
 mod init;
 mod pyproject;
 mod runtime;
+mod search;
 mod ui;
 
 mod shell {

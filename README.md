@@ -105,6 +105,7 @@ robo build
 - `uv` is available inside `robo shell`, so you do not have to install `uv` manually. Run `uv sync`, `uv add`, `uv lock`, and other project Python commands there so packages build and import against the robo runtime.
 - Use `robo run <command>` for one-off commands from your normal shell, and `robo shell` when you want to run several commands interactively.
 - If a `.venv` was created before entering `robo shell`, recreate it inside the runtime with `uv venv --python "$ROBO_NIX_PYTHON" --clear`, then run `uv sync`.
+- If an import fails with a missing shared library such as `libassimp.so`, run `robo search libassimp.so` to find the Nix package to add to `extraRuntimeLibraries`.
 - If native packages fail because a library, compiler, CUDA, graphics, ROS, or simulator dependency is missing, update `components` in `robo.nix`, then run `robo build` or re-enter `robo shell`.
 
 ## How It Works

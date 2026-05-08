@@ -284,11 +284,13 @@ fn run_graphics_check(config: Config, runtime: &ProjectRuntime, verbose: bool) -
         return ExitCode::from(1);
     }
 
-    if !runtime_has_component(runtime, "x11-gl") {
+    if !has_display_gl(runtime) {
         println!("Graphics runtime is not selected for this project.\n");
-        println!("This runtime appears to need desktop graphics, but robo.nix does not include `x11-gl`.");
+        println!(
+            "This runtime appears to need desktop graphics, but robo.nix does not include `x11-gl` or `wayland-gl`."
+        );
         println!();
-        println!("Add `x11-gl` to components in robo.nix, then run:");
+        println!("Add `x11-gl` to components in robo.nix, or explicitly choose `wayland-gl`, then run:");
         print_command(config, "robo build");
         return ExitCode::from(1);
     }
@@ -498,9 +500,20 @@ fn run_ros_check(_config: Config, runtime: &ProjectRuntime) -> ExitCode {
 }
 
 fn graphics_relevant(runtime: &ProjectRuntime) -> bool {
-    ["x11-gl", "mujoco", "qt6", "matplotlib-qt", "isaac-sim"]
+    [
+        "x11-gl",
+        "wayland-gl",
+        "mujoco",
+        "qt6",
+        "matplotlib-qt",
+        "isaac-sim",
+    ]
         .iter()
         .any(|component| runtime_has_component(runtime, component))
+}
+
+fn has_display_gl(runtime: &ProjectRuntime) -> bool {
+    runtime_has_component(runtime, "x11-gl") || runtime_has_component(runtime, "wayland-gl")
 }
 
 fn native_relevant(runtime: &ProjectRuntime) -> bool {

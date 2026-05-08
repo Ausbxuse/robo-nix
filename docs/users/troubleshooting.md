@@ -151,6 +151,39 @@ robo build
 robo shell
 ```
 
+### Missing shared library
+
+Examples:
+
+```text
+ImportError: libassimp.so.5: cannot open shared object file: No such file or directory
+error while loading shared libraries: libusb-1.0.so.0
+```
+
+Usually means the Python package installed correctly, but the Nix runtime is missing a native shared library.
+
+From the project directory, ask `robo` for packages indexed by `nix-locate`:
+
+```bash
+robo search libassimp.so.5
+```
+
+If the local package-file index is missing or stale, run:
+
+```bash
+nix-index
+```
+
+If the result is a narrow library, add it to `extraRuntimeLibraries` in `robo.nix`:
+
+```nix
+extraRuntimeLibraries = pkgs: [
+  pkgs.assimp
+];
+```
+
+If the result points at a broader component such as `media`, `x11-gl`, or `native-build`, prefer adding that component when the project needs the broader runtime contract.
+
 ## Failure Ownership
 
 When something fails, classify the layer first:

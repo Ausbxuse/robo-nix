@@ -14,6 +14,7 @@ pub(crate) struct Config {
 pub(crate) enum LabelKind {
     Status,
     Ok,
+    SecondaryOk,
     Warn,
     Error,
     Hint,
@@ -30,6 +31,7 @@ pub(crate) fn label(config: Config, text: &str, kind: LabelKind) -> String {
     match kind {
         LabelKind::Status => style(text).cyan().bold().to_string(),
         LabelKind::Ok => style(text).green().bold().to_string(),
+        LabelKind::SecondaryOk => style(text).green().dim().to_string(),
         LabelKind::Warn => style(text).yellow().bold().to_string(),
         LabelKind::Error => style(text).red().bold().to_string(),
         LabelKind::Hint => style(text).dim().to_string(),

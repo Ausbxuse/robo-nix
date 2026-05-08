@@ -62,6 +62,7 @@ assert_component_catalog_contract() {
       assert builtins.elem "media" components;
       assert builtins.elem "ros2-jazzy" components;
       assert builtins.elem "isaac-sim" components;
+      assert builtins.elem "wayland-gl" components;
       true
   '
 	assert_expr "$expr"
@@ -77,6 +78,7 @@ assert_component_metadata_contract() {
       assert metadata.base.category == "core";
       assert builtins.elem "runtime.shell.base" metadata.base.provides;
       assert builtins.elem "runtime.graphics.opengl" metadata.x11-gl.provides;
+      assert builtins.elem "runtime.graphics.wayland" metadata.wayland-gl.provides;
       assert builtins.elem "runtime.cuda.nvcc" metadata.cuda-toolkit.provides;
       assert !(builtins.elem "host.cuda.driver" metadata.cuda-toolkit.provides);
       assert metadata.isaac-sim.scaffoldDirectories == [];
@@ -326,7 +328,7 @@ assert_x11_gl_exports_matching_egl_vendor() {
 	assert_expr "$expr"
 }
 
-assert_mujoco_exports_offscreen_gl_default() {
+assert_mujoco_exports_mujoco_path_and_gl_default_metadata() {
 	local expr
 	expr='
     let
@@ -351,8 +353,6 @@ assert_mujoco_exports_offscreen_gl_default() {
       assert builtins.elem pkgs.mujoco.name (builtins.map (package: package.name) component.packages);
       assert flake.inputs.nixpkgs.lib.hasInfix "MUJOCO_PATH" shellInit;
       assert flake.inputs.nixpkgs.lib.hasInfix "ROBO_NIX_MUJOCO_GL_DEFAULT" shellInit;
-      assert flake.inputs.nixpkgs.lib.hasInfix "MUJOCO_GL" shellInit;
-      assert flake.inputs.nixpkgs.lib.hasInfix ":-egl}" shellInit;
       true
   '
 	assert_expr "$expr"
@@ -677,7 +677,7 @@ assert_project_extension_contract() {
         '';
       diagnostics = ''
         check_ok "project extension check ran"
-        case ":$LD_LIBRARY_PATH:" in
+        case ":\$LD_LIBRARY_PATH:" in
           *assimp*) check_ok "project runtime library path exported" ;;
           *) check_error "project runtime library path missing" ;;
         esac
@@ -788,7 +788,7 @@ assert_python_uv_exports_native_build_prefixes
 assert_python_uv_seeds_project_cmake_helper_prefixes
 assert_native_build_reasserts_tool_path
 assert_x11_gl_exports_matching_egl_vendor
-assert_mujoco_exports_offscreen_gl_default
+assert_mujoco_exports_mujoco_path_and_gl_default_metadata
 assert_qt6_exports_standard_cmake_prefixes
 assert_matplotlib_qt_selects_qtagg_backend
 assert_manifest_helpers_contract

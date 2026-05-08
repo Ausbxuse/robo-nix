@@ -295,7 +295,7 @@ pub(crate) fn run_project_shell(args: Vec<OsString>, config: Config) -> ExitCode
         );
         return ExitCode::from(1);
     }
-    let mut progress = ShellProgress::new(config, "shell: loading cached runtime shell");
+    let mut progress = ShellProgress::new(config, "shell: evaluating and realizing dev shell");
     let env = match load_cached_or_refresh_shell_env(config, Some(&progress)) {
         Ok(env) => env,
         Err(code) => {
@@ -456,7 +456,6 @@ pub(super) struct RuntimeState {
     pub(super) env_name: String,
     pub(super) python_version: String,
     pub(super) workspace: String,
-    shell: Option<String>,
 }
 
 impl RuntimeState {
@@ -488,26 +487,16 @@ impl RuntimeState {
             env_name,
             python_version,
             workspace,
-            shell: env::var("SHELL").ok(),
         }
     }
 }
 
-fn print_already_active(config: Config, state: &RuntimeState) {
-    section(config, "status");
-    println!("  {}", label(config, "already active", LabelKind::Ok));
-    println!();
-    section(config, "runtime");
-    field(config, "env", &state.env_name);
-    field(config, "python", &state.python_version);
-    if let Some(shell) = &state.shell {
-        field(config, "shell", &shell_name(shell));
-    }
-    field(config, "workspace", &state.workspace);
-    println!();
-    section(config, "actions");
-    action_row(config, "uv sync", "sync Python packages from uv.lock");
-    action_row(config, "exit", "leave this runtime shell");
+fn print_already_active(config: Config, _state: &RuntimeState) {
+    println!("already in a robo shell");
+    println!(
+        "run {} to leave this runtime shell",
+        label(config, "exit", LabelKind::Command)
+    );
 }
 
 fn action_row(config: Config, command: &str, description: &str) {
@@ -520,14 +509,6 @@ fn action_row(config: Config, command: &str, description: &str) {
 
 fn shell_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))
-}
-
-fn shell_name(shell: &str) -> String {
-    Path::new(shell)
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or(shell)
-        .to_string()
 }
 
 pub(super) fn nix_system_name() -> &'static str {

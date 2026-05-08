@@ -79,6 +79,7 @@ in rec {
         runtimeInputs = [
           pkgs.git
           pkgs.nix
+          pkgs.nix-index
           pkgs.uv
         ];
         text = ''

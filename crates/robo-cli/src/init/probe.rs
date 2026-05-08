@@ -199,9 +199,9 @@ fn probe_workspace_directories(target: &Path, manifest: &Manifest, probe: &mut P
             for entry in entries.flatten() {
                 if entry.file_type().is_ok_and(|ty| ty.is_dir()) {
                     let name = entry.file_name().to_string_lossy().to_string();
-                    let path = format!("{}/{}", rule.root, name);
-                    probe.required_dirs.push(path);
                     if contains_any(&name.to_ascii_lowercase(), &rule.name_contains) {
+                        let path = format!("{}/{}", rule.root, name);
+                        probe.required_dirs.push(path);
                         if rule.requires.is_empty() {
                             for component in &rule.components {
                                 probe.add_component(component, &rule.note);
