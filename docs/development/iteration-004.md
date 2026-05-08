@@ -6,6 +6,39 @@
 `evdev` generates and compiles native extensions from Linux input headers, so
 the failure belongs to the Nix-owned native/runtime layer.
 
+## Pre-Fix Reproducer
+
+After review correction, reproduced the failure against parent commit
+`8a551626d7cc3b4dcd306126173d4027163c75a9`, which is the state before this
+iteration's fix.
+
+Temporary project:
+
+- `.python-version`: `3.11`
+- `pyproject.toml` dependencies: `torch` and
+  `evdev<1.9.3; sys_platform == 'linux'`
+
+The old bootstrap generated only:
+
+```nix
+components = [
+  "python-uv"
+  "native-build" # inferred from pyproject.toml: torch
+];
+```
+
+Failing command:
+
+```bash
+nix develop --accept-flake-config --no-write-lock-file path:. --command sh -c 'uv venv "$UV_PROJECT_ENVIRONMENT" && uv pip install --no-cache --python "$UV_PROJECT_ENVIRONMENT/bin/python" "evdev==1.9.2"'
+```
+
+Key error:
+
+```text
+The 'linux/input.h' and 'linux/input-event-codes.h' include files are missing.
+```
+
 ## Scope
 
 - Add a minimal `linux-headers` component backed by `pkgs.linuxHeaders`.

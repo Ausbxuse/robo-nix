@@ -33,6 +33,9 @@ environment manager.
 ## Iteration Rules
 
 - Keep each iteration small enough to review line by line.
+- For concrete downstream failures with logs or a known command, reproduce the
+  failure before coding whenever practical. Record the failing command and key
+  error in the iteration doc before or alongside the fix.
 - Record review concerns in `docs/development/iteration-*.md` before turning
   them into code.
 - Promote only durable operating rules into this file.
