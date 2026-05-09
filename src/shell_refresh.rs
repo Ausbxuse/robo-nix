@@ -8,7 +8,7 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Output};
 
-use crate::ui::{self, hint, output_with_tree, Config};
+use crate::ui::{self, error, hint, output_with_tree, Config};
 
 #[derive(Debug)]
 pub(crate) struct RuntimeInputState {
@@ -318,10 +318,10 @@ impl RefreshError {
     }
 }
 
-fn print_refresh_error(config: Config, error: &RefreshError) {
-    crate::error(config, &error.message);
-    if let Some(hint) = &error.hint {
-        crate::hint(config, hint);
+fn print_refresh_error(config: Config, refresh_error: &RefreshError) {
+    error(config, &refresh_error.message);
+    if let Some(message) = &refresh_error.hint {
+        hint(config, message);
     }
 }
 

@@ -61,8 +61,8 @@ environment manager.
 
 ## Editing Rules
 
-- Keep generated text in checked-in template/resource files. Rust may embed
-  those files with `include_str!`.
+- Keep shipped templates, metadata, and hidden Nix implementation files under
+  `src/`. Rust may embed resource files with `include_str!`.
 - Avoid large raw generated strings in Rust.
 - Use comments only when they clarify ownership, incomplete behavior, or a
   future hazard. Prefer specific markers such as `NOTE`, `TODO`, `FIXME`,

@@ -5,10 +5,10 @@ use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
-const BASHRC_TEMPLATE: &str = include_str!("../templates/shell/bashrc");
-const ZSHENV_TEMPLATE: &str = include_str!("../templates/shell/zshenv");
-const ZSHRC_TEMPLATE: &str = include_str!("../templates/shell/zshrc");
-const FISH_INIT: &str = include_str!("../templates/shell/fish-init");
+const BASHRC_TEMPLATE: &str = include_str!("templates/shell/bashrc");
+const ZSHENV_TEMPLATE: &str = include_str!("templates/shell/zshenv");
+const ZSHRC_TEMPLATE: &str = include_str!("templates/shell/zshrc");
+const FISH_INIT: &str = include_str!("templates/shell/fish-init");
 
 #[derive(Debug)]
 pub(crate) struct ShellLaunch {

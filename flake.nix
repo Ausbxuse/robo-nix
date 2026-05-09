@@ -17,7 +17,7 @@
   }: let
     systems = ["x86_64-linux" "aarch64-linux"];
     forAllSystems = nixpkgs.lib.genAttrs systems;
-    projectLib = import ./nix/project-flake.nix {
+    projectLib = import ./src/nix/project-flake.nix {
       inherit nixpkgs nixpkgs-python;
     };
   in {
