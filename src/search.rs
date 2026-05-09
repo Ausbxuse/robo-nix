@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 use std::ffi::OsString;
 use std::process::{Command, ExitCode, Output};
 
-use crate::ui::{error, hint, inline, row, section, status, Config};
+use crate::ui::{detail, error, hint, list_item, row, section, status, Config};
 
 const MAX_PRINTED_CANDIDATES: usize = 12;
 const MAX_SNIPPET_CANDIDATES: usize = 5;
@@ -148,25 +148,25 @@ fn print_matches(config: Config, query: &str, source: &str, attrs: &[String]) {
 
     section(config, "candidates");
     for attr in attrs.iter().take(MAX_PRINTED_CANDIDATES) {
-        println!("  pkgs.{attr}");
+        list_item(config, &format!("pkgs.{attr}"));
     }
     if attrs.len() > MAX_PRINTED_CANDIDATES {
-        println!("  ... {} more", attrs.len() - MAX_PRINTED_CANDIDATES);
+        list_item(
+            config,
+            &format!("... {} more", attrs.len() - MAX_PRINTED_CANDIDATES),
+        );
     }
 
     section(config, "robo.nix");
-    println!("  extraRuntimeLibraries = pkgs: [");
+    list_item(config, "extraRuntimeLibraries = pkgs: [");
     for attr in attrs.iter().take(MAX_SNIPPET_CANDIDATES) {
-        println!("    pkgs.{attr}");
+        detail(config, &format!("pkgs.{attr}"));
     }
-    println!("  ];");
+    list_item(config, "];");
     println!();
-    println!(
-        "{}",
-        inline(
-            config,
-            "Use the package that owns the runtime library your failing Python extension loads."
-        )
+    list_item(
+        config,
+        "Use the package that owns the runtime library your failing Python extension loads.",
     );
 }
 

@@ -8,7 +8,7 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Output};
 
-use crate::ui::{self, error, hint, output_with_tree, Config};
+use crate::ui::{error, hint, output_with_tree, row_err, status, Config};
 
 #[derive(Debug)]
 pub(crate) struct RuntimeInputState {
@@ -255,21 +255,24 @@ fn write_command_output_to_stderr(output: &Output) -> Result<(), RefreshError> {
 }
 
 fn print_runtime_refresh_notice(config: Config, workspace: &Path, changed: &[PathBuf]) {
-    eprintln!(
-        "{}",
-        ui::label(
-            config,
-            &format!("runtime changed in {}", workspace.display()),
-            ui::LabelKind::Status
-        )
+    status(
+        config,
+        &format!("shell: runtime inputs changed in {}", workspace.display()),
     );
     for path in changed {
-        eprintln!(
-            "  {} {}",
-            ui::label(config, "changed", ui::LabelKind::Hint),
-            path.display()
+        row_err(
+            config,
+            "!",
+            "changed",
+            &display_runtime_input_path(workspace, path),
         );
     }
+}
+
+fn display_runtime_input_path(workspace: &Path, path: &Path) -> String {
+    path.strip_prefix(workspace)
+        .map(|path| format!("./{}", path.display()))
+        .unwrap_or_else(|_| path.display().to_string())
 }
 
 fn print_shell_exports(shell: &str, envs: &[(String, String)]) {
@@ -384,6 +387,20 @@ mod tests {
             Some("/workspace/project")
         );
         assert_eq!(env_value(&envs, "KEEP_ME"), Some("1"));
+    }
+
+    #[test]
+    fn refresh_notice_paths_are_workspace_relative() {
+        let workspace = Path::new("/workspace/robot");
+
+        assert_eq!(
+            display_runtime_input_path(workspace, Path::new("/workspace/robot/pyproject.toml")),
+            "./pyproject.toml"
+        );
+        assert_eq!(
+            display_runtime_input_path(workspace, Path::new("/tmp/pyproject.toml")),
+            "/tmp/pyproject.toml"
+        );
     }
 
     #[test]

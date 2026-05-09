@@ -115,13 +115,40 @@ pub(crate) fn section(config: Config, heading: &str) {
     println!("{}", label(config, heading, LabelKind::Status));
 }
 
+pub(crate) fn help_row(config: Config, command: &str, detail: &str) {
+    let padding = " ".repeat(24usize.saturating_sub(console::measure_text_width(command)));
+    println!(
+        "  {}{} {}",
+        label(config, command, LabelKind::Command),
+        padding,
+        label(config, detail, LabelKind::Hint)
+    );
+}
+
 pub(crate) fn row(config: Config, marker: &str, action: &str, detail: &str) {
     println!(
         "  {} {:<8} {}",
-        label(config, marker, LabelKind::Ok),
+        label(config, marker, marker_kind(marker)),
         label(config, action, LabelKind::Hint),
         inline(config, detail)
     );
+}
+
+pub(crate) fn row_err(config: Config, marker: &str, action: &str, detail: &str) {
+    eprintln!(
+        "  {} {:<8} {}",
+        label(config, marker, marker_kind(marker)),
+        label(config, action, LabelKind::Hint),
+        inline(config, detail)
+    );
+}
+
+pub(crate) fn list_item(config: Config, detail: &str) {
+    println!("  {}", inline(config, detail));
+}
+
+pub(crate) fn detail(config: Config, detail: &str) {
+    println!("    {}", inline(config, detail));
 }
 
 pub(crate) fn success(config: Config, subject: &str, detail: &str) {
@@ -147,6 +174,13 @@ pub(crate) fn debug(config: Config, message: &str) {
         label(config, "debug:", LabelKind::Debug),
         inline(config, message)
     );
+}
+
+fn marker_kind(marker: &str) -> LabelKind {
+    match marker {
+        "!" => LabelKind::Warn,
+        _ => LabelKind::Ok,
+    }
 }
 
 pub(crate) fn output_with_tree(

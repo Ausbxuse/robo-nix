@@ -8,7 +8,7 @@ use crate::error::AppError;
 use crate::inference::{
     infer_initial_runtime, PyprojectStatus, RuntimeInference, KNOWN_COMPONENTS,
 };
-use crate::ui::{attention, inline, row, section, success, Config};
+use crate::ui::{attention, detail, row, section, success, Config};
 
 const PROJECT_FLAKE_TEMPLATE: &str = include_str!("templates/project/flake.nix");
 const PROJECT_ROBO_TEMPLATE: &str = include_str!("templates/project/robo.nix");
@@ -111,7 +111,7 @@ fn print_inference_report(config: Config, inference: &RuntimeInference) {
                     &matched.component,
                     &format!("pyproject.toml dependency `{}`", matched.package),
                 );
-                println!("    {}", inline(config, &matched.note));
+                detail(config, &matched.note);
             }
         }
     }

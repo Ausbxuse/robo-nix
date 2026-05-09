@@ -16,9 +16,7 @@ use bootstrap::{prepare_project, print_bootstrap_report};
 use error::{print_error, write_debug_log, AppError};
 use shell_launch::interactive_shell_launch;
 use shell_refresh::{runtime_input_state, set_active_shell_env};
-use ui::{debug, output_with_tree, status, Config};
-
-const HELP: &str = include_str!("templates/help.txt");
+use ui::{debug, help_row, list_item, output_with_tree, section, status, Config};
 
 fn main() -> ExitCode {
     let config = ui_config();
@@ -52,7 +50,7 @@ fn ui_config() -> Config {
 fn run(args: Vec<OsString>, config: Config) -> Result<ExitCode, AppError> {
     let mut args = args.into_iter();
     let Some(command) = args.next() else {
-        print_usage();
+        print_usage(config);
         return Ok(ExitCode::SUCCESS);
     };
     let command = command
@@ -65,7 +63,7 @@ fn run(args: Vec<OsString>, config: Config) -> Result<ExitCode, AppError> {
         "search" => Ok(search::run(args.collect(), config)),
         "__shell-refresh" => Ok(shell_refresh::run(args.collect(), config)),
         "-h" | "--help" | "help" => {
-            print_usage();
+            print_usage(config);
             Ok(ExitCode::SUCCESS)
         }
         "init" => Err(AppError::user("`robo init` has been removed")
@@ -76,8 +74,36 @@ fn run(args: Vec<OsString>, config: Config) -> Result<ExitCode, AppError> {
     }
 }
 
-fn print_usage() {
-    print!("{HELP}");
+fn print_usage(config: Config) {
+    section(config, "usage");
+    help_row(config, "robo shell", "open an interactive runtime shell");
+    help_row(
+        config,
+        "robo run <command>",
+        "run a command inside the prepared runtime",
+    );
+    help_row(
+        config,
+        "robo search <library>",
+        "find a Nix runtime library package",
+    );
+
+    println!();
+    section(config, "project setup");
+    list_item(config, ".python-version is required.");
+    list_item(config, "pyproject.toml is managed by uv/project policy.");
+    list_item(
+        config,
+        "robo shell creates missing robo runtime files on first use.",
+    );
+
+    println!();
+    section(config, "runtime lookup");
+    help_row(
+        config,
+        "robo search libassimp.so",
+        "find packages for missing shared libraries",
+    );
 }
 
 fn shell_command(args: Vec<OsString>, config: Config) -> Result<ExitCode, AppError> {
