@@ -64,6 +64,8 @@ environment manager.
   future hazard. Prefer specific markers such as `NOTE`, `TODO`, `FIXME`,
   `WARN`, `BUG`, and `DEBUG`.
 - Do not overwrite a non-robo `flake.nix`.
+- Generated downstream `flake.nix` should stay minimal and delegate runtime
+  complexity to `robo-nix.lib.mkProjectFlakeFromManifest ./robo.nix`.
 - Do not rewrite an existing `robo.nix` from `robo shell`.
 - Keep Nix-managed desktop graphics separate from host NVIDIA driver policy.
 - Do not add generated-shell scans over host CUDA, NVIDIA, EGL, Vulkan, WSL, or

@@ -14,7 +14,9 @@ reviewable.
 
 ## Generated Files
 
-`robo shell` may create `flake.nix` and `robo.nix` during first bootstrap.
+`robo shell` may create `flake.nix` and `robo.nix` during first bootstrap. The
+generated `flake.nix` should stay small: cache hints, one `robo-nix` input, and
+a handoff to `robo-nix.lib.mkProjectFlakeFromManifest ./robo.nix`.
 
 After `robo.nix` exists, it is user-managed and canonical. Shell must not rewrite
 it.

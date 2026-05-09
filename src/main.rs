@@ -206,7 +206,7 @@ fn prepare_project(root: &Path) -> Result<BootstrapReport, AppError> {
             );
         }
     } else {
-        fs::write(&flake_path, PROJECT_FLAKE_TEMPLATE)
+        fs::write(&flake_path, render_flake_nix()?)
             .map_err(|err| AppError::project(format!("failed to write flake.nix: {err}")))?;
         report.wrote_flake = true;
     }
@@ -244,9 +244,10 @@ fn read_python_version(root: &Path) -> Result<String, AppError> {
 }
 
 fn looks_like_robo_flake(flake: &str) -> bool {
-    flake.contains("nixpkgs-python")
-        && flake.contains("import ./robo.nix")
-        && flake.contains(".python-version")
+    flake.contains("mkProjectFlakeFromManifest")
+        || (flake.contains("nixpkgs-python")
+            && flake.contains("import ./robo.nix")
+            && flake.contains(".python-version"))
 }
 
 fn infer_initial_runtime(root: &Path) -> Result<RuntimeInference, AppError> {
@@ -364,6 +365,25 @@ fn render_robo_nix(inference: &RuntimeInference) -> Result<String, AppError> {
         PROJECT_ROBO_TEMPLATE,
         &[("components", render_component_lines(inference))],
     )
+}
+
+fn render_flake_nix() -> Result<String, AppError> {
+    render_template(
+        PROJECT_FLAKE_TEMPLATE,
+        &[("robo_nix_url", escape_nix_string(&robo_nix_source_url()))],
+    )
+}
+
+fn robo_nix_source_url() -> String {
+    env::var("ROBO_NIX_DEFAULT_SOURCE_URL")
+        .unwrap_or_else(|_| "github:ausbxuse/robo-nix/rewrite".to_string())
+}
+
+fn escape_nix_string(value: &str) -> String {
+    value
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace("${", "\\${")
 }
 
 fn render_component_lines(inference: &RuntimeInference) -> String {
@@ -611,7 +631,7 @@ mod tests {
         assert!(!root.join("pyproject.toml").exists());
         assert!(fs::read_to_string(root.join("flake.nix"))
             .unwrap()
-            .contains("builtins.readFile ./.python-version"));
+            .contains("robo-nix.lib.mkProjectFlakeFromManifest ./robo.nix"));
         assert!(fs::read_to_string(root.join("robo.nix"))
             .unwrap()
             .contains("\"python-uv\""));
