@@ -111,26 +111,34 @@ fn print_inference_report(config: Config, inference: &RuntimeInference) {
             );
         }
         PyprojectStatus::Read => {
-            if inference.matches.is_empty() {
-                return;
+            if !inference.matches.is_empty() {
+                section(config, "inferred");
+                for matched in &inference.matches {
+                    success(
+                        config,
+                        &matched.component,
+                        &format!("pyproject.toml dependency `{}`", matched.package),
+                    );
+                    detail(
+                        config,
+                        &format!(
+                            "capability `{}` from {}; sources: {}",
+                            matched.capability,
+                            matched.provenance,
+                            matched.sources.join(", ")
+                        ),
+                    );
+                    detail(config, &matched.note);
+                }
             }
-            section(config, "inferred");
-            for matched in &inference.matches {
-                success(
-                    config,
-                    &matched.component,
-                    &format!("pyproject.toml dependency `{}`", matched.package),
-                );
-                detail(
-                    config,
-                    &format!(
-                        "capability `{}` from {}; sources: {}",
-                        matched.capability,
-                        matched.provenance,
-                        matched.sources.join(", ")
-                    ),
-                );
-                detail(config, &matched.note);
+            if !inference.diagnostics.is_empty() {
+                section(config, "attention");
+                for diagnostic in &inference.diagnostics {
+                    attention(config, &diagnostic.summary);
+                    if let Some(detail_text) = &diagnostic.detail {
+                        detail(config, detail_text);
+                    }
+                }
             }
         }
     }
@@ -158,8 +166,24 @@ fn render_flake_nix() -> Result<String, AppError> {
 }
 
 fn robo_nix_source_url() -> String {
-    env::var("ROBO_NIX_DEFAULT_SOURCE_URL")
-        .unwrap_or_else(|_| "github:ausbxuse/robo-nix/rewrite".to_string())
+    robo_nix_source_url_from(
+        env::var("ROBO_NIX_DEFAULT_SOURCE_URL").ok(),
+        option_env!("ROBO_NIX_BUILD_SOURCE_URL"),
+    )
+}
+
+fn robo_nix_source_url_from(
+    runtime_override: Option<String>,
+    build_default: Option<&str>,
+) -> String {
+    runtime_override
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| {
+            build_default
+                .filter(|value| !value.trim().is_empty())
+                .map(str::to_string)
+        })
+        .unwrap_or_else(|| "github:ausbxuse/robo-nix/master".to_string())
 }
 
 fn escape_nix_string(value: &str) -> String {
@@ -272,8 +296,27 @@ mod tests {
         assert!(fs::read_to_string(root.join("robo.nix"))
             .unwrap()
             .contains("\"python-uv\""));
+        assert!(fs::read_to_string(root.join("robo.nix"))
+            .unwrap()
+            .contains("hostGraphics = null;"));
 
         cleanup(root);
+    }
+
+    #[test]
+    fn source_url_prefers_runtime_override_then_build_default() {
+        assert_eq!(
+            robo_nix_source_url_from(Some("path:/checkout".to_string()), Some("path:/store")),
+            "path:/checkout"
+        );
+        assert_eq!(
+            robo_nix_source_url_from(None, Some("path:/store")),
+            "path:/store"
+        );
+        assert_eq!(
+            robo_nix_source_url_from(None, None),
+            "github:ausbxuse/robo-nix/master"
+        );
     }
 
     #[test]

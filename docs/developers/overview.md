@@ -53,8 +53,17 @@ The generated project `flake.nix` should stay minimal: cache hints, one
 `robo-nix` input, and a handoff to
 `robo-nix.lib.mkProjectFlakeFromManifest ./robo.nix`.
 
-`ROBO_NIX_DEFAULT_SOURCE_URL` can override the generated flake input URL. The
-default is `github:ausbxuse/robo-nix/rewrite`.
+When `robo` is built by Nix, the package embeds the filtered package source as
+the default generated `robo-nix` input. This keeps local profile installs and
+freshly generated test projects on the same source snapshot. Non-Nix builds
+fall back to `github:ausbxuse/robo-nix/master`.
+
+The packaged source is explicitly filtered before it is copied to the Nix store.
+Repo-local caches and generated trees such as `.robo-nix/`, `target/`,
+`docs/node_modules/`, and VitePress cache/dist outputs are excluded.
+
+`ROBO_NIX_DEFAULT_SOURCE_URL` can override the generated flake input URL for
+focused tests.
 
 ## Runtime Inference
 
@@ -64,8 +73,10 @@ inference is skipped.
 Rules live in `src/metadata/runtime-inference.tsv`, not hardcoded Rust
 conditionals. Current known components are:
 
-- `python-uv`: CPython from `nixpkgs-python` plus `uv`.
-- `native-build`: compiler tools plus runtime `libstdc++` and zlib.
+- `python-uv`: CPython from `nixpkgs-python` plus `uv`, including the CPython
+  shared library path for packages that embed the interpreter.
+- `native-build`: compiler tools, a generic libc development path, plus runtime
+  `libstdc++` and zlib.
 - `linux-headers`: Linux kernel headers for native input packages such as
   `evdev`.
 - `desktop-gl`: desktop graphics and GLFW windowing libraries.
@@ -74,8 +85,16 @@ conditionals. Current known components are:
 
 Inference reads `[project].dependencies`, `[project].optional-dependencies`,
 `[dependency-groups]`, and legacy `[tool.uv].dev-dependencies` arrays from
-`pyproject.toml`, normalizes package names, and adds matching components.
-Missing or invalid `pyproject.toml` produces a base runtime instead of failing.
+`pyproject.toml`, normalizes package names, and adds matching components. It
+also reads local `[tool.uv.sources]` path dependencies and follows their
+`pyproject.toml` metadata when available, including extras selected by the root
+requirement such as `local-package[full]`.
+
+This is a static metadata walk, not Python package solving. Remote package
+metadata is left to uv, and first bootstrap prints attention diagnostics when a
+local source cannot be inspected or when remote package metadata was skipped.
+Missing or invalid root `pyproject.toml` produces a base runtime instead of
+failing.
 
 ## Project Nix Library
 
@@ -88,13 +107,26 @@ Important shell behavior:
 - `UV_PYTHON` points at the Nix-managed CPython.
 - `UV_PYTHON_DOWNLOADS=never` prevents uv from downloading another Python.
 - `UV_PROJECT_ENVIRONMENT` defaults to `$PWD/.venv`.
+- The `python-uv` component wraps `uv pip install` so ad hoc installs target
+  `$UV_PROJECT_ENVIRONMENT/bin/python` when that venv exists and no explicit
+  uv target was provided.
+- `VIRTUAL_ENV_DISABLE_PROMPT=1` keeps Python activation scripts from rewriting
+  the prompt that `robo shell` already owns.
 - `UV_CACHE_DIR` defaults to `$PWD/.robo-nix/uv-cache`.
 - `PYTHONHOME` and `PYTHONPATH` are unset.
 - `LD_LIBRARY_PATH` is built from selected component runtime libraries plus
   `extraRuntimeLibraries`.
+- `python-uv` contributes the CPython `lib/` directory so native packages can
+  load `libpython` by soname.
+- `native-build` exports `ROBO_NIX_LIBC_DEV` for scripts that need to inspect
+  the compiler libc development prefix.
 - `linux-headers` exports `ROBO_NIX_LINUX_HEADERS`, `CPATH`, and
   `C_INCLUDE_PATH`.
 - `cuda-toolkit` exports CUDA build variables.
+- `native-build` exposes CMake through a diagnostic wrapper. It preserves CMake
+  behavior and may print a generic hint when `find_package` cannot locate a
+  package config file, but it must not infer or inject package-specific
+  `*_DIR` paths.
 
 Host CUDA drivers remain host-owned. The Rust launch path may add a narrow
 `libcuda.so.1` bridge when project dependencies or `uv.lock` indicate CUDA
@@ -123,11 +155,18 @@ Refresh fingerprints these runtime inputs:
 - `pyproject.toml`
 - `uv.lock`
 - `robo.nix`
+- `.venv/bin/python`
 
 When the fingerprint changes, refresh runs the same Nix environment capture,
 exports the refreshed environment into the current shell, and updates the active
 fingerprint state. It reports changed paths. It does not run `uv sync`, migrate
 the shell process, or rewrite `robo.nix`.
+
+`robo shell` and `robo run` cache the captured Nix runtime environment under
+`.robo-nix/` by the same runtime input key. Cache hits skip `nix develop` after
+verifying referenced `/nix/store` paths still exist. Active shell fingerprints
+are computed from the final launched environment so prompt refresh does not
+immediately re-run after host CUDA or library path preparation.
 
 ## Iterations
 

@@ -257,6 +257,25 @@ pub(crate) fn output_with_tree(
     Ok(output)
 }
 
+pub(crate) fn output_cached_tree(config: Config, message: &str) {
+    if should_use_plain_progress(config) {
+        status(config, &format!("{message} cached"));
+        return;
+    }
+
+    let completed = vec![completed_tree_line(
+        config,
+        message,
+        Some("cached"),
+        0,
+        Duration::from_millis(0),
+    )];
+    eprintln!(
+        "{}",
+        render_finished_tree(config, &completed, Duration::from_millis(0))
+    );
+}
+
 pub(crate) fn output_with_spinner(
     config: Config,
     command: &mut Command,

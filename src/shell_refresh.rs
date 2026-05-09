@@ -29,10 +29,30 @@ pub(crate) fn run(args: Vec<OsString>, config: Config) -> ExitCode {
 }
 
 pub(crate) fn runtime_input_state(root: &Path) -> RuntimeInputState {
-    let files = runtime_input_fingerprints(root);
+    let files = runtime_input_fingerprints(root, |name| env::var(name).ok());
     RuntimeInputState {
         key: runtime_input_key(&files),
         files,
+    }
+}
+
+pub(crate) fn runtime_input_state_for_env(
+    root: &Path,
+    envs: &[(String, String)],
+) -> RuntimeInputState {
+    let files = runtime_input_fingerprints(root, |name| {
+        envs.iter()
+            .find_map(|(candidate, value)| (candidate == name).then_some(value.clone()))
+    });
+    RuntimeInputState {
+        key: runtime_input_key(&files),
+        files,
+    }
+}
+
+impl RuntimeInputState {
+    pub(crate) fn key(&self) -> &str {
+        &self.key
     }
 }
 
@@ -40,7 +60,7 @@ pub(crate) fn set_active_shell_env(
     command: &mut Command,
     workspace: &Path,
     state: &RuntimeInputState,
-    dev_env: &[(String, String)],
+    runtime_env: &[(String, String)],
 ) {
     command.env("ROBO_NIX_ACTIVE", "1");
     command.env("ROBO_NIX_ENV_NAME", "robo");
@@ -52,7 +72,7 @@ pub(crate) fn set_active_shell_env(
     );
     command.env(
         "ROBO_NIX_MANAGED_ENV_VARS",
-        managed_env_var_names_from_command_env(state, workspace, dev_env),
+        managed_env_var_names_from_command_env(state, workspace, runtime_env),
     );
 }
 
@@ -129,7 +149,10 @@ fn refreshed_shell_env(
     .with_hint("the current shell remains usable, but may be stale."))
 }
 
-fn runtime_input_fingerprints(root: &Path) -> Vec<(String, String)> {
+fn runtime_input_fingerprints<F>(root: &Path, mut env_value: F) -> Vec<(String, String)>
+where
+    F: FnMut(&str) -> Option<String>,
+{
     let mut files = [
         "flake.nix",
         "flake.lock",
@@ -137,6 +160,7 @@ fn runtime_input_fingerprints(root: &Path) -> Vec<(String, String)> {
         "pyproject.toml",
         "uv.lock",
         "robo.nix",
+        ".venv/bin/python",
     ]
     .into_iter()
     .map(|path| (path.to_string(), fingerprint_file(&root.join(path))))
@@ -144,7 +168,7 @@ fn runtime_input_fingerprints(root: &Path) -> Vec<(String, String)> {
     files.extend(runtime_key_env_names().map(|name| {
         (
             format!("env:{name}"),
-            env::var(name).unwrap_or_else(|_| "unset".to_string()),
+            env_value(name).unwrap_or_else(|| "unset".to_string()),
         )
     }));
     files
@@ -335,9 +359,9 @@ fn managed_env_var_names(envs: &[(String, String)]) -> String {
 fn managed_env_var_names_from_command_env(
     state: &RuntimeInputState,
     workspace: &Path,
-    dev_env: &[(String, String)],
+    runtime_env: &[(String, String)],
 ) -> String {
-    let mut envs = dev_env.to_vec();
+    let mut envs = runtime_env.to_vec();
     append_active_shell_env(&mut envs, workspace, state);
     managed_env_var_names(&envs)
 }
@@ -415,6 +439,26 @@ mod tests {
     }
 
     #[test]
+    fn runtime_input_key_can_use_launch_environment() {
+        let root = temp_project("runtime-key-env");
+        fs::create_dir_all(&root).unwrap();
+
+        let state = runtime_input_state_for_env(
+            &root,
+            &[(
+                "LD_LIBRARY_PATH".to_string(),
+                "/nix/store/runtime/lib".to_string(),
+            )],
+        );
+
+        assert!(state.files.iter().any(|(name, value)| {
+            name == "env:LD_LIBRARY_PATH" && value == "/nix/store/runtime/lib"
+        }));
+
+        cleanup(root);
+    }
+
+    #[test]
     fn refreshed_env_overwrites_runtime_state() {
         let root = PathBuf::from("/workspace/project");
         let state = RuntimeInputState {
@@ -480,14 +524,19 @@ mod tests {
     fn managed_env_names_exclude_unowned_shell_values() {
         let envs = vec![
             ("ROBO_NIX_ACTIVE".to_string(), "1".to_string()),
+            (
+                "ROBO_NIX_LIBC_DEV".to_string(),
+                "/nix/store/glibc-dev".to_string(),
+            ),
             ("ROBO_NIX_SHELL".to_string(), "/bin/zsh".to_string()),
             ("LD_LIBRARY_PATH".to_string(), "/nix/store/lib".to_string()),
+            ("VIRTUAL_ENV_DISABLE_PROMPT".to_string(), "1".to_string()),
             ("UNRELATED".to_string(), "1".to_string()),
         ];
 
         assert_eq!(
             managed_env_var_names(&envs),
-            "LD_LIBRARY_PATH:ROBO_NIX_ACTIVE"
+            "LD_LIBRARY_PATH:ROBO_NIX_ACTIVE:ROBO_NIX_LIBC_DEV:VIRTUAL_ENV_DISABLE_PROMPT"
         );
     }
 

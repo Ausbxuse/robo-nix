@@ -14,8 +14,8 @@ dependency groups, lockfiles, and virtualenv sync.
 - `robo search <library>` helps find Nix package candidates for missing shared
   libraries, such as `libassimp.so`. It only prints suggestions.
 - Active `robo shell` sessions refresh at the next prompt when `flake.nix`,
-  `flake.lock`, `.python-version`, `pyproject.toml`, `uv.lock`, or `robo.nix`
-  changes.
+  `flake.lock`, `.python-version`, `pyproject.toml`, `uv.lock`, `robo.nix`, or
+  the default `.venv/bin/python` changes.
 - Refreshing exports a re-evaluated shell environment. It does not run
   `uv sync` and does not rewrite `robo.nix`.
 - First-bootstrap inference reads direct dependencies, optional dependencies,
@@ -30,7 +30,7 @@ The installer installs the `robo` CLI through Nix profiles. If Nix is missing,
 it uses the Determinate Nix installer first.
 
 ```bash
-curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/ausbxuse/robo-nix/rewrite/scripts/install.sh | sh
+curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/ausbxuse/robo-nix/master/scripts/install.sh | sh
 ```
 
 When testing from a local checkout:
@@ -48,6 +48,12 @@ nix profile add .#robo
 
 Use `.#robo` instead of `.#` so the profile entry is named `robo` and future
 `nix profile remove robo` commands keep working.
+
+Local profile installs embed the installed checkout snapshot as the default
+`robo-nix` source for newly generated project `flake.nix` files. After
+reinstalling a local checkout, a test project can be rebootstrapped against
+that version by removing generated runtime files such as `flake.nix`,
+`flake.lock`, `robo.nix`, and `.robo-nix/`, then running `robo shell` again.
 
 Installer overrides:
 

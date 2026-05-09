@@ -2,8 +2,8 @@
 
 ## Trigger
 
-After iteration 004 fixed the `evdev` build, the real dexmate verification
-command moved to the next runtime failure: NumPy could not import because
+After iteration 004 fixed the `evdev` build, a downstream verification command
+moved to the next runtime failure: NumPy could not import because
 `libstdc++.so.6` was not visible.
 
 ## Pre-Fix Reproducer
@@ -11,14 +11,14 @@ command moved to the next runtime failure: NumPy could not import because
 Command:
 
 ```bash
-UV_PROJECT_ENVIRONMENT=/tmp/dexmate-robo-verify-venv UV_CACHE_DIR=/tmp/dexmate-robo-verify-uv-cache robo run ./scripts/teleop.sh --help
+UV_PROJECT_ENVIRONMENT=/tmp/robo-downstream-verify-venv UV_CACHE_DIR=/tmp/robo-downstream-verify-uv-cache robo run python -c 'import numpy; print(numpy.__version__)'
 ```
 
 Observed facts:
 
 - `evdev==1.9.2` built successfully.
 - 157 packages installed successfully.
-- Importing NumPy failed before help text could print.
+- Importing NumPy failed before the downstream command could finish startup.
 
 Key error:
 
@@ -35,7 +35,7 @@ ImportError: libstdc++.so.6: cannot open shared object file: No such file or dir
 ## Non-Goals
 
 - No package-specific NumPy handling.
-- No project-specific dexmate hook.
+- No project-specific environment hook.
 - No broad diagnostics surface.
 
 ## Verification
@@ -47,12 +47,12 @@ Run for this iteration:
 - `nix develop --accept-flake-config --command cargo fmt --check`
 - `nix-instantiate --parse templates/project/flake.nix`
 - `nix flake check --accept-flake-config`
-- Regenerate dexmate runtime files from the installed `robo`.
+- Regenerate downstream runtime files from the installed `robo`.
 - `nix eval --accept-flake-config --no-write-lock-file .#devShells.x86_64-linux.default.name`
-  in dexmate.
-- `UV_PROJECT_ENVIRONMENT=/tmp/dexmate-robo-verify-venv UV_CACHE_DIR=/tmp/dexmate-robo-verify-uv-cache robo run ./scripts/teleop.sh --help`
-  in dexmate.
+  in the downstream project.
+- `UV_PROJECT_ENVIRONMENT=/tmp/robo-downstream-verify-venv UV_CACHE_DIR=/tmp/robo-downstream-verify-uv-cache robo run python -c 'import numpy; print(numpy.__version__)'`
+  in the downstream project.
 
 Post-fix result:
 
-- The command printed the teleop CLI help text.
+- The focused NumPy import succeeded.

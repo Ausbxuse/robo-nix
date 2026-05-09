@@ -26,9 +26,9 @@ from the user project.
 
 Pending concerns:
 
-- The default generated `robo-nix` input is `github:ausbxuse/robo-nix/rewrite`.
-  Local iteration can override it with `ROBO_NIX_DEFAULT_SOURCE_URL=path:/...`
-  before first bootstrap.
+- Nix-built `robo` binaries embed the installed flake source as the default
+  generated `robo-nix` input. Local iteration can still override it with
+  `ROBO_NIX_DEFAULT_SOURCE_URL=path:/...` before first bootstrap.
 - The root flake now carries the `nixpkgs-python` input because downstream
   generated flakes delegate Python interpreter selection to the repo library.
 

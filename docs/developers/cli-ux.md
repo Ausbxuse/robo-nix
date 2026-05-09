@@ -79,11 +79,16 @@ prefix is injected through temporary startup files under
 to the user's existing prompt. `robo` does not invent a project-name prompt.
 
 The same startup files run a prompt-time freshness check. If `flake.nix`,
-`flake.lock`, `.python-version`, `pyproject.toml`, `uv.lock`, or `robo.nix`
-changes while the shell is active, `robo` reports the changed inputs,
-re-evaluates the dev shell, and exports the refreshed environment into the
-current shell. This refresh does not rewrite `robo.nix` and does not run
-`uv sync`.
+`flake.lock`, `.python-version`, `pyproject.toml`, `uv.lock`, `robo.nix`, or
+the default `.venv/bin/python` changes while the shell is active, `robo`
+reports the changed inputs, re-evaluates the dev shell, and exports the
+refreshed environment into the current shell. This refresh does not rewrite
+`robo.nix` and does not run `uv sync`.
+
+Once the Nix runtime environment has been captured for a runtime input key,
+subsequent `robo shell` and `robo run` attempts may show the evaluation step as
+`cached` and skip re-running `nix develop`. Cache reuse must validate referenced
+Nix store paths first.
 
 ## Wording
 

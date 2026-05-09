@@ -46,7 +46,7 @@ shell: launching zsh
 Install once, then enter the runtime from each project:
 
 ```bash
-curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/ausbxuse/robo-nix/rewrite/scripts/install.sh | sh
+curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/ausbxuse/robo-nix/master/scripts/install.sh | sh
 uv python pin <version>
 robo shell
 uv sync

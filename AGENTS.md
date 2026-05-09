@@ -12,7 +12,7 @@ environment manager.
 - `robo search <library>` is a lookup-only helper for missing native shared
   libraries.
 - There is no `robo init`, `robo check`, or `robo diagnose` in the current
-  branch.
+  product surface.
 - `robo shell` may create missing runtime files during first bootstrap, then
   evaluates the Nix dev-shell environment and launches the user's shell with
   that environment.
@@ -23,10 +23,20 @@ environment manager.
   shell.
 - `robo shell` should launch the user's default interactive shell, not force
   Bash. Use `ROBO_NIX_SHELL` only as an explicit override.
+- `robo shell` owns the visible `[robo]` prompt marker. Runtime shells should
+  disable Python virtualenv activation prompt rewrites so copied
+  `source .venv/bin/activate` commands do not duplicate prompt prefixes.
 - Active `robo shell` sessions should refresh their runtime environment at the
   next prompt when runtime input files change. Refreshing may re-evaluate the
   Nix shell and export new variables, but it must not rewrite user-managed
   `robo.nix`.
+- Shell environment caching must be keyed by the same runtime inputs used for
+  refresh, and cache reuse must validate referenced Nix store paths. Active
+  shell fingerprints should describe the final launched environment, not the
+  parent process before runtime preparation.
+- Use product language such as runtime environment, runtime shell, and runtime
+  cache for robo-owned surfaces. Avoid naming robo concepts after generic dev
+  environment tooling unless referring directly to Nix's dev shell primitive.
 - `robo shell` must refuse to start from inside an active `robo shell`; nested
   shells make prompt hooks and refresh state harder to reason about.
 
@@ -36,14 +46,18 @@ environment manager.
   and lockfiles.
 - Nix owns the CPython interpreter, native tools, runtime libraries, and shell
   environment.
+- `python-uv` must expose the CPython shared library path as runtime surface;
+  Python packages may embed CPython or use `ctypes.CDLL("libpython...")`.
 - Rust owns command UX, diagnostics, project-file preparation, and command
   wrapping.
 - Runtime inference rules should live in data files, not hardcoded Rust
   conditionals.
+- Runtime inference may read an existing `uv.lock` as static package evidence;
+  this is not dependency resolution and must not fetch remote metadata.
 - `robo search` may use `nix-locate`/nix-index data to suggest Nix packages,
   but it must not mutate `robo.nix`, become a Python package resolver, or grow a
   central package registry.
-- Docs must describe the current rewrite branch. Do not reintroduce `robo init`,
+- Docs must describe the current product surface. Do not reintroduce `robo init`,
   `robo check`, or `robo diagnose` in user-facing docs until those commands are
   intentionally restored.
 - Keep docs Node tooling under `docs/`; do not add root Node package files.
@@ -53,7 +67,7 @@ environment manager.
 ## Iteration Rules
 
 - Keep each iteration small enough to review line by line.
-- For concrete downstream failures with logs or a known command, reproduce the
+- For concrete project failures with logs or a known command, reproduce the
   failure before coding whenever practical. Record the failing command and key
   error in the iteration doc before or alongside the fix.
 - Record review concerns in `docs/development/iteration-*.md` before turning
@@ -70,28 +84,46 @@ environment manager.
 - Use comments only when they clarify ownership, incomplete behavior, or a
   future hazard. Prefer specific markers such as `NOTE`, `TODO`, `FIXME`,
   `WARN`, `BUG`, and `DEBUG`.
+- Do not commit local debugging artifacts into source, tests, or docs. Avoid
+  local usernames, absolute home paths, project-specific names, and
+  project-specific fixture paths; use generic temporary project names.
+- When improving ergonomics, prefer transparent diagnostics over hidden
+  compensation. `robo-nix` should make ownership boundaries obvious and provide
+  actionable next steps, but it should not silently patch over missing
+  project declarations, package metadata, or build-system handoffs with
+  dependency-specific behavior.
 - Do not overwrite a non-robo `flake.nix`.
-- Generated downstream `flake.nix` should stay minimal and delegate runtime
+- Generated project `flake.nix` should stay minimal and delegate runtime
   complexity to `robo-nix.lib.mkProjectFlakeFromManifest ./robo.nix`.
 - Do not rewrite an existing `robo.nix` from `robo shell`.
 - Keep Nix-managed desktop graphics separate from host NVIDIA driver policy.
+- Host graphics provider selection is explicit manifest policy. `hostGraphics`
+  may expose named choices such as `"nvidia"` so users do not maintain fragile
+  shell hooks, but `desktop-gl` must not silently force NVIDIA Vulkan/EGL/GLX.
 - Do not add generated-shell scans over host CUDA, NVIDIA, EGL, Vulkan, WSL, or
   distro driver directories. Host CUDA driver bridging is Rust-owned and may
-  use the reviewed develop-style probe path: explicit `ROBO_NIX_LIBCUDA_PATH`,
+  use the reviewed probe path: explicit `ROBO_NIX_LIBCUDA_PATH`,
   inherited `LD_LIBRARY_PATH`, `ldconfig`, and known host driver locations when
   the project appears to need `libcuda.so.1`. Keep `ROBO_NIX_LIBCUDA_PATH` as an
   override, honor `ROBO_NIX_DISABLE_HOST_CUDA_AUTO`, and leave EGL/Vulkan or
   broader driver policy to a reviewed future iteration.
 - Linux input packages such as `evdev` are handled through the `linux-headers`
-  component. Keep this as a generic native-header contract, not a downstream
-  project workaround.
+  component. Keep this as a generic native-header contract, not a
+  package-specific workaround.
 - `native-build` must expose the C++ runtime library as well as compiler tools.
   Python wheels such as NumPy can import native extensions that need
   `libstdc++.so.6` even when no package is actively compiling.
 - `native-build` must expose zlib as a runtime library. Native Python wheels can
   import extensions that need `libz.so.1` even when installation succeeded.
+- `native-build` must expose legacy `libcrypt.so.1`. Some proprietary or older
+  simulator/runtime extensions still link against the legacy crypt soname.
+- `native-build` may expose generic compiler-owned development prefixes such as
+  libc for project inspection, but keep those contracts component-level and
+  avoid package-specific build handoffs.
 - `desktop-gl` must cover GLFW's basic Linux windowing path, including
   `libxkbcommon` for Wayland keyboard support.
+- `desktop-gl` must expose common legacy X/GL runtime libraries used by large
+  simulator stacks, including `libXt.so.6` and `libGLU.so.1`.
 - CLI human output should go through the local styled output helpers so labels,
   colors, and non-interactive output stay consistent.
 - Keep CLI styling aligned with the original Rust CLI: lowercase section
@@ -111,6 +143,13 @@ environment manager.
   .#` installs the default package, but Nix names that profile entry after the
   flake path instead of the package alias, so `nix profile remove robo` may not
   remove it on the next reinstall.
+- Nix-built `robo` packages should embed the installed flake source as the
+  default generated `robo-nix` input so local profile reinstall plus project
+  rebootstrap tests exercise the same source snapshot.
+- Package source filtering must explicitly exclude repo-local caches and heavy
+  generated directories such as `.robo-nix/`, `target/`, `docs/node_modules/`,
+  and VitePress cache/dist outputs; do not rely only on Git ignore behavior for
+  store-copy hygiene.
 
 ## Verification
 
@@ -124,7 +163,7 @@ nix-instantiate --parse flake.nix
 When generated project files change, also render a temporary project and parse
 its generated `flake.nix` and `robo.nix`.
 
-GitHub Actions should stay minimal and mirror real local checks for this branch:
+GitHub Actions should stay minimal and mirror real local product checks:
 Rust formatting, Rust tests, `nix flake check`, and VitePress docs build/deploy.
 Do not wire CI to deleted legacy `tests/` scripts until those scripts are
 intentionally restored.

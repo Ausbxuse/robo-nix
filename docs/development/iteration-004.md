@@ -2,7 +2,8 @@
 
 ## Trigger
 
-`dexmate-teleop` failed during `uv sync` while building `evdev==1.9.2`.
+A downstream robot-learning project failed during `uv sync` while building
+`evdev==1.9.2`.
 `evdev` generates and compiles native extensions from Linux input headers, so
 the failure belongs to the Nix-owned native/runtime layer.
 
@@ -52,7 +53,7 @@ The 'linux/input.h' and 'linux/input-event-codes.h' include files are missing.
 
 ## Non-Goals
 
-- No project-specific patching for `dexmate-teleop`.
+- No project-specific patching for the downstream project.
 - No `uv sync` automation.
 - No `robo check` or `robo diagnose` surface.
 - No attempt to classify every package that may include Linux kernel headers.

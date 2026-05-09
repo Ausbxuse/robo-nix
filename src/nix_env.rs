@@ -1,7 +1,7 @@
 use std::env;
 use std::fs;
 use std::fs::OpenOptions;
-use std::io::Write;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::thread;
@@ -29,6 +29,8 @@ const HOST_CUDA_DEPENDENCIES: &[&str] = &[
     "nvidia-curobo",
 ];
 const DEFAULT_LOCK_TIMEOUT_SECONDS: u64 = 30;
+const RUNTIME_ENV_CACHE_MAGIC: &str = "robo-nix-runtime-env-cache-v1";
+const RUNTIME_ENV_CACHE_FILE: &str = "runtime-env-cache-v1.env0";
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub(crate) enum EnvVarVisibility {
@@ -162,6 +164,24 @@ pub(crate) const ENV_VARS: &[EnvVarSpec] = &[
         description: "Override the Nix CUDA toolkit root used by the cuda-toolkit component.",
     },
     EnvVarSpec {
+        name: "ROBO_NIX_NVIDIA_VK_ICD",
+        visibility: EnvVarVisibility::Public,
+        affects_runtime_key: true,
+        description: "Override the Vulkan ICD path used by hostGraphics = \"nvidia\".",
+    },
+    EnvVarSpec {
+        name: "ROBO_NIX_NVIDIA_EGL_VENDOR",
+        visibility: EnvVarVisibility::Public,
+        affects_runtime_key: true,
+        description: "Override the EGL vendor JSON path used by hostGraphics = \"nvidia\".",
+    },
+    EnvVarSpec {
+        name: "ROBO_NIX_HOST_GRAPHICS",
+        visibility: EnvVarVisibility::Internal,
+        affects_runtime_key: false,
+        description: "Selected host graphics provider policy reported by the Nix shell.",
+    },
+    EnvVarSpec {
         name: "WORKSPACE_ROOT",
         visibility: EnvVarVisibility::Internal,
         affects_runtime_key: false,
@@ -194,6 +214,8 @@ pub(crate) fn is_robo_managed_env(name: &str) -> bool {
             | "ROBO_NIX_COMPONENTS"
             | "ROBO_NIX_MANAGED_ENV_VARS"
             | "ROBO_NIX_PYTHON"
+            | "ROBO_NIX_HOST_GRAPHICS"
+            | "ROBO_NIX_LIBC_DEV"
             | "ROBO_NIX_LINUX_HEADERS"
             | "ROBO_NIX_LIBCUDA_PATH"
             | "ROBO_NIX_HOST_LIBCUDA_AUTO"
@@ -204,6 +226,7 @@ pub(crate) fn is_robo_managed_env(name: &str) -> bool {
             | "UV_PROJECT_ENVIRONMENT"
             | "UV_CACHE_DIR"
             | "VIRTUAL_ENV"
+            | "VIRTUAL_ENV_DISABLE_PROMPT"
             | "TRITON_LIBCUDA_PATH"
             | "CUDA_PATH"
             | "CUDA_HOME"
@@ -217,15 +240,30 @@ pub(crate) fn is_robo_managed_env(name: &str) -> bool {
             | "LIBRARY_PATH"
             | "LD_LIBRARY_PATH"
             | "__EGL_VENDOR_LIBRARY_FILENAMES"
+            | "VK_ICD_FILENAMES"
+            | "VK_DRIVER_FILES"
+            | "__NV_PRIME_RENDER_OFFLOAD"
+            | "__GLX_VENDOR_LIBRARY_NAME"
+            | "__VK_LAYER_NV_optimus"
             | "NVIDIA_VISIBLE_DEVICES"
             | "WORKSPACE_ROOT"
     )
 }
 
-pub(crate) fn dev_environment(
+pub(crate) fn runtime_environment(
     config: Config,
     phase: &str,
+    workspace: &Path,
+    cache_key: &str,
 ) -> Result<Vec<(String, String)>, AppError> {
+    if let Some(envs) = read_runtime_env_cache(workspace, cache_key) {
+        crate::ui::output_cached_tree(
+            config,
+            &format!("{phase}: evaluating and realizing dev shell"),
+        );
+        return Ok(envs);
+    }
+
     let mut command = Command::new("nix");
     command
         .arg("develop")
@@ -257,6 +295,14 @@ pub(crate) fn dev_environment(
     .with_hint("review the Nix output above and attach .robo-nix/last-error.log to an issue if this looks like a robo-nix bug."))
 }
 
+pub(crate) fn cache_runtime_environment(
+    workspace: &Path,
+    cache_key: &str,
+    envs: &[(String, String)],
+) {
+    let _ = write_runtime_env_cache(workspace, cache_key, envs);
+}
+
 pub(crate) fn parse_env_zero(bytes: &[u8]) -> Result<Vec<(String, String)>, String> {
     let mut envs = Vec::new();
     let entries = bytes.split(|byte| *byte == 0);
@@ -276,12 +322,99 @@ pub(crate) fn parse_env_zero(bytes: &[u8]) -> Result<Vec<(String, String)>, Stri
             continue;
         };
         let name = String::from_utf8(entry[..eq].to_vec())
-            .map_err(|_| "dev shell environment contains an invalid variable name")?;
+            .map_err(|_| "runtime shell environment contains an invalid variable name")?;
         let value = String::from_utf8(entry[eq + 1..].to_vec())
-            .map_err(|_| "dev shell environment contains an invalid variable value")?;
+            .map_err(|_| "runtime shell environment contains an invalid variable value")?;
         envs.push((name, value));
     }
     Ok(envs)
+}
+
+fn read_runtime_env_cache(workspace: &Path, cache_key: &str) -> Option<Vec<(String, String)>> {
+    let bytes = fs::read(runtime_env_cache_path(workspace)).ok()?;
+    let (magic, rest) = split_once_byte(&bytes, b'\n')?;
+    if magic != RUNTIME_ENV_CACHE_MAGIC.as_bytes() {
+        return None;
+    }
+    let (key, env_bytes) = split_once_byte(rest, b'\n')?;
+    if key != cache_key.as_bytes() {
+        return None;
+    }
+    let envs = parse_env_zero(env_bytes).ok()?;
+    store_roots_exist(&envs).then_some(envs)
+}
+
+fn write_runtime_env_cache(
+    workspace: &Path,
+    cache_key: &str,
+    envs: &[(String, String)],
+) -> io::Result<()> {
+    let state_dir = workspace.join(".robo-nix");
+    fs::create_dir_all(&state_dir)?;
+    let cache_path = runtime_env_cache_path(workspace);
+    let tmp_path = state_dir.join(format!(
+        "{RUNTIME_ENV_CACHE_FILE}.tmp-{}",
+        std::process::id()
+    ));
+    let mut bytes = Vec::new();
+    bytes.extend_from_slice(RUNTIME_ENV_CACHE_MAGIC.as_bytes());
+    bytes.push(b'\n');
+    bytes.extend_from_slice(cache_key.as_bytes());
+    bytes.push(b'\n');
+    for (name, value) in envs {
+        if name.as_bytes().contains(&b'=')
+            || name.as_bytes().contains(&0)
+            || value.as_bytes().contains(&0)
+        {
+            continue;
+        }
+        bytes.extend_from_slice(name.as_bytes());
+        bytes.push(b'=');
+        bytes.extend_from_slice(value.as_bytes());
+        bytes.push(0);
+    }
+    fs::write(&tmp_path, bytes)?;
+    fs::rename(tmp_path, cache_path)
+}
+
+fn runtime_env_cache_path(workspace: &Path) -> PathBuf {
+    workspace.join(".robo-nix").join(RUNTIME_ENV_CACHE_FILE)
+}
+
+fn split_once_byte(bytes: &[u8], needle: u8) -> Option<(&[u8], &[u8])> {
+    let index = bytes.iter().position(|byte| *byte == needle)?;
+    Some((&bytes[..index], &bytes[index + 1..]))
+}
+
+fn store_roots_exist(envs: &[(String, String)]) -> bool {
+    envs.iter()
+        .flat_map(|(_, value)| store_roots_in_value(value))
+        .all(|path| path.exists())
+}
+
+fn store_roots_in_value(value: &str) -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+    let mut rest = value;
+    while let Some(index) = rest.find("/nix/store/") {
+        let start = &rest[index..];
+        let end = start
+            .char_indices()
+            .find_map(|(offset, character)| (!is_store_path_character(character)).then_some(offset))
+            .unwrap_or(start.len());
+        let root = &start[..end];
+        if root.len() > "/nix/store/".len() {
+            roots.push(PathBuf::from(root));
+        }
+        rest = &start[end..];
+    }
+    roots.sort();
+    roots.dedup();
+    roots
+}
+
+fn is_store_path_character(character: char) -> bool {
+    character.is_ascii_alphanumeric()
+        || matches!(character, '/' | '.' | '_' | '+' | '-' | '?' | '=')
 }
 
 pub(crate) fn apply_env(command: &mut Command, envs: &[(String, String)]) {
@@ -784,6 +917,34 @@ mod tests {
         assert_eq!(
             parse_env_zero(b"hello from shell hook\n\0robo-nix-env-start\0PATH=/bin\0").unwrap(),
             vec![("PATH".to_string(), "/bin".to_string())]
+        );
+    }
+
+    #[test]
+    fn runtime_env_cache_round_trips_nul_environment() {
+        let root = temp_project("runtime-env-cache");
+        fs::create_dir_all(root.join(".robo-nix")).unwrap();
+        let envs = vec![
+            ("PATH".to_string(), "/bin".to_string()),
+            (
+                "ROBO_NIX_COMPONENTS".to_string(),
+                "native-build".to_string(),
+            ),
+        ];
+
+        write_runtime_env_cache(&root, "cache-key", &envs).unwrap();
+
+        assert_eq!(read_runtime_env_cache(&root, "cache-key"), Some(envs));
+        assert_eq!(read_runtime_env_cache(&root, "other-key"), None);
+
+        cleanup(root);
+    }
+
+    #[test]
+    fn store_paths_are_extracted_from_env_values() {
+        assert_eq!(
+            store_roots_in_value("/nix/store/abc-package/lib:/other"),
+            vec![PathBuf::from("/nix/store/abc-package/lib")]
         );
     }
 

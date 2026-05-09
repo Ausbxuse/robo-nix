@@ -5,7 +5,7 @@
 Native runtime environment for uv-based robot-learning projects.
 
 <a href="https://ausbxuse.github.io/robo-nix/"><img alt="Docs" src="https://img.shields.io/badge/docs-online-6fb0f4?style=for-the-badge&labelColor=2c3144&color=6fb0f4"></a>
-<a href="https://github.com/ausbxuse/robo-nix/actions/workflows/ci.yml?query=branch%3Arewrite"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/ausbxuse/robo-nix/ci.yml?branch=rewrite&style=for-the-badge&label=ci&labelColor=2c3144&color=62bcc6"></a>
+<a href="https://github.com/ausbxuse/robo-nix/actions/workflows/ci.yml?query=branch%3Amaster"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/ausbxuse/robo-nix/ci.yml?branch=master&style=for-the-badge&label=ci&labelColor=2c3144&color=62bcc6"></a>
 <a href="./LICENSE"><img alt="License" src="https://img.shields.io/badge/license-GPL--3.0-5d6784?style=for-the-badge&labelColor=2c3144&color=5d6784"></a>
 
 </div>
@@ -19,7 +19,7 @@ Use `uv` for Python packages and virtual environments. Use `robo` for the
 Nix-managed interpreter and native runtime needed to make those packages build
 and import reliably.
 
-This rewrite branch is intentionally small. The primary workflow is:
+The command surface is intentionally small. The primary workflow is:
 
 ```bash
 robo shell
@@ -31,7 +31,7 @@ uv sync
 Install `robo`:
 
 ```bash
-curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/ausbxuse/robo-nix/rewrite/scripts/install.sh | sh
+curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/ausbxuse/robo-nix/master/scripts/install.sh | sh
 ```
 
 Install from a local checkout:
@@ -39,6 +39,18 @@ Install from a local checkout:
 ```bash
 ROBO_NIX_FLAKE="path:$PWD" ./scripts/install.sh
 ```
+
+Manual local profile install:
+
+```bash
+nix profile remove robo || true
+nix profile add .#robo
+```
+
+When `robo` is installed from a local checkout through Nix, newly generated
+project `flake.nix` files use that installed checkout snapshot as their
+`robo-nix` input. To rebootstrap a test project against the latest local
+install, remove its generated runtime files and run `robo shell` again.
 
 Enter a robot-learning project:
 
@@ -100,9 +112,9 @@ robo search <library>
 Searches Nix package metadata for packages that may provide a missing shared
 library, such as `libassimp.so` or `libz.so`.
 
-There is no `robo init`, `robo check`, or `robo diagnose` in this rewrite
-branch. Those surfaces were removed to keep the product boundary small while
-the core runtime workflow is rebuilt.
+The public command surface is intentionally limited to runtime shell, runtime
+command execution, and shared-library lookup. Setup diagnostics are part of the
+shell/run workflow.
 
 ## Runtime Model
 
@@ -136,6 +148,11 @@ visible driver library automatically. Set `ROBO_NIX_LIBCUDA_PATH` to override
 the detected library, or `ROBO_NIX_DISABLE_HOST_CUDA_AUTO=1` to disable the
 automatic bridge.
 
+Host graphics provider selection is explicit project policy. Use
+`hostGraphics = "nvidia";` in `robo.nix` when a project such as Isaac Sim needs
+the host NVIDIA Vulkan/EGL/GLX provider. Leave `hostGraphics = null;` when the
+host session should choose the graphics provider.
+
 ## Diagnostics
 
 `robo` hides successful Nix setup output so routine warnings such as dirty Git
@@ -146,14 +163,10 @@ with redacted facts, decisions, environment variable names, and errors.
 
 Python dependency failures remain project-owned. Run `uv sync` explicitly so
 the project controls dependency groups, extras, private indexes, editable
-sources, and install policy.
-
-## Status
-
-> [!WARNING]
-> `robo-nix` is being rebuilt on the `rewrite` branch. Expect CLI wording,
-> generated files, runtime coverage, and documentation to change quickly while
-> the core workflow is validated against real robot-learning repositories.
+sources, and install policy. During first bootstrap, `robo` statically reads
+local path dependency metadata from `pyproject.toml` and package names from an
+existing `uv.lock` when it can and reports where inference stops, but it does
+not fetch remote package metadata or resolve the Python dependency graph.
 
 ## Documentation
 

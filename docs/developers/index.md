@@ -1,8 +1,7 @@
 # Developer
 
-This branch is a focused rewrite of `robo-nix` around one user workflow:
-prepare a robot-learning runtime with `robo shell`, then let uv manage Python
-inside that runtime.
+`robo-nix` is focused around one user workflow: prepare a robot-learning
+runtime with `robo shell`, then let uv manage Python inside that runtime.
 
 Current command surface:
 
@@ -15,7 +14,7 @@ Current command surface:
 - `robo __shell-refresh <shell>`: hidden prompt-hook helper used by active
   `robo shell` sessions.
 
-There is no current `robo init`, `robo check`, or `robo diagnose` command.
+The public command surface is intentionally limited to the commands above.
 
 Read next:
 

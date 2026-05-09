@@ -2,15 +2,15 @@
 
 ## Trigger
 
-After GLFW reached the interactive MuJoCo viewer, `dexmate-teleop` failed during
-PyRoki warmup because NumPy could not import in the async worker.
+After GLFW reached an interactive MuJoCo viewer in a downstream project, the
+runtime failed during warmup because NumPy could not import in an async worker.
 
 ## Pre-Fix Reproducer
 
 Focused command:
 
 ```bash
-UV_PROJECT_ENVIRONMENT=/home/zhenyu/src/dev/dexmate/dexmate-teleop/.venv UV_CACHE_DIR=/home/zhenyu/src/dev/dexmate/dexmate-teleop/.robo-nix/uv-cache robo run python -c 'import numpy; print(numpy.__version__)'
+UV_PROJECT_ENVIRONMENT=/tmp/robo-downstream-verify-venv UV_CACHE_DIR=/tmp/robo-downstream-verify-uv-cache robo run python -c 'import numpy; print(numpy.__version__)'
 ```
 
 Post-fix result:
@@ -36,7 +36,7 @@ spawned child process.
 ## Non-Goals
 
 - No NumPy-specific handling.
-- No dexmate-specific environment hook.
+- No downstream-project-specific environment hook.
 - No package registry or preset matrix.
 
 ## Verification
@@ -49,9 +49,9 @@ Run for this iteration:
 - `nix-instantiate --parse templates/project/flake.nix`
 - `nix flake check --accept-flake-config`
 - Upgrade installed `robo`.
-- Regenerate dexmate runtime files from installed `robo`.
-- Focused NumPy import in dexmate:
+- Regenerate downstream runtime files from installed `robo`.
+- Focused NumPy import in the downstream project:
 
 ```bash
-UV_PROJECT_ENVIRONMENT=/home/zhenyu/src/dev/dexmate/dexmate-teleop/.venv UV_CACHE_DIR=/home/zhenyu/src/dev/dexmate/dexmate-teleop/.robo-nix/uv-cache robo run python -c 'import numpy; print(numpy.__version__)'
+UV_PROJECT_ENVIRONMENT=/tmp/robo-downstream-verify-venv UV_CACHE_DIR=/tmp/robo-downstream-verify-uv-cache robo run python -c 'import numpy; print(numpy.__version__)'
 ```

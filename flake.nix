@@ -1,5 +1,5 @@
 {
-  description = "robo-nix rewrite";
+  description = "robo-nix";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -15,8 +15,29 @@
     nixpkgs-python,
     ...
   }: let
+    lib = nixpkgs.lib;
     systems = ["x86_64-linux" "aarch64-linux"];
-    forAllSystems = nixpkgs.lib.genAttrs systems;
+    forAllSystems = lib.genAttrs systems;
+    sourceRoot = toString ./.;
+    sourceRelativePath = path:
+      lib.removePrefix "${sourceRoot}/" (toString path);
+    ignoredSourcePath = path: let
+      relativePath = sourceRelativePath path;
+    in
+      relativePath == "target"
+      || lib.hasPrefix "target/" relativePath
+      || relativePath == ".robo-nix"
+      || lib.hasPrefix ".robo-nix/" relativePath
+      || relativePath == "docs/node_modules"
+      || lib.hasPrefix "docs/node_modules/" relativePath
+      || relativePath == "docs/.vitepress/cache"
+      || lib.hasPrefix "docs/.vitepress/cache/" relativePath
+      || relativePath == "docs/.vitepress/dist"
+      || lib.hasPrefix "docs/.vitepress/dist/" relativePath;
+    roboSource = lib.cleanSourceWith {
+      src = ./.;
+      filter = path: _type: !(ignoredSourcePath path);
+    };
     projectLib = import ./src/nix/project-flake.nix {
       inherit nixpkgs nixpkgs-python;
     };
@@ -30,8 +51,9 @@
       robo = pkgs.rustPlatform.buildRustPackage {
         pname = "robo";
         version = "0.1.0";
-        src = ./.;
+        src = roboSource;
         cargoLock.lockFile = ./Cargo.lock;
+        ROBO_NIX_BUILD_SOURCE_URL = "path:${roboSource}";
         meta = {
           mainProgram = "robo";
           license = pkgs.lib.licenses.gpl3Only;

@@ -38,6 +38,10 @@ adding package-specific shell hacks. For example:
 - `linux-headers` owns Linux input headers.
 - `desktop-gl` owns desktop graphics and GLFW windowing libraries.
 
+When `native-build` is selected, `robo shell` also exports
+`ROBO_NIX_LIBC_DEV` for scripts that need to inspect the active compiler's libc
+development prefix.
+
 If the missing file is a specific shared library, use `robo search` to find Nix
 package candidates:
 
@@ -47,6 +51,25 @@ robo search libassimp.so
 
 Then add the package that owns the failing library to `extraRuntimeLibraries` in
 `robo.nix`.
+
+## Missing CMake package config
+
+Native Python packages that run CMake may fail with errors like:
+
+```text
+Could not find a package configuration file provided by "SomePackage"
+```
+
+This is different from a missing shared library. `native-build` provides CMake,
+compiler tools, and common compiler runtime libraries, but package-specific
+CMake config files must come from the project, the uv build environment, or an
+explicit package you add to `robo.nix`.
+
+Fix the package build to pass either `SomePackage_DIR` or
+`CMAKE_PREFIX_PATH` to the prefix that contains `SomePackageConfig.cmake`. If
+the config file is provided by a Python package, derive that path from the
+Python interpreter used for the extension build rather than adding an unrelated
+Nix Python package set.
 
 ## CUDA driver library not found
 
@@ -90,6 +113,29 @@ For verbose decision lines during setup:
 ROBO_NIX_DEBUG=1 robo shell
 ```
 
+## NVIDIA graphics provider not selected
+
+If a simulator can see CUDA but logs that Vulkan/EGL selected Mesa, Intel, or no
+suitable RTX device, the host graphics provider may be wrong. Keep
+`desktop-gl` for Nix-managed graphics libraries and choose the host NVIDIA
+provider explicitly:
+
+```nix
+{
+  components = [
+    "python-uv"
+    "native-build"
+    "desktop-gl"
+    "cuda-toolkit"
+  ];
+
+  hostGraphics = "nvidia";
+}
+```
+
+`robo` does not silently force this policy because hybrid-GPU, headless, and
+non-NVIDIA setups have different valid choices.
+
 ## Existing robo.nix
 
 After `robo.nix` exists, `robo shell` uses it as the canonical runtime manifest.
@@ -99,9 +145,9 @@ directly when a project needs another component.
 ## Runtime changed while shell is open
 
 Active `robo shell` sessions check runtime input files at the next prompt. When
-`flake.nix`, `flake.lock`, `.python-version`, `pyproject.toml`, `uv.lock`, or
-`robo.nix` changes, `robo` re-evaluates the shell and exports refreshed
-environment variables into the current shell.
+`flake.nix`, `flake.lock`, `.python-version`, `pyproject.toml`, `uv.lock`,
+`robo.nix`, or the default `.venv/bin/python` changes, `robo` re-evaluates the
+shell and exports refreshed environment variables into the current shell.
 
 This refresh does not run `uv sync` and does not rewrite `robo.nix`.
 
