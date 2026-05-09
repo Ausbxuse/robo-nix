@@ -3,13 +3,21 @@
 `robo-nix` prepares the native runtime layer for robot-learning projects. uv
 still owns Python packages and virtualenv sync.
 
-Start from a Python project directory:
+Install once:
+
+```bash
+curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/ausbxuse/robo-nix/greenfield/minimal-core/scripts/install.sh | sh
+```
+
+Then start from a Python project directory:
 
 ```bash
 uv python pin <version>
 robo shell
 uv sync
 ```
+
+See [Install](./install.md) for local checkout and installer override details.
 
 `robo shell` requires `.python-version`. It creates the Nix runtime files when
 they are missing, then enters the development shell.

@@ -33,6 +33,8 @@ environment manager.
   `robo check`, or `robo diagnose` in user-facing docs until those commands are
   intentionally restored.
 - Keep docs Node tooling under `docs/`; do not add root Node package files.
+- Installer docs and scripts must end with the current `robo shell` workflow.
+  Do not leave stale installer text pointing users at removed commands.
 
 ## Iteration Rules
 
@@ -73,6 +75,8 @@ environment manager.
   `libxkbcommon` for Wayland keyboard support.
 - CLI human output should go through the local styled output helpers so labels,
   colors, and non-interactive output stay consistent.
+- The installer-owned flake target is `#robo`; keep that alias available when
+  changing package outputs.
 
 ## Verification
 

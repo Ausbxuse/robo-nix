@@ -13,13 +13,15 @@
   in {
     packages = forAllSystems (system: let
       pkgs = import nixpkgs {inherit system;};
-    in {
-      default = pkgs.rustPlatform.buildRustPackage {
+      robo = pkgs.rustPlatform.buildRustPackage {
         pname = "robo";
         version = "0.1.0";
         src = ./.;
         cargoLock.lockFile = ./Cargo.lock;
       };
+    in {
+      default = robo;
+      inherit robo;
     });
 
     checks = forAllSystems (system: {
@@ -41,6 +43,7 @@
 
     formatter = forAllSystems (system: let
       pkgs = import nixpkgs {inherit system;};
-    in pkgs.alejandra);
+    in
+      pkgs.alejandra);
   };
 }

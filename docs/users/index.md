@@ -3,7 +3,13 @@
 Start here if you want to run a robot-learning project with uv-managed Python
 packages and a Nix-managed native runtime.
 
-The current minimal workflow is:
+Install once:
+
+```bash
+curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/ausbxuse/robo-nix/greenfield/minimal-core/scripts/install.sh | sh
+```
+
+Then the current minimal project workflow is:
 
 ```bash
 uv python pin 3.11
@@ -16,6 +22,7 @@ is the project-owned runtime manifest.
 
 Read next:
 
+- [Install](./install.md)
 - [Getting Started](./getting-started.md)
 - [Runtime Components](./runtime.md)
 - [Troubleshooting](./troubleshooting.md)

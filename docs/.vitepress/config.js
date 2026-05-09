@@ -98,6 +98,7 @@ export default {
   themeConfig: {
     outline: [2, 3],
     nav: [
+      { text: 'Install', link: '/users/install' },
       { text: 'Users', link: '/users/' },
       { text: 'Runtime', link: '/users/runtime' },
       { text: 'Developers', link: '/developers/' }
@@ -107,6 +108,7 @@ export default {
         text: 'Start',
         items: [
           { text: 'Home', link: '/' },
+          { text: 'Install', link: '/users/install' },
           { text: 'Getting Started', link: '/users/getting-started' },
           { text: 'Runtime Components', link: '/users/runtime' },
           { text: 'Troubleshooting', link: '/users/troubleshooting' }

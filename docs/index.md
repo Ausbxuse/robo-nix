@@ -7,6 +7,9 @@ hero:
   tagline: '`robo shell` prepares the native layer that uv-installed robotics packages need.'
   actions:
     - theme: brand
+      text: Install
+      link: /users/install
+    - theme: alt
       text: Get Started
       link: /users/getting-started
     - theme: alt
@@ -45,7 +48,13 @@ features:
 It is intentionally not a Python package manager and not a general development
 environment framework.
 
-The normal loop is:
+Install once:
+
+```bash
+curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/ausbxuse/robo-nix/greenfield/minimal-core/scripts/install.sh | sh
+```
+
+Then the normal project loop is:
 
 ```bash
 robo shell

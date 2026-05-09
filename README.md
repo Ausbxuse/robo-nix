@@ -13,6 +13,18 @@ The current product contract is intentionally small:
 
 There is no `robo init`, `robo check`, or `robo diagnose` in this branch.
 
+Install:
+
+```bash
+curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/ausbxuse/robo-nix/greenfield/minimal-core/scripts/install.sh | sh
+```
+
+For a local checkout:
+
+```bash
+ROBO_NIX_FLAKE="path:$PWD" ./scripts/install.sh
+```
+
 Typical workflow:
 
 ```bash
