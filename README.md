@@ -137,8 +137,8 @@ Common components include:
 | Component       | Purpose                                                          |
 | --------------- | ---------------------------------------------------------------- |
 | `python-uv`     | CPython and uv integration for uv-managed projects.              |
-| `native-build`  | Compiler/build tools plus C++ and zlib runtime libraries.        |
-| `desktop-gl`    | OpenGL/EGL/X11/Wayland libraries for MuJoCo and desktop viewers. |
+| `native-build`  | Compiler/build tools plus C++, zlib, and legacy crypt runtime libraries. |
+| `desktop-gl`    | OpenGL/EGL/Vulkan/X11/Wayland libraries for MuJoCo and desktop viewers. |
 | `linux-headers` | Kernel headers for Linux input packages such as `evdev`.         |
 | `cuda-toolkit`  | Nix-managed CUDA toolkit for native builds and CUDA packages.    |
 
@@ -171,6 +171,7 @@ not fetch remote package metadata or resolve the Python dependency graph.
 ## Documentation
 
 Read the documentation site at <https://ausbxuse.github.io/robo-nix/>.
+It is built and deployed by the `Docs` GitHub Actions workflow from `master`.
 
 Useful local entry points:
 

@@ -76,10 +76,11 @@ conditionals. Current known components are:
 - `python-uv`: CPython from `nixpkgs-python` plus `uv`, including the CPython
   shared library path for packages that embed the interpreter.
 - `native-build`: compiler tools, a generic libc development path, plus runtime
-  `libstdc++` and zlib.
+  `libstdc++`, zlib, and legacy `libcrypt`.
 - `linux-headers`: Linux kernel headers for native input packages such as
   `evdev`.
-- `desktop-gl`: desktop graphics and GLFW windowing libraries.
+- `desktop-gl`: desktop graphics, Vulkan loader, GLFW windowing, GLU, and
+  legacy X libraries used by simulator stacks.
 - `cuda-toolkit`: Nix-owned CUDA compiler, headers, and CUDA runtime build
   surface.
 
@@ -89,6 +90,8 @@ Inference reads `[project].dependencies`, `[project].optional-dependencies`,
 also reads local `[tool.uv.sources]` path dependencies and follows their
 `pyproject.toml` metadata when available, including extras selected by the root
 requirement such as `local-package[full]`.
+When an existing `uv.lock` is present, inference also reads resolved package
+names from the lockfile as static evidence for transitive runtime needs.
 
 This is a static metadata walk, not Python package solving. Remote package
 metadata is left to uv, and first bootstrap prints attention diagnostics when a
@@ -194,3 +197,10 @@ npm --prefix docs run build
 
 When generated project files change, also render a temporary project and parse
 its generated `flake.nix` and `robo.nix`.
+
+## Docs Deployment
+
+The documentation site is built by `.github/workflows/docs.yml` and deployed to
+GitHub Pages from `master` through GitHub Actions. Repository Pages settings
+should use **GitHub Actions** as the build source, and the `github-pages`
+environment must allow deployments from `master`.

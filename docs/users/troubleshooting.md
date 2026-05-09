@@ -1,6 +1,6 @@
 # Troubleshooting
 
-The main debugging surface is `robo shell` or `robo run <command>`. Every
+The primary diagnostics surface is `robo shell` or `robo run <command>`. Every
 runtime attempt writes `.robo-nix/last-run.json` with redacted facts such as
 dependency evidence, selected components, decision lines, and environment
 variable names. When project setup fails, `robo` also writes
@@ -28,6 +28,8 @@ Errors such as these mean a runtime component is incomplete or missing:
 ```text
 libstdc++.so.6: cannot open shared object file
 libz.so.1: cannot open shared object file
+libcrypt.so.1: cannot open shared object file
+libGLU.so.1: cannot open shared object file
 Wayland: Failed to load libxkbcommon
 ```
 
@@ -36,7 +38,8 @@ adding package-specific shell hacks. For example:
 
 - `native-build` owns compiler runtime libraries.
 - `linux-headers` owns Linux input headers.
-- `desktop-gl` owns desktop graphics and GLFW windowing libraries.
+- `desktop-gl` owns desktop graphics, GLU/X11 compatibility, and GLFW
+  windowing libraries.
 
 When `native-build` is selected, `robo shell` also exports
 `ROBO_NIX_LIBC_DEV` for scripts that need to inspect the active compiler's libc

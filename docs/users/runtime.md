@@ -13,7 +13,7 @@ edit when a project needs more native tools or runtime libraries inside
   </div>
   <div>
     <h3>native-build</h3>
-    <p>C/C++ build tools plus native runtime libraries such as libstdc++ and zlib.</p>
+    <p>C/C++ build tools plus native runtime libraries such as libstdc++, zlib, and legacy libcrypt.</p>
   </div>
   <div>
     <h3>linux-headers</h3>
@@ -21,7 +21,7 @@ edit when a project needs more native tools or runtime libraries inside
   </div>
   <div>
     <h3>desktop-gl</h3>
-    <p>OpenGL, EGL, GLVND, Vulkan loader, Wayland, X11, and GLFW windowing support.</p>
+    <p>OpenGL, EGL, GLVND, Vulkan loader, Wayland, X11, GLFW windowing, GLU, and legacy Xt support.</p>
   </div>
   <div>
     <h3>cuda-toolkit</h3>
@@ -69,7 +69,8 @@ headers:
 ```
 
 `desktop-gl` covers the common GLFW Linux windowing path, including Wayland,
-X11, Vulkan loader, GLVND, EGL, and `libxkbcommon`.
+X11, Vulkan loader, GLVND, EGL, `libxkbcommon`, GLU, and legacy Xt libraries
+used by larger simulator stacks.
 
 Host GPU provider selection is separate from `desktop-gl`. If a simulator such
 as Isaac Sim needs the host NVIDIA Vulkan/EGL/GLX provider, set the explicit
@@ -114,8 +115,8 @@ NVIDIA driver is still outside the Nix-managed toolkit:
 
 When a project appears to need host `libcuda.so.1`, `robo shell` and
 `robo run` try to bridge a visible host driver library automatically. The probe
-checks `ROBO_NIX_LIBCUDA_PATH`, `LD_LIBRARY_PATH`, `ldconfig -p`, and the same
-known host driver locations used by robo's CUDA bridge.
+checks `ROBO_NIX_LIBCUDA_PATH`, `LD_LIBRARY_PATH`, `ldconfig -p`, and known
+host driver locations used by common Linux and NixOS driver installs.
 
 Inside `robo shell`, `UV_PYTHON` points at the Nix-managed CPython so uv creates
 project environments from the runtime interpreter. For ad hoc installs,

@@ -19,7 +19,8 @@ dependency groups, lockfiles, and virtualenv sync.
 - Refreshing exports a re-evaluated shell environment. It does not run
   `uv sync` and does not rewrite `robo.nix`.
 - First-bootstrap inference reads direct dependencies, optional dependencies,
-  and dependency groups from `pyproject.toml`.
+  dependency groups, local `[tool.uv.sources]` path dependencies, and package
+  names from an existing `uv.lock` when available.
 - Every runtime attempt writes `.robo-nix/last-run.json` with redacted runtime
   facts. When setup fails, `robo` also writes `.robo-nix/last-error.log` with
   context you can paste into an issue.

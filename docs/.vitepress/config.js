@@ -95,14 +95,16 @@ const docsStyles = `
 }
 `
 
+const docsBase = process.env.ROBO_NIX_DOCS_BASE || '/'
+
 export default {
   title: 'robo-nix',
   description: 'Robot-learning runtime for uv projects',
-  base: process.env.ROBO_NIX_DOCS_BASE || '/',
+  base: docsBase,
   srcExclude: ['development/**'],
   cleanUrls: true,
   head: [
-    ['link', { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' }],
+    ['link', { rel: 'icon', type: 'image/svg+xml', href: `${docsBase}favicon.svg` }],
     ['style', {}, docsStyles]
   ],
 
