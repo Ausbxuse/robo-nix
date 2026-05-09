@@ -24,7 +24,7 @@ current CLI surface.
 
 Pending concerns:
 
-- The default installer source points at `greenfield/minimal-core` while this
+- The default installer source points at `rewrite` while this
   branch is under review. Revisit before moving this product surface to a
   public release branch.
 - The installer deliberately installs through Nix profiles. Other distribution

@@ -16,7 +16,7 @@ There is no `robo init`, `robo check`, or `robo diagnose` in this branch.
 Install:
 
 ```bash
-curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/ausbxuse/robo-nix/greenfield/minimal-core/scripts/install.sh | sh
+curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/ausbxuse/robo-nix/rewrite/scripts/install.sh | sh
 ```
 
 For a local checkout:

@@ -6,7 +6,7 @@ packages and a Nix-managed native runtime.
 Install once:
 
 ```bash
-curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/ausbxuse/robo-nix/greenfield/minimal-core/scripts/install.sh | sh
+curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/ausbxuse/robo-nix/rewrite/scripts/install.sh | sh
 ```
 
 Then the current minimal project workflow is:

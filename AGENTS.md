@@ -83,6 +83,10 @@ environment manager.
   shells.
 - The installer-owned flake target is `#robo`; keep that alias available when
   changing package outputs.
+- For repeatable local Nix profile installs, prefer `.#robo`. `nix profile add
+  .#` installs the default package, but Nix names that profile entry after the
+  flake path such as `robo-nix-minimal`, so `nix profile remove robo` will not
+  remove it on the next reinstall.
 
 ## Verification
 

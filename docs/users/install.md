@@ -4,7 +4,7 @@ The installer installs the `robo` CLI through Nix profiles. If Nix is missing,
 it uses the Determinate Nix installer first.
 
 ```bash
-curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/ausbxuse/robo-nix/greenfield/minimal-core/scripts/install.sh | sh
+curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/ausbxuse/robo-nix/rewrite/scripts/install.sh | sh
 ```
 
 Then start from a Python project:
@@ -23,6 +23,17 @@ checkout:
 ```bash
 ROBO_NIX_FLAKE="path:$PWD" ./scripts/install.sh
 ```
+
+Manual profile install:
+
+```bash
+nix profile remove robo || true
+nix profile add .#robo
+```
+
+`nix profile add .#` also installs the CLI, but Nix names that profile entry
+after the checkout directory, for example `robo-nix-minimal`. Use `.#robo` when
+you want `nix profile remove robo` to keep working for future reinstalls.
 
 ## Environment Overrides
 
