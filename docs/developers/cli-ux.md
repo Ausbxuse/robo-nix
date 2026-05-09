@@ -1,32 +1,67 @@
 # CLI UX
 
-Human output should be concise, stable, and easy to paste into review.
+Human output should follow the original `robo` CLI shape: one clear status
+surface, sparse color, lowercase headings, and pasteable captured logs.
 
-## Labels
+## Sections
 
-Use short labels for status lines:
+Use lowercase section headings without trailing colons:
 
 ```text
-generated flake.nix
-inferred  desktop-gl from pyproject.toml dependency `mujoco`
-note      MuJoCo commonly needs desktop graphics runtime libraries.
-error     missing .python-version
-hint      choose the project Python version first, for example with `uv python pin <version>`.
-debug     wrote .robo-nix/last-error.log
+generated
+  ✓ wrote    ./flake.nix
+  ✓ wrote    ./robo.nix
+
+inferred
+  ✓ native-build   pyproject.toml dependency `evdev`
+    evdev builds native extensions for Linux input devices.
 ```
 
-Labels may be colored in terminals. Captured output must remain plain text with
-the same words and no escape codes.
+Color only the scanning anchors in terminals:
 
-## Spinners
+- section headings and `phase:` status labels: cyan and bold
+- success marker `✓`: green and bold
+- attention marker `!`: yellow and bold
+- field or action words such as `wrote`: dim
+- quoted or backticked commands: green
 
-Spinners are only for bounded command runs such as `robo run <command>`.
-Interactive `robo shell` must not animate after the shell has started.
-Subprocess output may supersede a spinner, but final robo-owned errors must be
-printed after the spinner is cleared.
+Captured output must stay plain text with no escape codes.
 
-Disable animated output when stdout or stderr is not a terminal, when `NO_COLOR`
-is set, or when `ROBO_NIX_NO_SPINNER=1` is set.
+## Status
+
+Use `phase: detail` for active work:
+
+```text
+shell: evaluating and realizing dev shell
+shell: launching zsh
+```
+
+In terminals, long silent work uses the original braille spinner:
+
+```text
+⠋ shell: evaluating and realizing dev shell 1.2s
+```
+
+Do not animate while a child process is producing useful output. For `robo
+shell`, preflight the dev shell with a spinner first, then launch the interactive
+shell without an active spinner.
+
+Disable animated output when stderr is not a terminal, when `NO_COLOR` is set,
+when `ROBO_NIX_DEBUG=1` is set, or when `ROBO_NIX_NO_SPINNER=1` is set.
+
+## Shell
+
+`robo shell` should launch the user's default interactive shell. Selection order:
+
+- `ROBO_NIX_SHELL`
+- `$SHELL`, unless it points at generic Nix Bash or plain `sh`
+- the login shell from `/etc/passwd`
+- the parent interactive shell
+- `zsh`, `bash`, `fish`, then `sh` from `PATH`
+
+Interactive shells should show the original `[robo]` prompt prefix by default.
+The prefix is injected through temporary startup files under
+`.robo-nix/shell-startup/`; it should not edit user dotfiles.
 
 ## Wording
 

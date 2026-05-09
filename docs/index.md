@@ -34,12 +34,13 @@ features:
   </div>
   <pre class="hero-terminal__body"><code><span class="prompt">$</span> uv python pin 3.11
 <span class="prompt">$</span> robo shell
-<span class="label-ok">generated</span> flake.nix
-<span class="label-ok">generated</span> robo.nix
-<span class="label-note">inferred</span> native-build from evdev, torch
-<span class="label-note">inferred</span> linux-headers from evdev
-<span class="label-note">inferred</span> desktop-gl from mujoco
-<span class="dim">running nix develop --accept-flake-config</span><span class="terminal-cursor"></span></code></pre>
+<span class="label-note">generated</span>
+  <span class="label-ok">✓</span> <span class="dim">wrote</span>    ./flake.nix
+  <span class="label-ok">✓</span> <span class="dim">wrote</span>    ./robo.nix
+<span class="label-note">inferred</span>
+  <span class="label-ok">✓</span> native-build   pyproject.toml dependency `evdev`
+<span class="label-note">shell:</span> launching zsh
+<span class="dim">[</span>ro<span class="label-note">bo</span><span class="dim">]</span> <span class="terminal-cursor"></span></code></pre>
 </div>
 
 ## The Contract

@@ -18,6 +18,8 @@ environment manager.
 - `pyproject.toml` is owned by uv/project policy. `robo` must never create it.
 - `robo.nix` is user-editable after first creation and is canonical for the
   shell.
+- `robo shell` should launch the user's default interactive shell, not force
+  Bash. Use `ROBO_NIX_SHELL` only as an explicit override.
 
 ## Ownership Boundaries
 
@@ -75,6 +77,10 @@ environment manager.
   `libxkbcommon` for Wayland keyboard support.
 - CLI human output should go through the local styled output helpers so labels,
   colors, and non-interactive output stay consistent.
+- Keep CLI styling aligned with the original Rust CLI: lowercase section
+  headings, cyan phase labels, green success markers, dim field/action labels,
+  `indicatif` braille spinners, and a `[robo]` prompt prefix in interactive
+  shells.
 - The installer-owned flake target is `#robo`; keep that alias available when
   changing package outputs.
 

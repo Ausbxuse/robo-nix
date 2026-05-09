@@ -1,0 +1,19 @@
+if [ -f "$HOME/.bashrc" ]; then . "$HOME/.bashrc"; fi
+__robo_prompt_prefix() {
+  __robo_prompt_color="\[\033[90m\][\[\033[37m\]ro\[\033[36m\]bo\[\033[90m\]]\[\033[0m\]"
+  __robo_prompt_ansi_39="$(printf '\033[90m[\033[39m\033[37mro\033[39m\033[36mbo\033[39m\033[90m]\033[39m')"
+  __robo_prompt_ansi_0="$(printf '\033[90m[\033[0m\033[37mro\033[0m\033[36mbo\033[0m\033[90m]\033[0m')"
+  __robo_prompt_plain="[robo]"
+  __robo_prompt_base="${PS1-}"
+  while true; do
+    __robo_prompt_stripped="$__robo_prompt_base"
+    case "$__robo_prompt_base" in "$__robo_prompt_color"*) __robo_prompt_stripped="${__robo_prompt_base#"$__robo_prompt_color"}" ;; esac
+    case "$__robo_prompt_base" in "$__robo_prompt_ansi_39"*) __robo_prompt_stripped="${__robo_prompt_base#"$__robo_prompt_ansi_39"}" ;; esac
+    case "$__robo_prompt_base" in "$__robo_prompt_ansi_0"*) __robo_prompt_stripped="${__robo_prompt_base#"$__robo_prompt_ansi_0"}" ;; esac
+    case "$__robo_prompt_base" in "$__robo_prompt_plain"*) __robo_prompt_stripped="${__robo_prompt_base#"$__robo_prompt_plain"}" ;; esac
+    [ "$__robo_prompt_stripped" = "$__robo_prompt_base" ] && break
+    __robo_prompt_base="$__robo_prompt_stripped"
+  done
+  PS1="${__robo_prompt_color}${__robo_prompt_base}"
+}
+if [ -n "${ROBO_NIX_PROMPT_PREFIX:-}" ]; then PROMPT_COMMAND="${PROMPT_COMMAND:+${PROMPT_COMMAND}; }__robo_prompt_prefix"; __robo_prompt_prefix; fi

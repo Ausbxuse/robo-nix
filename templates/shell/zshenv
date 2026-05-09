@@ -1,0 +1,2 @@
+if [ -n "${ROBO_NIX_PARENT_ZDOTDIR:-}" ] && [ -f "${ROBO_NIX_PARENT_ZDOTDIR}/.zshenv" ]; then source "${ROBO_NIX_PARENT_ZDOTDIR}/.zshenv"; elif [ -f "$HOME/.zshenv" ]; then source "$HOME/.zshenv"; fi
+export ZDOTDIR={{zdotdir}}

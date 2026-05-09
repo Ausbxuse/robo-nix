@@ -4,13 +4,17 @@ use std::ffi::OsString;
 use std::fs;
 use std::io::{self, IsTerminal, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Command, ExitCode};
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc,
+use std::process::{Command, ExitCode, Output};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+mod shell_launch;
+mod ui;
+
+use shell_launch::interactive_shell_launch;
+use ui::{
+    attention, debug, error, hint, inline, output_with_spinner, row, section, status, success,
+    Config,
 };
-use std::thread;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const HELP: &str = include_str!("../templates/help.txt");
 const PROJECT_FLAKE_TEMPLATE: &str = include_str!("../templates/project/flake.nix");
@@ -25,16 +29,19 @@ const KNOWN_COMPONENTS: &[&str] = &[
 ];
 
 fn main() -> ExitCode {
-    match run(env::args_os().skip(1).collect()) {
+    let config = ui_config();
+    console::set_colors_enabled(config.color);
+    console::set_colors_enabled_stderr(config.color);
+    match run(env::args_os().skip(1).collect(), config) {
         Ok(code) => code,
         Err(error) => {
-            print_error(&error);
+            print_error(config, &error);
             if error.write_debug_log {
                 match write_debug_log(&error) {
-                    Ok(path) => print_stderr(Label::Debug, format!("wrote {}", path.display())),
-                    Err(err) => print_stderr(
-                        Label::Debug,
-                        format!("failed to write .robo-nix/last-error.log: {err}"),
+                    Ok(path) => debug(config, &format!("wrote {}", path.display())),
+                    Err(err) => debug(
+                        config,
+                        &format!("failed to write .robo-nix/last-error.log: {err}"),
                     ),
                 }
             }
@@ -43,7 +50,14 @@ fn main() -> ExitCode {
     }
 }
 
-fn run(args: Vec<OsString>) -> Result<ExitCode, AppError> {
+fn ui_config() -> Config {
+    let color = env::var_os("NO_COLOR").is_none()
+        && (io::stdout().is_terminal() || io::stderr().is_terminal());
+    let debug = env::var_os("ROBO_NIX_DEBUG").is_some();
+    Config { color, debug }
+}
+
+fn run(args: Vec<OsString>, config: Config) -> Result<ExitCode, AppError> {
     let mut args = args.into_iter();
     let Some(command) = args.next() else {
         print_usage();
@@ -54,8 +68,8 @@ fn run(args: Vec<OsString>) -> Result<ExitCode, AppError> {
         .ok_or_else(|| AppError::user("command must be valid UTF-8"))?;
 
     match command {
-        "shell" => shell_command(args.collect()),
-        "run" => run_command(args.collect()),
+        "shell" => shell_command(args.collect(), config),
+        "run" => run_command(args.collect(), config),
         "-h" | "--help" | "help" => {
             print_usage();
             Ok(ExitCode::SUCCESS)
@@ -72,48 +86,58 @@ fn print_usage() {
     print!("{HELP}");
 }
 
-fn shell_command(args: Vec<OsString>) -> Result<ExitCode, AppError> {
+fn shell_command(args: Vec<OsString>, config: Config) -> Result<ExitCode, AppError> {
     if !args.is_empty() {
         return Err(AppError::user(
             "shell does not accept arguments; use `robo run` for commands",
         ));
     }
-    run_nix_develop(Vec::new())
+    run_nix_develop(Vec::new(), config)
 }
 
-fn run_command(args: Vec<OsString>) -> Result<ExitCode, AppError> {
+fn run_command(args: Vec<OsString>, config: Config) -> Result<ExitCode, AppError> {
     if args.is_empty() {
         return Err(AppError::user("run requires a command"));
     }
-    run_nix_develop(args)
+    run_nix_develop(args, config)
 }
 
-fn run_nix_develop(command_args: Vec<OsString>) -> Result<ExitCode, AppError> {
-    prepare_project(Path::new("."))?;
+fn run_nix_develop(command_args: Vec<OsString>, config: Config) -> Result<ExitCode, AppError> {
+    let report = prepare_project(Path::new("."))?;
+    print_bootstrap_report(config, &report);
 
-    let use_spinner = !command_args.is_empty();
+    let phase = if command_args.is_empty() {
+        "shell"
+    } else {
+        "run"
+    };
+    preflight_nix_develop(config, phase)?;
+
     let mut command = Command::new("nix");
-    command.arg("develop").arg("--accept-flake-config");
+    command
+        .arg("develop")
+        .arg("--accept-flake-config")
+        .arg("--command");
 
-    if !command_args.is_empty() {
-        command.arg("--command").args(command_args);
+    if command_args.is_empty() {
+        let launch = interactive_shell_launch().ok_or_else(|| {
+            AppError::project("could not determine an interactive shell to launch")
+                .with_hint("set ROBO_NIX_SHELL to the shell you want robo to launch.")
+        })?;
+        status(config, &format!("shell: launching {}", launch.name));
+        command.arg(&launch.program).args(&launch.args);
+        command.env("ROBO_NIX_ENV_NAME", "robo");
+        for (name, value) in launch.env {
+            command.env(name, value);
+        }
+    } else {
+        command.args(command_args);
     }
 
-    let mut child = command.spawn().map_err(|err| {
+    let status = command.status().map_err(|err| {
         AppError::project(format!("failed to start nix: {err}"))
             .with_hint("install Nix with flakes enabled, then rerun `robo shell`.")
     })?;
-    // NOTE: do not animate across an interactive `robo shell`; it would keep
-    // redrawing after the user is already inside the shell.
-    let spinner = if use_spinner {
-        Spinner::start("nix develop")
-    } else {
-        Spinner::disabled()
-    };
-    let status = child
-        .wait()
-        .map_err(|err| AppError::project(format!("failed to wait for nix: {err}")))?;
-    spinner.stop();
 
     if status.success() {
         Ok(ExitCode::SUCCESS)
@@ -121,6 +145,45 @@ fn run_nix_develop(command_args: Vec<OsString>) -> Result<ExitCode, AppError> {
         Err(AppError::project(format!("nix develop exited with {status}"))
             .with_hint("review the Nix output above and attach .robo-nix/last-error.log to an issue if this looks like a robo-nix bug."))
     }
+}
+
+fn preflight_nix_develop(config: Config, phase: &str) -> Result<(), AppError> {
+    let mut command = Command::new("nix");
+    command
+        .arg("develop")
+        .arg("--accept-flake-config")
+        .arg("--command")
+        .arg("true");
+    let output = output_with_spinner(
+        config,
+        &mut command,
+        &format!("{phase}: evaluating and realizing dev shell"),
+    )
+    .map_err(|err| {
+        AppError::project(format!("failed to start nix: {err}"))
+            .with_hint("install Nix with flakes enabled, then rerun `robo shell`.")
+    })?;
+
+    if output.status.success() {
+        return Ok(());
+    }
+
+    write_command_output(&output)?;
+    Err(AppError::project(format!(
+        "nix develop exited with {}",
+        output.status
+    ))
+    .with_hint("review the Nix output above and attach .robo-nix/last-error.log to an issue if this looks like a robo-nix bug."))
+}
+
+fn write_command_output(output: &Output) -> Result<(), AppError> {
+    io::stdout()
+        .write_all(&output.stdout)
+        .map_err(|err| AppError::project(format!("failed to write nix stdout: {err}")))?;
+    io::stderr()
+        .write_all(&output.stderr)
+        .map_err(|err| AppError::project(format!("failed to write nix stderr: {err}")))?;
+    Ok(())
 }
 
 fn prepare_project(root: &Path) -> Result<BootstrapReport, AppError> {
@@ -144,7 +207,6 @@ fn prepare_project(root: &Path) -> Result<BootstrapReport, AppError> {
         fs::write(&flake_path, PROJECT_FLAKE_TEMPLATE)
             .map_err(|err| AppError::project(format!("failed to write flake.nix: {err}")))?;
         report.wrote_flake = true;
-        print_stdout(Label::Generated, "flake.nix");
     }
 
     let robo_path = root.join("robo.nix");
@@ -154,8 +216,7 @@ fn prepare_project(root: &Path) -> Result<BootstrapReport, AppError> {
         fs::write(&robo_path, robo_nix)
             .map_err(|err| AppError::project(format!("failed to write robo.nix: {err}")))?;
         report.wrote_robo_nix = true;
-        print_stdout(Label::Generated, "robo.nix");
-        print_inference_report(&inference);
+        report.inference = Some(inference);
     }
 
     report.python_version = python_version;
@@ -342,170 +403,59 @@ fn render_template(template: &str, values: &[(&str, String)]) -> Result<String, 
     Ok(rendered)
 }
 
-fn print_inference_report(inference: &RuntimeInference) {
+fn print_bootstrap_report(config: Config, report: &BootstrapReport) {
+    if report.wrote_flake || report.wrote_robo_nix {
+        section(config, "generated");
+        if report.wrote_flake {
+            row(config, "✓", "wrote", "./flake.nix");
+        }
+        if report.wrote_robo_nix {
+            row(config, "✓", "wrote", "./robo.nix");
+        }
+    }
+
+    if let Some(inference) = &report.inference {
+        print_inference_report(config, inference);
+    }
+}
+
+fn print_inference_report(config: Config, inference: &RuntimeInference) {
     match inference.pyproject_status {
         PyprojectStatus::Missing => {
-            print_stdout(
-                Label::Note,
+            section(config, "attention");
+            attention(
+                config,
                 "pyproject.toml not found; generated base runtime only",
             );
         }
         PyprojectStatus::Invalid => {
-            print_stdout(
-                Label::Note,
+            section(config, "attention");
+            attention(
+                config,
                 "pyproject.toml is invalid TOML; generated base runtime only",
             );
         }
         PyprojectStatus::Read => {
+            if inference.matches.is_empty() {
+                return;
+            }
+            section(config, "inferred");
             for matched in &inference.matches {
-                print_stdout(
-                    Label::Inferred,
-                    format!(
-                        "{} from pyproject.toml dependency `{}`",
-                        matched.component, matched.package
-                    ),
+                success(
+                    config,
+                    &matched.component,
+                    &format!("pyproject.toml dependency `{}`", matched.package),
                 );
-                print_stdout(Label::Note, &matched.note);
+                println!("    {}", inline(config, &matched.note));
             }
         }
     }
 }
 
-fn print_error(error: &AppError) {
-    print_stderr(Label::Error, &error.message);
-    if let Some(hint) = &error.hint {
-        print_stderr(Label::Hint, hint);
-    }
-}
-
-#[derive(Clone, Copy)]
-enum Label {
-    Generated,
-    Inferred,
-    Note,
-    Error,
-    Hint,
-    Debug,
-    Running,
-}
-
-impl Label {
-    fn text(self) -> &'static str {
-        match self {
-            Label::Generated => "generated",
-            Label::Inferred => "inferred",
-            Label::Note => "note",
-            Label::Error => "error",
-            Label::Hint => "hint",
-            Label::Debug => "debug",
-            Label::Running => "running",
-        }
-    }
-
-    fn color(self) -> &'static str {
-        match self {
-            Label::Generated => "\x1b[32m",
-            Label::Inferred => "\x1b[36m",
-            Label::Note => "\x1b[34m",
-            Label::Error => "\x1b[31m",
-            Label::Hint => "\x1b[33m",
-            Label::Debug => "\x1b[2m",
-            Label::Running => "\x1b[35m",
-        }
-    }
-
-    fn render(self, color: bool) -> String {
-        if color {
-            format!("{}{:<9}\x1b[0m", self.color(), self.text())
-        } else {
-            format!("{:<9}", self.text())
-        }
-    }
-}
-
-fn print_stdout(label: Label, message: impl AsRef<str>) {
-    println!(
-        "{} {}",
-        label.render(output_color(OutputStream::Stdout)),
-        message.as_ref()
-    );
-}
-
-fn print_stderr(label: Label, message: impl AsRef<str>) {
-    eprintln!(
-        "{} {}",
-        label.render(output_color(OutputStream::Stderr)),
-        message.as_ref()
-    );
-}
-
-enum OutputStream {
-    Stdout,
-    Stderr,
-}
-
-fn output_color(stream: OutputStream) -> bool {
-    if env::var_os("NO_COLOR").is_some() {
-        return false;
-    }
-    match stream {
-        OutputStream::Stdout => io::stdout().is_terminal(),
-        OutputStream::Stderr => io::stderr().is_terminal(),
-    }
-}
-
-struct Spinner {
-    done: Arc<AtomicBool>,
-    handle: Option<thread::JoinHandle<()>>,
-}
-
-impl Spinner {
-    fn disabled() -> Self {
-        Self {
-            done: Arc::new(AtomicBool::new(true)),
-            handle: None,
-        }
-    }
-
-    fn start(message: &'static str) -> Self {
-        let enabled = io::stderr().is_terminal()
-            && env::var_os("NO_COLOR").is_none()
-            && env::var_os("ROBO_NIX_NO_SPINNER").is_none();
-        let done = Arc::new(AtomicBool::new(false));
-        if !enabled {
-            return Self { done, handle: None };
-        }
-
-        let done_for_thread = Arc::clone(&done);
-        let handle = thread::spawn(move || {
-            let frames = ["-", "\\", "|", "/"];
-            let mut index = 0;
-            while !done_for_thread.load(Ordering::Relaxed) {
-                eprint!(
-                    "\r{} {} {}",
-                    Label::Running.render(output_color(OutputStream::Stderr)),
-                    frames[index % frames.len()],
-                    message
-                );
-                let _ = io::stderr().flush();
-                index += 1;
-                thread::sleep(Duration::from_millis(120));
-            }
-        });
-
-        Self {
-            done,
-            handle: Some(handle),
-        }
-    }
-
-    fn stop(self) {
-        self.done.store(true, Ordering::Relaxed);
-        if let Some(handle) = self.handle {
-            let _ = handle.join();
-            eprint!("\r{}\r", " ".repeat(96));
-            let _ = io::stderr().flush();
-        }
+fn print_error(config: Config, error_value: &AppError) {
+    error(config, &error_value.message);
+    if let Some(message) = &error_value.hint {
+        hint(config, message);
     }
 }
 
@@ -588,20 +538,24 @@ struct BootstrapReport {
     python_version: String,
     wrote_flake: bool,
     wrote_robo_nix: bool,
+    inference: Option<RuntimeInference>,
 }
 
+#[derive(Debug)]
 struct RuntimeRule {
     package: String,
     component: String,
     note: String,
 }
 
+#[derive(Debug)]
 struct RuntimeMatch {
     package: String,
     component: String,
     note: String,
 }
 
+#[derive(Debug)]
 struct RuntimeInference {
     components: BTreeSet<String>,
     matches: Vec<RuntimeMatch>,
@@ -618,6 +572,7 @@ impl RuntimeInference {
     }
 }
 
+#[derive(Debug)]
 enum PyprojectStatus {
     Missing,
     Invalid,

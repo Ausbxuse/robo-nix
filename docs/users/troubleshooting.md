@@ -41,3 +41,18 @@ adding package-specific shell hacks. For example:
 After `robo.nix` exists, `robo shell` uses it as the canonical runtime manifest.
 It will not re-infer dependencies or rewrite that file. Edit `robo.nix`
 directly when a project needs another component.
+
+## Shell Selection
+
+`robo shell` launches your normal interactive shell by default. If `$SHELL`
+points at generic Nix Bash or plain `sh`, robo falls back to your login shell,
+parent shell, or a shell from `PATH`.
+
+To force a shell:
+
+```bash
+ROBO_NIX_SHELL=/run/current-system/sw/bin/zsh robo shell
+```
+
+The `[robo]` prompt prefix is injected through `.robo-nix/shell-startup/` and
+does not edit your dotfiles.

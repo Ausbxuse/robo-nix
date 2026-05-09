@@ -4,4 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+console = "0.15"
+indicatif = "0.17"
 toml = "0.8"
