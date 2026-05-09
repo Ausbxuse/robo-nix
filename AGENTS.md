@@ -14,7 +14,8 @@ environment manager.
 - There is no `robo init`, `robo check`, or `robo diagnose` in the current
   branch.
 - `robo shell` may create missing runtime files during first bootstrap, then
-  enters `nix develop`.
+  evaluates the Nix dev-shell environment and launches the user's shell with
+  that environment.
 - `.python-version` is required. `robo` does not choose a default Python
   version.
 - `pyproject.toml` is owned by uv/project policy. `robo` must never create it.
@@ -98,6 +99,9 @@ environment manager.
   progress tree: parent command line, active child phase, optional dim Nix
   detail rows, and a completed `robo ready` tree in terminals. Keep
   non-interactive output as plain `phase: detail` status lines.
+- Hide successful Nix CLI output, including dirty Git tree warnings. Capture and
+  replay Nix stdout/stderr only when Nix setup fails; after setup succeeds,
+  launch the user's shell or command directly with the resolved environment.
 - The installer-owned flake target is `#robo`; keep that alias available when
   changing package outputs.
 - For repeatable local Nix profile installs, prefer `.#robo`. `nix profile add

@@ -8,6 +8,7 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Output};
 
+use crate::nix_env::{add_env_capture_args, parse_env_zero};
 use crate::ui::{error, hint, output_with_tree, row_err, status, Config};
 
 #[derive(Debug)]
@@ -94,9 +95,8 @@ fn refreshed_shell_env(
         .current_dir(workspace)
         .arg("develop")
         .arg("--accept-flake-config")
-        .arg("--command")
-        .arg("env")
-        .arg("-0");
+        .arg("--command");
+    add_env_capture_args(&mut command);
     let output = output_with_tree(
         config,
         &mut command,
@@ -109,7 +109,7 @@ fn refreshed_shell_env(
     })?;
 
     if output.status.success() {
-        return parse_env_zero(&output.stdout);
+        return parse_env_zero(&output.stdout).map_err(RefreshError::new);
     }
 
     write_command_output_to_stderr(&output)?;
@@ -208,26 +208,6 @@ fn append_active_shell_env(
 fn set_env_value(envs: &mut Vec<(String, String)>, name: &str, value: String) {
     envs.retain(|(candidate, _)| candidate != name);
     envs.push((name.to_string(), value));
-}
-
-fn parse_env_zero(bytes: &[u8]) -> Result<Vec<(String, String)>, RefreshError> {
-    let mut envs = Vec::new();
-    for entry in bytes.split(|byte| *byte == 0) {
-        if entry.is_empty() {
-            continue;
-        }
-        let Some(eq) = entry.iter().position(|byte| *byte == b'=') else {
-            continue;
-        };
-        let name = String::from_utf8(entry[..eq].to_vec()).map_err(|_| {
-            RefreshError::new("refreshed shell environment contains an invalid variable name")
-        })?;
-        let value = String::from_utf8(entry[eq + 1..].to_vec()).map_err(|_| {
-            RefreshError::new("refreshed shell environment contains an invalid variable value")
-        })?;
-        envs.push((name, value));
-    }
-    Ok(envs)
 }
 
 fn write_command_output_to_stderr(output: &Output) -> Result<(), RefreshError> {

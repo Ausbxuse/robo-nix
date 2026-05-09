@@ -7,6 +7,7 @@ use std::process::{Command, ExitCode, Output};
 mod bootstrap;
 mod error;
 mod inference;
+mod nix_env;
 mod search;
 mod shell_launch;
 mod shell_refresh;
@@ -14,9 +15,10 @@ mod ui;
 
 use bootstrap::{prepare_project, print_bootstrap_report};
 use error::{print_error, write_debug_log, AppError};
+use nix_env::{apply_env, dev_environment};
 use shell_launch::interactive_shell_launch;
 use shell_refresh::{runtime_input_state, set_active_shell_env};
-use ui::{debug, help_row, list_item, output_with_tree, section, status, Config};
+use ui::{debug, help_row, list_item, section, status, Config};
 
 fn main() -> ExitCode {
     let config = ui_config();
@@ -139,74 +141,62 @@ fn run_nix_develop(command_args: Vec<OsString>, config: Config) -> Result<ExitCo
     } else {
         "run"
     };
-    preflight_nix_develop(config, phase)?;
-
-    let mut command = Command::new("nix");
-    command
-        .arg("develop")
-        .arg("--accept-flake-config")
-        .arg("--command");
-
-    if command_args.is_empty() {
-        let launch = interactive_shell_launch().ok_or_else(|| {
-            AppError::project("could not determine an interactive shell to launch")
-                .with_hint("set ROBO_NIX_SHELL to the shell you want robo to launch.")
-        })?;
-        status(config, &format!("shell: launching {}", launch.name));
-        command.arg(&launch.program).args(&launch.args);
-        set_active_shell_env(
-            &mut command,
-            &workspace_root()?,
-            &runtime_input_state(Path::new(".")),
-        );
-        for (name, value) in launch.env {
-            command.env(name, value);
-        }
+    let dev_env = dev_environment(config, phase)?;
+    let mut command = if command_args.is_empty() {
+        shell_launch_command(config, &dev_env)?
     } else {
-        command.args(command_args);
-    }
+        run_launch_command(command_args, &dev_env)?
+    };
 
     let status = command.status().map_err(|err| {
-        AppError::project(format!("failed to start nix: {err}"))
-            .with_hint("install Nix with flakes enabled, then rerun `robo shell`.")
+        AppError::project(format!("failed to launch {phase} command: {err}"))
+            .with_hint("review the command and make sure it exists in the robo shell environment.")
     })?;
 
     if status.success() {
         Ok(ExitCode::SUCCESS)
     } else {
-        Err(AppError::project(format!("nix develop exited with {status}"))
-            .with_hint("review the Nix output above and attach .robo-nix/last-error.log to an issue if this looks like a robo-nix bug."))
+        Err(
+            AppError::project(format!("{phase} command exited with {status}")).with_hint(
+                "the runtime was prepared successfully; inspect the command output above.",
+            ),
+        )
     }
 }
 
-fn preflight_nix_develop(config: Config, phase: &str) -> Result<(), AppError> {
-    let mut command = Command::new("nix");
-    command
-        .arg("develop")
-        .arg("--accept-flake-config")
-        .arg("--command")
-        .arg("true");
-    let output = output_with_tree(
-        config,
-        &mut command,
-        &format!("robo {phase}"),
-        &format!("{phase}: evaluating and realizing dev shell"),
-    )
-    .map_err(|err| {
-        AppError::project(format!("failed to start nix: {err}"))
-            .with_hint("install Nix with flakes enabled, then rerun `robo shell`.")
+fn shell_launch_command(config: Config, dev_env: &[(String, String)]) -> Result<Command, AppError> {
+    let launch = interactive_shell_launch().ok_or_else(|| {
+        AppError::project("could not determine an interactive shell to launch")
+            .with_hint("set ROBO_NIX_SHELL to the shell you want robo to launch.")
     })?;
+    status(config, &format!("shell: launching {}", launch.name));
 
-    if output.status.success() {
-        return Ok(());
+    let mut command = Command::new(&launch.program);
+    command.args(&launch.args);
+    apply_env(&mut command, dev_env);
+    for (name, value) in launch.env {
+        command.env(name, value);
     }
+    set_active_shell_env(
+        &mut command,
+        &workspace_root()?,
+        &runtime_input_state(Path::new(".")),
+    );
+    Ok(command)
+}
 
-    write_command_output(&output)?;
-    Err(AppError::project(format!(
-        "nix develop exited with {}",
-        output.status
-    ))
-    .with_hint("review the Nix output above and attach .robo-nix/last-error.log to an issue if this looks like a robo-nix bug."))
+fn run_launch_command(
+    command_args: Vec<OsString>,
+    dev_env: &[(String, String)],
+) -> Result<Command, AppError> {
+    let mut command_args = command_args.into_iter();
+    let program = command_args
+        .next()
+        .ok_or_else(|| AppError::user("run requires a command"))?;
+    let mut command = Command::new(program);
+    command.args(command_args);
+    apply_env(&mut command, dev_env);
+    Ok(command)
 }
 
 fn write_command_output(output: &Output) -> Result<(), AppError> {

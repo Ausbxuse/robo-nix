@@ -598,6 +598,9 @@ fn progress_detail(bytes: &[u8]) -> Option<String> {
     if detail.is_empty() {
         return None;
     }
+    if detail.starts_with("warning: Git tree '") {
+        return None;
+    }
     if detail.starts_with("linking ") || detail.starts_with("evaluating file '") {
         return None;
     }
@@ -719,6 +722,10 @@ mod tests {
     fn progress_details_are_cleaned_for_display() {
         assert_eq!(
             progress_detail(b"\revaluating file '/nix/store/x/package.nix'\n"),
+            None
+        );
+        assert_eq!(
+            progress_detail(b"warning: Git tree '/workspace/project' is dirty\n"),
             None
         );
         assert_eq!(
