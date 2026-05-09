@@ -29,6 +29,12 @@ Python package metadata.
 After first bootstrap, edit `robo.nix` for project runtime choices such as native
 build tools or desktop graphics support.
 
+If an error names a missing shared library, search for Nix package candidates:
+
+```bash
+robo search libassimp.so
+```
+
 Common runtime components:
 
 - `desktop-gl`: Nix-managed OpenGL/EGL/Vulkan loader and desktop graphics

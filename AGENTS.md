@@ -9,6 +9,8 @@ environment manager.
 - `robo shell` is the canonical user command.
 - `robo run <command> [args...]` uses the same runtime preparation path as
   `robo shell`.
+- `robo search <library>` is a lookup-only helper for missing native shared
+  libraries.
 - There is no `robo init`, `robo check`, or `robo diagnose` in the current
   branch.
 - `robo shell` may create missing runtime files during first bootstrap, then
@@ -31,6 +33,9 @@ environment manager.
   wrapping.
 - Runtime inference rules should live in data files, not hardcoded Rust
   conditionals.
+- `robo search` may use `nix-locate`/nix-index data to suggest Nix packages,
+  but it must not mutate `robo.nix`, become a Python package resolver, or grow a
+  central package registry.
 - Docs must describe the current rewrite branch. Do not reintroduce `robo init`,
   `robo check`, or `robo diagnose` in user-facing docs until those commands are
   intentionally restored.

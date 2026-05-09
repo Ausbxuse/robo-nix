@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Output};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+mod search;
 mod shell_launch;
 mod ui;
 
@@ -69,6 +70,7 @@ fn run(args: Vec<OsString>, config: Config) -> Result<ExitCode, AppError> {
     match command {
         "shell" => shell_command(args.collect(), config),
         "run" => run_command(args.collect(), config),
+        "search" => Ok(search::run(args.collect(), config)),
         "-h" | "--help" | "help" => {
             print_usage();
             Ok(ExitCode::SUCCESS)

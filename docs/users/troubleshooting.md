@@ -36,6 +36,16 @@ adding package-specific shell hacks. For example:
 - `linux-headers` owns Linux input headers.
 - `desktop-gl` owns desktop graphics and GLFW windowing libraries.
 
+If the missing file is a specific shared library, use `robo search` to find Nix
+package candidates:
+
+```bash
+robo search libassimp.so
+```
+
+Then add the package that owns the failing library to `extraRuntimeLibraries` in
+`robo.nix`.
+
 ## Existing robo.nix
 
 After `robo.nix` exists, `robo shell` uses it as the canonical runtime manifest.

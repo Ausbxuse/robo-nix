@@ -59,3 +59,13 @@ user-managed:
   ];
 }
 ```
+
+When a Python extension reports a missing shared library, search for the Nix
+package that provides it:
+
+```bash
+robo search libassimp.so
+```
+
+`robo search` only prints candidates and a snippet. You still choose the package
+and edit `robo.nix` yourself.

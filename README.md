@@ -7,6 +7,7 @@ The current product contract is intentionally small:
 
 - `robo shell` prepares missing runtime files and enters `nix develop`.
 - `robo run <command> [args...]` prepares the same runtime and runs one command.
+- `robo search <library>` suggests Nix packages for missing shared libraries.
 - `.python-version` is required.
 - `pyproject.toml` is owned by uv/project policy and is never created by `robo`.
 - `robo.nix` is created only on first bootstrap; after that it is user-managed.
