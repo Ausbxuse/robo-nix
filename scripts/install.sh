@@ -52,9 +52,6 @@ install_robo() {
 		profile remove robo >/dev/null 2>&1 || true
 	nix --extra-experimental-features nix-command \
 		--extra-experimental-features flakes \
-		profile remove robo-nix-minimal >/dev/null 2>&1 || true
-	nix --extra-experimental-features nix-command \
-		--extra-experimental-features flakes \
 		--accept-flake-config \
 		profile install "$robo_nix_flake#robo"
 

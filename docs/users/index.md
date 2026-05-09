@@ -9,7 +9,7 @@ Install once:
 curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/ausbxuse/robo-nix/rewrite/scripts/install.sh | sh
 ```
 
-Then the current minimal project workflow is:
+Then the current project workflow is:
 
 ```bash
 uv python pin 3.11

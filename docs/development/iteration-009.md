@@ -29,9 +29,10 @@ Pending concerns:
   public release branch.
 - The installer deliberately installs through Nix profiles. Other distribution
   channels should be separate reviewed iterations.
-- Existing local installs may be named either `robo` or `robo-nix-minimal`,
-  depending on whether they used `#robo` or the older `#default` target.
-  Remove both before installing to avoid stale binaries or profile conflicts.
+- Existing local installs may be named either `robo` or a path-derived checkout
+  name, depending on whether they used `#robo` or the older `#default` target.
+  Remove stale profile entries before installing to avoid stale binaries or
+  profile conflicts.
 
 ## Verification
 

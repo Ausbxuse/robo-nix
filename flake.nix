@@ -1,5 +1,5 @@
 {
-  description = "Minimal robo-nix rebuild";
+  description = "robo-nix rewrite";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 

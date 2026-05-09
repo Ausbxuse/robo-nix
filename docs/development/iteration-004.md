@@ -62,8 +62,8 @@ The 'linux/input.h' and 'linux/input-event-codes.h' include files are missing.
 Pending concerns:
 
 - Existing generated `flake.nix` files from older iterations do not know the
-  `linux-headers` component. The current minimal branch still bootstraps missing
-  files only and does not repair existing robo flakes.
+  `linux-headers` component. The rewrite branch still bootstraps missing files
+  only and does not repair existing robo flakes.
 
 ## Verification
 

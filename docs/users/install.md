@@ -32,8 +32,8 @@ nix profile add .#robo
 ```
 
 `nix profile add .#` also installs the CLI, but Nix names that profile entry
-after the checkout directory, for example `robo-nix-minimal`. Use `.#robo` when
-you want `nix profile remove robo` to keep working for future reinstalls.
+after the checkout directory instead of the package alias. Use `.#robo` when you
+want `nix profile remove robo` to keep working for future reinstalls.
 
 ## Environment Overrides
 

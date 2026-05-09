@@ -2,7 +2,7 @@
 
 ## Goal
 
-Match the original Rust CLI presentation more closely while keeping the minimal
+Match the original Rust CLI presentation more closely while keeping the rewrite
 branch command surface.
 
 ## Scope

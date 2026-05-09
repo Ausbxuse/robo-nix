@@ -1,4 +1,4 @@
-# Iteration 001 - Minimal Core
+# Iteration 001 - Initial Core
 
 ## Goal
 
@@ -84,7 +84,7 @@ Proposed handling:
   only durable lessons into `AGENTS.md`.
 - Review `AGENTS.md` as part of each iteration close-out, and update it only
   when the change would prevent future churn or rediscovery.
-- Reconsider embedded generated Nix strings in Rust. The current minimal CLI
+- Reconsider embedded generated Nix strings in Rust. The iteration-001 CLI
   writes `flake.nix` and `robo.nix` from Rust string literals, which is
   tolerable for iteration 001 but likely not a clean long-term boundary.
 

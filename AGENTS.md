@@ -31,7 +31,7 @@ environment manager.
   wrapping.
 - Runtime inference rules should live in data files, not hardcoded Rust
   conditionals.
-- Docs must describe the current minimal branch. Do not reintroduce `robo init`,
+- Docs must describe the current rewrite branch. Do not reintroduce `robo init`,
   `robo check`, or `robo diagnose` in user-facing docs until those commands are
   intentionally restored.
 - Keep docs Node tooling under `docs/`; do not add root Node package files.
@@ -85,7 +85,7 @@ environment manager.
   changing package outputs.
 - For repeatable local Nix profile installs, prefer `.#robo`. `nix profile add
   .#` installs the default package, but Nix names that profile entry after the
-  flake path such as `robo-nix-minimal`, so `nix profile remove robo` will not
+  flake path instead of the package alias, so `nix profile remove robo` may not
   remove it on the next reinstall.
 
 ## Verification

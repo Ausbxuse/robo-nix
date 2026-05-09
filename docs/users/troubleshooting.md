@@ -1,6 +1,6 @@
 # Troubleshooting
 
-The current minimal branch has one primary debugging surface: `robo shell` or
+The rewrite branch has one primary debugging surface: `robo shell` or
 `robo run <command>`. When project setup fails, `robo` writes
 `.robo-nix/last-error.log` with pasteable context for an issue.
 

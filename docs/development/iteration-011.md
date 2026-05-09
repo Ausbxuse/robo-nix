@@ -7,7 +7,7 @@ Nix profile behavior.
 
 ## Scope
 
-- Rename the current branch from `greenfield/minimal-core` to `rewrite`.
+- Rename the previous working branch to `rewrite`.
 - Update installer and docs URLs to use the `rewrite` branch.
 - Ignore repo-local `.robo-nix/` generated cache.
 - Verify the exact `nix profile remove robo && nix profile add .#` behavior.
@@ -18,11 +18,11 @@ Nix profile naming is the important caveat:
 
 - `nix profile add .#robo` creates a profile entry named `robo`.
 - `nix profile add .#` installs the default package, but Nix names the profile
-  entry after the flake path, such as `robo-nix-minimal`.
+  entry after the flake path instead of the package alias.
 - Because of that upstream Nix behavior, `nix profile remove robo && nix profile
   add .#` works when the current profile entry is already named `robo`, but it
   is not repeatable after a `.#` install unless the user also removes
-  `robo-nix-minimal`.
+  the path-derived entry.
 
 ## Verification
 
