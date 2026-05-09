@@ -189,11 +189,7 @@ pub(crate) fn output_with_tree(
     root: &str,
     message: &str,
 ) -> Result<Output, std::io::Error> {
-    if config.debug
-        || env::var_os("NO_COLOR").is_some()
-        || env::var_os("ROBO_NIX_NO_SPINNER").is_some()
-        || !std::io::stderr().is_terminal()
-    {
+    if should_use_plain_progress(config) {
         status(config, message);
         return command.output();
     }
@@ -259,6 +255,39 @@ pub(crate) fn output_with_tree(
         tree.finish_clear();
     }
     Ok(output)
+}
+
+pub(crate) fn output_with_spinner(
+    config: Config,
+    command: &mut Command,
+    message: &str,
+) -> Result<Output, std::io::Error> {
+    if should_use_plain_progress(config) {
+        status(config, message);
+        return command.output();
+    }
+
+    command.stdout(Stdio::piped()).stderr(Stdio::piped());
+    let mut cursor = HiddenCursor::new();
+    let bar = spinner_bar(config, message);
+    let output = command.output();
+    bar.finish_and_clear();
+    cursor.show();
+    output
+}
+
+fn should_use_plain_progress(config: Config) -> bool {
+    config.debug
+        || env::var_os("NO_COLOR").is_some()
+        || env::var_os("ROBO_NIX_NO_SPINNER").is_some()
+        || !std::io::stderr().is_terminal()
+}
+
+fn spinner_bar(config: Config, message: &str) -> ProgressBar {
+    let bar = tree_bar();
+    bar.set_message(status_message(config, message));
+    bar.enable_steady_tick(Duration::from_millis(80));
+    bar
 }
 
 struct HiddenCursor {

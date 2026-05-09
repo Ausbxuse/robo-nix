@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 use std::ffi::OsString;
 use std::process::{Command, ExitCode, Output};
 
-use crate::ui::{detail, error, hint, list_item, row, section, status, Config};
+use crate::ui::{detail, error, hint, list_item, output_with_spinner, row, section, Config};
 
 const MAX_PRINTED_CANDIDATES: usize = 12;
 const MAX_SNIPPET_CANDIDATES: usize = 5;
@@ -70,8 +70,8 @@ enum SearchAttempt {
 }
 
 fn search_nix_index(config: Config, query: &str) -> SearchAttempt {
-    status(config, "search: checking local nix-index");
-    match nix_locate_command("nix-locate", query).output() {
+    let mut command = nix_locate_command("nix-locate", query);
+    match output_with_spinner(config, &mut command, "search: checking local nix-index") {
         Ok(output) if output.status.success() => SearchAttempt::Found {
             source: "local nix-index",
             output,
@@ -86,8 +86,8 @@ fn search_nix_index(config: Config, query: &str) -> SearchAttempt {
 }
 
 fn search_prebuilt_index(config: Config, query: &str) -> SearchAttempt {
-    status(config, "search: checking prebuilt nix-index");
-    match prebuilt_nix_locate_command(query).output() {
+    let mut command = prebuilt_nix_locate_command(query);
+    match output_with_spinner(config, &mut command, "search: checking prebuilt nix-index") {
         Ok(output) if output.status.success() => SearchAttempt::Found {
             source: "prebuilt nix-index",
             output,
