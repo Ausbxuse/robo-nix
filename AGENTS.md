@@ -26,6 +26,8 @@ environment manager.
   next prompt when runtime input files change. Refreshing may re-evaluate the
   Nix shell and export new variables, but it must not rewrite user-managed
   `robo.nix`.
+- `robo shell` must refuse to start from inside an active `robo shell`; nested
+  shells make prompt hooks and refresh state harder to reason about.
 
 ## Ownership Boundaries
 
@@ -114,3 +116,8 @@ nix-instantiate --parse flake.nix
 
 When generated project files change, also render a temporary project and parse
 its generated `flake.nix` and `robo.nix`.
+
+GitHub Actions should stay minimal and mirror real local checks for this branch:
+Rust formatting, Rust tests, `nix flake check`, and VitePress docs build/deploy.
+Do not wire CI to deleted legacy `tests/` scripts until those scripts are
+intentionally restored.

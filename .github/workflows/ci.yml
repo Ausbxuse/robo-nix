@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    paths-ignore:
+      - 'docs/**'
+      - 'README.md'
+  pull_request:
+    paths-ignore:
+      - 'docs/**'
+      - 'README.md'
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+            accept-flake-config = true
+
+      - name: Check Rust Formatting
+        run: nix develop --accept-flake-config --command cargo fmt --check
+
+      - name: Run Rust Tests
+        run: nix develop --accept-flake-config --command cargo test
+
+      - name: Check Flake
+        run: nix flake check --accept-flake-config

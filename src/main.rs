@@ -112,7 +112,15 @@ fn shell_command(args: Vec<OsString>, config: Config) -> Result<ExitCode, AppErr
             "shell does not accept arguments; use `robo run` for commands",
         ));
     }
+    if env::var_os("ROBO_NIX_ACTIVE").is_some() {
+        return Err(nested_shell_error());
+    }
     run_nix_develop(Vec::new(), config)
+}
+
+fn nested_shell_error() -> AppError {
+    AppError::user("already inside a robo shell")
+        .with_hint("exit the current shell before running `robo shell` again.")
 }
 
 fn run_command(args: Vec<OsString>, config: Config) -> Result<ExitCode, AppError> {
@@ -214,4 +222,16 @@ fn write_command_output(output: &Output) -> Result<(), AppError> {
 fn workspace_root() -> Result<PathBuf, AppError> {
     env::current_dir()
         .map_err(|err| AppError::project(format!("failed to determine workspace root: {err}")))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn nested_shell_error_names_the_boundary() {
+        let error = nested_shell_error();
+
+        assert!(error.message().contains("already inside a robo shell"));
+    }
 }
