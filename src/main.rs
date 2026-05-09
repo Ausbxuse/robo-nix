@@ -12,8 +12,7 @@ mod ui;
 
 use shell_launch::interactive_shell_launch;
 use ui::{
-    attention, debug, error, hint, inline, output_with_spinner, row, section, status, success,
-    Config,
+    attention, debug, error, hint, inline, output_with_tree, row, section, status, success, Config,
 };
 
 const HELP: &str = include_str!("../templates/help.txt");
@@ -154,9 +153,10 @@ fn preflight_nix_develop(config: Config, phase: &str) -> Result<(), AppError> {
         .arg("--accept-flake-config")
         .arg("--command")
         .arg("true");
-    let output = output_with_spinner(
+    let output = output_with_tree(
         config,
         &mut command,
+        &format!("robo {phase}"),
         &format!("{phase}: evaluating and realizing dev shell"),
     )
     .map_err(|err| {

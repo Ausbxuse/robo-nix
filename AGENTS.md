@@ -81,6 +81,10 @@ environment manager.
   headings, cyan phase labels, green success markers, dim field/action labels,
   `indicatif` braille spinners, and a `[robo]` prompt prefix in interactive
   shells.
+- Long `robo shell` and `robo run` setup should use the original-style nested
+  progress tree: parent command line, active child phase, optional dim Nix
+  detail rows, and a completed `robo ready` tree in terminals. Keep
+  non-interactive output as plain `phase: detail` status lines.
 - The installer-owned flake target is `#robo`; keep that alias available when
   changing package outputs.
 - For repeatable local Nix profile installs, prefer `.#robo`. `nix profile add

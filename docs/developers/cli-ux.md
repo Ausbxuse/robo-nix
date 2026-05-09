@@ -36,15 +36,27 @@ shell: evaluating and realizing dev shell
 shell: launching zsh
 ```
 
-In terminals, long silent work uses the original braille spinner:
+In terminals, long silent work uses the original nested progress tree. The
+parent line names the command, the active child names the current phase, and
+short dim details may appear under the active phase when Nix emits useful
+progress:
 
 ```text
-⠋ shell: evaluating and realizing dev shell 1.2s
+⠋ robo shell
+  └ ⠋ evaluating and realizing dev shell 2 packages    812ms
+    copying '/workspace/' to the store
+```
+
+Leave a completed tree behind when the bounded setup phase succeeds:
+
+```text
+✓ robo ready                                            42ms
+  └ ✓ evaluating and realizing dev shell cached         13ms
 ```
 
 Do not animate while a child process is producing useful output. For `robo
-shell`, preflight the dev shell with a spinner first, then launch the interactive
-shell without an active spinner.
+shell`, preflight the dev shell with the tree first, then launch the interactive
+shell without an active tree.
 
 Disable animated output when stderr is not a terminal, when `NO_COLOR` is set,
 when `ROBO_NIX_DEBUG=1` is set, or when `ROBO_NIX_NO_SPINNER=1` is set.
