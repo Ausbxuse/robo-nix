@@ -2,10 +2,15 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::env;
 use std::ffi::OsString;
 use std::fs;
-use std::io;
+use std::io::{self, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
+use std::thread;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const HELP: &str = include_str!("../templates/help.txt");
 const PROJECT_FLAKE_TEMPLATE: &str = include_str!("../templates/project/flake.nix");
@@ -26,8 +31,11 @@ fn main() -> ExitCode {
             print_error(&error);
             if error.write_debug_log {
                 match write_debug_log(&error) {
-                    Ok(path) => eprintln!("debug: wrote {}", path.display()),
-                    Err(err) => eprintln!("debug: failed to write .robo-nix/last-error.log: {err}"),
+                    Ok(path) => print_stderr(Label::Debug, format!("wrote {}", path.display())),
+                    Err(err) => print_stderr(
+                        Label::Debug,
+                        format!("failed to write .robo-nix/last-error.log: {err}"),
+                    ),
                 }
             }
             ExitCode::FAILURE
@@ -83,6 +91,7 @@ fn run_command(args: Vec<OsString>) -> Result<ExitCode, AppError> {
 fn run_nix_develop(command_args: Vec<OsString>) -> Result<ExitCode, AppError> {
     prepare_project(Path::new("."))?;
 
+    let use_spinner = !command_args.is_empty();
     let mut command = Command::new("nix");
     command.arg("develop").arg("--accept-flake-config");
 
@@ -90,10 +99,22 @@ fn run_nix_develop(command_args: Vec<OsString>) -> Result<ExitCode, AppError> {
         command.arg("--command").args(command_args);
     }
 
-    let status = command.status().map_err(|err| {
+    let mut child = command.spawn().map_err(|err| {
         AppError::project(format!("failed to start nix: {err}"))
             .with_hint("install Nix with flakes enabled, then rerun `robo shell`.")
     })?;
+    // NOTE: do not animate across an interactive `robo shell`; it would keep
+    // redrawing after the user is already inside the shell.
+    let spinner = if use_spinner {
+        Spinner::start("nix develop")
+    } else {
+        Spinner::disabled()
+    };
+    let status = child
+        .wait()
+        .map_err(|err| AppError::project(format!("failed to wait for nix: {err}")))?;
+    spinner.stop();
+
     if status.success() {
         Ok(ExitCode::SUCCESS)
     } else {
@@ -123,7 +144,7 @@ fn prepare_project(root: &Path) -> Result<BootstrapReport, AppError> {
         fs::write(&flake_path, PROJECT_FLAKE_TEMPLATE)
             .map_err(|err| AppError::project(format!("failed to write flake.nix: {err}")))?;
         report.wrote_flake = true;
-        println!("generated: flake.nix");
+        print_stdout(Label::Generated, "flake.nix");
     }
 
     let robo_path = root.join("robo.nix");
@@ -133,7 +154,7 @@ fn prepare_project(root: &Path) -> Result<BootstrapReport, AppError> {
         fs::write(&robo_path, robo_nix)
             .map_err(|err| AppError::project(format!("failed to write robo.nix: {err}")))?;
         report.wrote_robo_nix = true;
-        println!("generated: robo.nix");
+        print_stdout(Label::Generated, "robo.nix");
         print_inference_report(&inference);
     }
 
@@ -324,27 +345,167 @@ fn render_template(template: &str, values: &[(&str, String)]) -> Result<String, 
 fn print_inference_report(inference: &RuntimeInference) {
     match inference.pyproject_status {
         PyprojectStatus::Missing => {
-            println!("note: pyproject.toml not found; generated base runtime only");
+            print_stdout(
+                Label::Note,
+                "pyproject.toml not found; generated base runtime only",
+            );
         }
         PyprojectStatus::Invalid => {
-            println!("note: pyproject.toml is invalid TOML; generated base runtime only");
+            print_stdout(
+                Label::Note,
+                "pyproject.toml is invalid TOML; generated base runtime only",
+            );
         }
         PyprojectStatus::Read => {
             for matched in &inference.matches {
-                println!(
-                    "inferred: {} from pyproject.toml dependency `{}`",
-                    matched.component, matched.package
+                print_stdout(
+                    Label::Inferred,
+                    format!(
+                        "{} from pyproject.toml dependency `{}`",
+                        matched.component, matched.package
+                    ),
                 );
-                println!("note: {}", matched.note);
+                print_stdout(Label::Note, &matched.note);
             }
         }
     }
 }
 
 fn print_error(error: &AppError) {
-    eprintln!("error: {}", error.message);
+    print_stderr(Label::Error, &error.message);
     if let Some(hint) = &error.hint {
-        eprintln!("hint: {hint}");
+        print_stderr(Label::Hint, hint);
+    }
+}
+
+#[derive(Clone, Copy)]
+enum Label {
+    Generated,
+    Inferred,
+    Note,
+    Error,
+    Hint,
+    Debug,
+    Running,
+}
+
+impl Label {
+    fn text(self) -> &'static str {
+        match self {
+            Label::Generated => "generated",
+            Label::Inferred => "inferred",
+            Label::Note => "note",
+            Label::Error => "error",
+            Label::Hint => "hint",
+            Label::Debug => "debug",
+            Label::Running => "running",
+        }
+    }
+
+    fn color(self) -> &'static str {
+        match self {
+            Label::Generated => "\x1b[32m",
+            Label::Inferred => "\x1b[36m",
+            Label::Note => "\x1b[34m",
+            Label::Error => "\x1b[31m",
+            Label::Hint => "\x1b[33m",
+            Label::Debug => "\x1b[2m",
+            Label::Running => "\x1b[35m",
+        }
+    }
+
+    fn render(self, color: bool) -> String {
+        if color {
+            format!("{}{:<9}\x1b[0m", self.color(), self.text())
+        } else {
+            format!("{:<9}", self.text())
+        }
+    }
+}
+
+fn print_stdout(label: Label, message: impl AsRef<str>) {
+    println!(
+        "{} {}",
+        label.render(output_color(OutputStream::Stdout)),
+        message.as_ref()
+    );
+}
+
+fn print_stderr(label: Label, message: impl AsRef<str>) {
+    eprintln!(
+        "{} {}",
+        label.render(output_color(OutputStream::Stderr)),
+        message.as_ref()
+    );
+}
+
+enum OutputStream {
+    Stdout,
+    Stderr,
+}
+
+fn output_color(stream: OutputStream) -> bool {
+    if env::var_os("NO_COLOR").is_some() {
+        return false;
+    }
+    match stream {
+        OutputStream::Stdout => io::stdout().is_terminal(),
+        OutputStream::Stderr => io::stderr().is_terminal(),
+    }
+}
+
+struct Spinner {
+    done: Arc<AtomicBool>,
+    handle: Option<thread::JoinHandle<()>>,
+}
+
+impl Spinner {
+    fn disabled() -> Self {
+        Self {
+            done: Arc::new(AtomicBool::new(true)),
+            handle: None,
+        }
+    }
+
+    fn start(message: &'static str) -> Self {
+        let enabled = io::stderr().is_terminal()
+            && env::var_os("NO_COLOR").is_none()
+            && env::var_os("ROBO_NIX_NO_SPINNER").is_none();
+        let done = Arc::new(AtomicBool::new(false));
+        if !enabled {
+            return Self { done, handle: None };
+        }
+
+        let done_for_thread = Arc::clone(&done);
+        let handle = thread::spawn(move || {
+            let frames = ["-", "\\", "|", "/"];
+            let mut index = 0;
+            while !done_for_thread.load(Ordering::Relaxed) {
+                eprint!(
+                    "\r{} {} {}",
+                    Label::Running.render(output_color(OutputStream::Stderr)),
+                    frames[index % frames.len()],
+                    message
+                );
+                let _ = io::stderr().flush();
+                index += 1;
+                thread::sleep(Duration::from_millis(120));
+            }
+        });
+
+        Self {
+            done,
+            handle: Some(handle),
+        }
+    }
+
+    fn stop(self) {
+        self.done.store(true, Ordering::Relaxed);
+        if let Some(handle) = self.handle {
+            let _ = handle.join();
+            eprint!("\r{}\r", " ".repeat(96));
+            let _ = io::stderr().flush();
+        }
     }
 }
 

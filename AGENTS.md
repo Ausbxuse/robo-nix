@@ -29,6 +29,10 @@ environment manager.
   wrapping.
 - Runtime inference rules should live in data files, not hardcoded Rust
   conditionals.
+- Docs must describe the current minimal branch. Do not reintroduce `robo init`,
+  `robo check`, or `robo diagnose` in user-facing docs until those commands are
+  intentionally restored.
+- Keep docs Node tooling under `docs/`; do not add root Node package files.
 
 ## Iteration Rules
 
@@ -67,6 +71,8 @@ environment manager.
   import extensions that need `libz.so.1` even when installation succeeded.
 - `desktop-gl` must cover GLFW's basic Linux windowing path, including
   `libxkbcommon` for Wayland keyboard support.
+- CLI human output should go through the local styled output helpers so labels,
+  colors, and non-interactive output stay consistent.
 
 ## Verification
 
