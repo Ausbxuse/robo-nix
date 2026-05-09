@@ -19,4 +19,7 @@ __robo_prompt_prefix() {
   PROMPT="${color_prefix}${base}"
   PS1="$PROMPT"
 }
-if [ -n "${ROBO_NIX_PROMPT_PREFIX:-}" ]; then if (( $+functions[precmd] )); then functions -c precmd __robo_user_precmd; fi; precmd() { if (( $+functions[__robo_user_precmd] )); then __robo_user_precmd "$@"; fi; __robo_prompt_prefix; }; __robo_prompt_prefix; fi
+__robo_shell_refresh() {
+  eval "$(robo __shell-refresh zsh)"
+}
+if [ -n "${ROBO_NIX_PROMPT_PREFIX:-}" ]; then if (( $+functions[precmd] )); then functions -c precmd __robo_user_precmd; fi; precmd() { if (( $+functions[__robo_user_precmd] )); then __robo_user_precmd "$@"; fi; __robo_shell_refresh; __robo_prompt_prefix; }; __robo_shell_refresh; __robo_prompt_prefix; fi

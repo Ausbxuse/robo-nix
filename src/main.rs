@@ -9,9 +9,11 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 mod search;
 mod shell_launch;
+mod shell_refresh;
 mod ui;
 
 use shell_launch::interactive_shell_launch;
+use shell_refresh::{runtime_input_state, set_active_shell_env};
 use ui::{
     attention, debug, error, hint, inline, output_with_tree, row, section, status, success, Config,
 };
@@ -71,6 +73,7 @@ fn run(args: Vec<OsString>, config: Config) -> Result<ExitCode, AppError> {
         "shell" => shell_command(args.collect(), config),
         "run" => run_command(args.collect(), config),
         "search" => Ok(search::run(args.collect(), config)),
+        "__shell-refresh" => Ok(shell_refresh::run(args.collect(), config)),
         "-h" | "--help" | "help" => {
             print_usage();
             Ok(ExitCode::SUCCESS)
@@ -127,7 +130,11 @@ fn run_nix_develop(command_args: Vec<OsString>, config: Config) -> Result<ExitCo
         })?;
         status(config, &format!("shell: launching {}", launch.name));
         command.arg(&launch.program).args(&launch.args);
-        command.env("ROBO_NIX_ENV_NAME", "robo");
+        set_active_shell_env(
+            &mut command,
+            &workspace_root()?,
+            &runtime_input_state(Path::new(".")),
+        );
         for (name, value) in launch.env {
             command.env(name, value);
         }
@@ -241,6 +248,11 @@ fn read_python_version(root: &Path) -> Result<String, AppError> {
             .with_hint("write the project Python version, for example `3.11` or `3.12`."));
     }
     Ok(version.to_string())
+}
+
+fn workspace_root() -> Result<PathBuf, AppError> {
+    env::current_dir()
+        .map_err(|err| AppError::project(format!("failed to determine workspace root: {err}")))
 }
 
 fn looks_like_robo_flake(flake: &str) -> bool {

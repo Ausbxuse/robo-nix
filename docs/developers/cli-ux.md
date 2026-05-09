@@ -75,6 +75,12 @@ Interactive shells should show the original `[robo]` prompt prefix by default.
 The prefix is injected through temporary startup files under
 `.robo-nix/shell-startup/`; it should not edit user dotfiles.
 
+The same startup files may run a prompt-time freshness check. If `flake.nix`,
+`flake.lock`, `.python-version`, `pyproject.toml`, `uv.lock`, or `robo.nix`
+changes while the shell is active, `robo` should report the changed inputs,
+re-evaluate the dev shell, and export the refreshed environment into the current
+shell. This refresh must not rewrite `robo.nix`.
+
 ## Wording
 
 Describe ownership boundaries directly:

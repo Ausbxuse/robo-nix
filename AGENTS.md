@@ -22,6 +22,10 @@ environment manager.
   shell.
 - `robo shell` should launch the user's default interactive shell, not force
   Bash. Use `ROBO_NIX_SHELL` only as an explicit override.
+- Active `robo shell` sessions should refresh their runtime environment at the
+  next prompt when runtime input files change. Refreshing may re-evaluate the
+  Nix shell and export new variables, but it must not rewrite user-managed
+  `robo.nix`.
 
 ## Ownership Boundaries
 

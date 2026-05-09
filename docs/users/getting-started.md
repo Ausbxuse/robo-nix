@@ -22,6 +22,8 @@ See [Install](./install.md) for local checkout and installer override details.
 `robo shell` requires `.python-version`. It creates the Nix runtime files when
 they are missing, then enters your default interactive shell with a `[robo]`
 prompt prefix. Set `ROBO_NIX_SHELL` when you need to override shell selection.
+If runtime inputs change while that shell is open, `robo` refreshes the shell
+environment at the next prompt.
 
 `robo` does not create `pyproject.toml`. Use uv or your project tooling for
 Python package metadata.

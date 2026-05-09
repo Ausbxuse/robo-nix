@@ -16,4 +16,7 @@ __robo_prompt_prefix() {
   done
   PS1="${__robo_prompt_color}${__robo_prompt_base}"
 }
-if [ -n "${ROBO_NIX_PROMPT_PREFIX:-}" ]; then PROMPT_COMMAND="${PROMPT_COMMAND:+${PROMPT_COMMAND}; }__robo_prompt_prefix"; __robo_prompt_prefix; fi
+__robo_shell_refresh() {
+  eval "$(robo __shell-refresh bash)"
+}
+if [ -n "${ROBO_NIX_PROMPT_PREFIX:-}" ]; then PROMPT_COMMAND="${PROMPT_COMMAND:+${PROMPT_COMMAND}; }__robo_shell_refresh; __robo_prompt_prefix"; __robo_shell_refresh; __robo_prompt_prefix; fi
