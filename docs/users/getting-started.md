@@ -1,35 +1,123 @@
 # Getting Started
 
-`robo-nix` prepares the native runtime layer for robot-learning projects. uv
-still owns Python packages and virtualenv sync.
+Start from a Python project directory. uv still owns Python package metadata,
+dependency groups, lockfiles, and virtualenv sync.
 
-Install once:
+## What to expect
+
+- `robo shell` is the main command. It prepares the runtime, then opens your
+  normal interactive shell with a `[robo]` prompt prefix.
+- On first use, `robo shell` may create `flake.nix`, `robo.nix`, and
+  `.robo-nix/`. After that, `robo.nix` is yours to edit.
+- `robo run <command> [args...]` uses the same runtime preparation path for one
+  command without keeping a shell open.
+- `robo search <library>` helps find Nix package candidates for missing shared
+  libraries, such as `libassimp.so`. It only prints suggestions.
+- Active `robo shell` sessions refresh at the next prompt when `flake.nix`,
+  `flake.lock`, `.python-version`, `pyproject.toml`, `uv.lock`, or `robo.nix`
+  changes.
+- Refreshing exports a re-evaluated shell environment. It does not run
+  `uv sync` and does not rewrite `robo.nix`.
+- First-bootstrap inference reads direct dependencies, optional dependencies,
+  and dependency groups from `pyproject.toml`.
+- Every runtime attempt writes `.robo-nix/last-run.json` with redacted runtime
+  facts. When setup fails, `robo` also writes `.robo-nix/last-error.log` with
+  context you can paste into an issue.
+
+## 1. Install robo
+
+The installer installs the `robo` CLI through Nix profiles. If Nix is missing,
+it uses the Determinate Nix installer first.
 
 ```bash
 curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/ausbxuse/robo-nix/rewrite/scripts/install.sh | sh
 ```
 
-Then start from a Python project directory:
+When testing from a local checkout:
+
+```bash
+ROBO_NIX_FLAKE="path:$PWD" ./scripts/install.sh
+```
+
+Manual profile install from a local checkout:
+
+```bash
+nix profile remove robo || true
+nix profile add .#robo
+```
+
+Use `.#robo` instead of `.#` so the profile entry is named `robo` and future
+`nix profile remove robo` commands keep working.
+
+Installer overrides:
+
+- `ROBO_NIX_FLAKE` changes the flake installed by the script.
+- `ROBO_NIX_NIX_INSTALLER_URL` changes the Nix installer URL used when Nix is
+  not already installed.
+
+## 2. Pin Python
 
 ```bash
 uv python pin <version>
+```
+
+`robo` reads `.python-version` and does not choose a default Python version.
+For example:
+
+```bash
+uv python pin 3.11
+```
+
+## 3. Enter the runtime
+
+```bash
 robo shell
+```
+
+On first bootstrap, `robo shell` may create:
+
+- `flake.nix`: minimal Nix plumbing that delegates to robo-nix.
+- `robo.nix`: the project runtime manifest.
+
+It then enters your default interactive shell with a `[robo]` prompt prefix.
+Set `ROBO_NIX_SHELL` only when you need to override shell selection.
+
+## 4. Sync Python packages
+
+```bash
 uv sync
 ```
 
-See [Install](./install.md) for local checkout and installer override details.
+Run `uv sync` inside the prepared shell so native Python extensions can see the
+runtime libraries and headers exposed by Nix.
 
-`robo shell` requires `.python-version`. It creates the Nix runtime files when
-they are missing, then enters your default interactive shell with a `[robo]`
-prompt prefix. Set `ROBO_NIX_SHELL` when you need to override shell selection.
-If runtime inputs change while that shell is open, `robo` refreshes the shell
-environment at the next prompt.
+## 5. Adjust runtime components
 
-`robo` does not create `pyproject.toml`. Use uv or your project tooling for
-Python package metadata.
+After first bootstrap, edit `robo.nix` for project runtime choices such as
+native build tools, Linux headers, desktop graphics, or CUDA build tooling.
 
-After first bootstrap, edit `robo.nix` for project runtime choices such as native
-build tools or desktop graphics support.
+For example, a project using `evdev` and GLFW-style windows usually needs:
+
+```nix
+{
+  components = [
+    "python-uv"
+    "native-build"
+    "linux-headers"
+    "desktop-gl"
+  ];
+
+  extraPackages = pkgs: [
+  ];
+
+  extraRuntimeLibraries = pkgs: [
+  ];
+}
+```
+
+If runtime inputs change while `robo shell` is open, the prompt hook refreshes
+the shell environment at the next prompt. Refreshing does not rewrite
+user-managed `robo.nix`.
 
 If an error names a missing shared library, search for Nix package candidates:
 
@@ -37,21 +125,13 @@ If an error names a missing shared library, search for Nix package candidates:
 robo search libassimp.so
 ```
 
-Common runtime components:
-
-- `desktop-gl`: Nix-managed OpenGL/EGL/Vulkan loader and desktop graphics
-  libraries for GUI and simulator workloads.
-- `linux-headers`: Linux kernel headers for native input-device packages such
-  as `evdev`.
-- `cuda-toolkit`: Nix-managed CUDA build toolkit surface for native CUDA
-  extensions. The NVIDIA driver and `libcuda.so.1` still come from the host.
-
-If a CUDA workload needs the host driver inside the runtime, set
-`ROBO_NIX_LIBCUDA_PATH` to a `libcuda.so.1` path or to a directory containing
-that file before running `robo shell`.
-
-Run a command inside the runtime with:
+Use one command inside the runtime without staying in an interactive shell:
 
 ```bash
 robo run <command> [args...]
 ```
+
+## What robo does not do
+
+`robo` does not create `pyproject.toml`, run `uv sync` automatically, resolve
+Python packages, or rewrite `robo.nix` after first creation.

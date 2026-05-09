@@ -1,10 +1,37 @@
-package	component	note
-torch	native-build	PyTorch projects often need native build tools. CUDA wheels still need the host NVIDIA driver for libcuda.so.1.
-pytorch	native-build	PyTorch projects often need native build tools. CUDA wheels still need the host NVIDIA driver for libcuda.so.1.
-opencv-python	desktop-gl	OpenCV wheels commonly need desktop graphics runtime libraries.
-mujoco	desktop-gl	MuJoCo commonly needs desktop graphics runtime libraries.
-evdev	native-build	evdev builds native extensions for Linux input devices.
-evdev	linux-headers	evdev native extensions include Linux input headers.
-cuda-python	cuda-toolkit	CUDA Python projects commonly need the Nix-owned CUDA build toolkit surface.
-cupy-cuda11x	cuda-toolkit	CuPy CUDA projects commonly need the Nix-owned CUDA build toolkit surface.
-cupy-cuda12x	cuda-toolkit	CuPy CUDA projects commonly need the Nix-owned CUDA build toolkit surface.
+package	capability	component	provenance	note
+torch	native-runtime	native-build	common robot-learning PyTorch stacks	PyTorch projects often need native build tools. CUDA wheels still need the host NVIDIA driver for libcuda.so.1.
+pytorch	native-runtime	native-build	common robot-learning PyTorch stacks	PyTorch projects often need native build tools. CUDA wheels still need the host NVIDIA driver for libcuda.so.1.
+jax	native-runtime	native-build	JAX-based robot-learning policies and simulators	JAX projects often load native extensions that need compiler runtime libraries.
+jaxlib	native-runtime	native-build	JAX-based robot-learning policies and simulators	JAX projects often load native extensions that need compiler runtime libraries.
+triton	native-runtime	native-build	PyTorch/Triton training stacks	Triton-backed ML projects often need native compiler runtime libraries.
+torchvision	native-runtime	native-build	PyTorch vision policy stacks	TorchVision projects commonly share PyTorch native runtime requirements.
+pytorch3d	native-runtime	native-build	3D perception and manipulation stacks	PyTorch3D builds or loads native extensions.
+torch3d	native-runtime	native-build	3D perception and manipulation stacks	PyTorch3D-style packages build or load native extensions.
+opencv-python	desktop-graphics	desktop-gl	OpenCV camera and visualization stacks	OpenCV wheels commonly need desktop graphics runtime libraries.
+opencv-contrib-python	desktop-graphics	desktop-gl	OpenCV camera and visualization stacks	OpenCV wheels commonly need desktop graphics runtime libraries.
+mujoco	desktop-graphics	desktop-gl	MuJoCo simulator stacks	MuJoCo commonly needs desktop graphics runtime libraries.
+mujoco	native-runtime	native-build	MuJoCo simulator stacks	MuJoCo wheels commonly need native C++ runtime libraries.
+dm-control	desktop-graphics	desktop-gl	DeepMind Control Suite projects	dm-control uses MuJoCo and commonly needs desktop graphics runtime libraries.
+dm-control	native-runtime	native-build	DeepMind Control Suite projects	dm-control uses MuJoCo and commonly needs native C++ runtime libraries.
+gymnasium-robotics	desktop-graphics	desktop-gl	Gymnasium Robotics simulator stacks	Gymnasium Robotics uses simulator stacks that commonly need desktop graphics runtime libraries.
+gymnasium-robotics	native-runtime	native-build	Gymnasium Robotics simulator stacks	Gymnasium Robotics uses simulator stacks that commonly need native C++ runtime libraries.
+glfw	desktop-graphics	desktop-gl	GLFW viewer dependencies	GLFW viewers need desktop graphics and windowing runtime libraries.
+pyglet	desktop-graphics	desktop-gl	Pyglet viewer dependencies	Pyglet viewers need desktop graphics and windowing runtime libraries.
+pyside6	desktop-graphics	desktop-gl	Qt visualization tooling	Qt bindings commonly need desktop display and OpenGL runtime libraries.
+pyqt6	desktop-graphics	desktop-gl	Qt visualization tooling	Qt bindings commonly need desktop display and OpenGL runtime libraries.
+pyqt5	desktop-graphics	desktop-gl	Qt visualization tooling	Qt bindings commonly need desktop display and OpenGL runtime libraries.
+isaacsim	desktop-graphics	desktop-gl	Isaac Sim Python runtime stacks	Isaac Sim Python wheels need host NVIDIA CUDA support and desktop graphics runtime libraries.
+evdev	native-runtime	native-build	Linux teleoperation and input stacks	evdev builds native extensions for Linux input devices.
+evdev	linux-kernel-headers	linux-headers	Linux teleoperation and input stacks	evdev native extensions include Linux input headers.
+cuda-python	cuda-build	cuda-toolkit	CUDA Python extension stacks	CUDA Python projects commonly need the Nix-owned CUDA build toolkit surface.
+cupy	cuda-build	cuda-toolkit	CuPy CUDA array stacks	CuPy projects commonly need the Nix-owned CUDA build toolkit surface.
+cupy-cuda11x	cuda-build	cuda-toolkit	CuPy CUDA array stacks	CuPy CUDA projects commonly need the Nix-owned CUDA build toolkit surface.
+cupy-cuda12x	cuda-build	cuda-toolkit	CuPy CUDA array stacks	CuPy CUDA projects commonly need the Nix-owned CUDA build toolkit surface.
+deepspeed	native-runtime	native-build	DeepSpeed training stacks	DeepSpeed builds native extensions.
+deepspeed	cuda-build	cuda-toolkit	DeepSpeed training stacks	DeepSpeed CUDA extension builds need CUDA compiler, headers, and link support.
+flash-attn	native-runtime	native-build	FlashAttention training stacks	FlashAttention builds native extensions.
+flash-attn	cuda-build	cuda-toolkit	FlashAttention training stacks	FlashAttention CUDA extension builds need CUDA compiler, headers, and link support.
+nvidia-curobo	native-runtime	native-build	NVIDIA cuRobo motion generation stacks	cuRobo builds or loads native extensions.
+nvidia-curobo	cuda-build	cuda-toolkit	NVIDIA cuRobo motion generation stacks	cuRobo CUDA extension builds need CUDA compiler, headers, and link support.
+pytorch3d	cuda-build	cuda-toolkit	3D perception and manipulation stacks	PyTorch3D CUDA extension builds need CUDA compiler, headers, and link support.
+torch3d	cuda-build	cuda-toolkit	3D perception and manipulation stacks	PyTorch3D-style CUDA extension builds need CUDA compiler, headers, and link support.

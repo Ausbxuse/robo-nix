@@ -1,8 +1,10 @@
 use std::env;
 use std::ffi::OsString;
+use std::fs;
 use std::io::{self, IsTerminal, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Command, ExitCode, Output};
+use std::process::{Command, ExitCode, ExitStatus, Output};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 mod bootstrap;
 mod error;
@@ -15,7 +17,8 @@ mod ui;
 
 use bootstrap::{prepare_project, print_bootstrap_report};
 use error::{print_error, write_debug_log, AppError};
-use nix_env::{apply_env, dev_environment};
+use inference::dependency_evidence_from_pyproject;
+use nix_env::{append_host_cuda_driver_bridge, apply_env, dev_environment};
 use shell_launch::interactive_shell_launch;
 use shell_refresh::{runtime_input_state, set_active_shell_env};
 use ui::{debug, help_row, list_item, section, status, Config};
@@ -133,38 +136,113 @@ fn run_command(args: Vec<OsString>, config: Config) -> Result<ExitCode, AppError
 }
 
 fn run_nix_develop(command_args: Vec<OsString>, config: Config) -> Result<ExitCode, AppError> {
-    let report = prepare_project(Path::new("."))?;
-    print_bootstrap_report(config, &report);
-
     let phase = if command_args.is_empty() {
         "shell"
     } else {
         "run"
     };
-    let dev_env = dev_environment(config, phase)?;
+    let workspace = workspace_root()?;
+    let mut run_report = LastRunReport::new(phase, &workspace, &command_args);
+
+    let report = match prepare_project(&workspace) {
+        Ok(report) => report,
+        Err(error) => {
+            run_report.errors.push(error_fact(&error));
+            write_last_run_report(config, &workspace, &run_report);
+            return Err(error);
+        }
+    };
+    run_report.python_version = Some(report.python_version().to_string());
+    run_report.decisions.extend(
+        report
+            .wrote_files()
+            .into_iter()
+            .map(|file| format!("generated={file}")),
+    );
+    if let Some(inference) = report.inference() {
+        run_report.components = inference.components.iter().cloned().collect();
+        run_report
+            .decisions
+            .extend(inference.matches.iter().map(|matched| {
+                format!(
+                    "inference package={} component={} capability={} sources={} provenance={}",
+                    matched.package,
+                    matched.component,
+                    matched.capability,
+                    matched.sources.join(","),
+                    matched.provenance
+                )
+            }));
+    }
+    run_report.dependencies = dependency_facts(&workspace);
+    print_bootstrap_report(config, &report);
+
+    let mut dev_env = match dev_environment(config, phase) {
+        Ok(dev_env) => dev_env,
+        Err(error) => {
+            run_report.errors.push(error_fact(&error));
+            write_last_run_report(config, &workspace, &run_report);
+            return Err(error);
+        }
+    };
+    let cuda_report = append_host_cuda_driver_bridge(&mut dev_env, &workspace);
+    run_report.decisions.extend(cuda_report.decision_lines());
+    if cuda_report.status == "needed-missing" {
+        run_report
+            .warnings
+            .push("host CUDA driver library was needed but not found".to_string());
+    }
+    if let Some(error) = &cuda_report.bridge_error {
+        run_report
+            .warnings
+            .push(format!("host CUDA bridge could not be created: {error}"));
+    }
+    if config.debug {
+        for line in cuda_report.decision_lines() {
+            debug(config, &line);
+        }
+    }
+    if let Some(components) = dev_env_value(&dev_env, "ROBO_NIX_COMPONENTS") {
+        run_report.components = components
+            .split(':')
+            .filter(|component| !component.is_empty())
+            .map(str::to_string)
+            .collect();
+    }
+    run_report.env_names = env_names(&dev_env);
+    write_last_run_report(config, &workspace, &run_report);
+
     let mut command = if command_args.is_empty() {
-        shell_launch_command(config, &dev_env)?
+        shell_launch_command(config, &dev_env, &workspace)?
     } else {
         run_launch_command(command_args, &dev_env)?
     };
 
-    let status = command.status().map_err(|err| {
-        AppError::project(format!("failed to launch {phase} command: {err}"))
-            .with_hint("review the command and make sure it exists in the robo shell environment.")
-    })?;
+    let status = match command.status() {
+        Ok(status) => status,
+        Err(err) => {
+            let error = AppError::project(format!("failed to launch {phase} command: {err}"))
+                .with_hint(
+                    "review the command and make sure it exists in the robo shell environment.",
+                );
+            run_report.errors.push(error_fact(&error));
+            write_last_run_report(config, &workspace, &run_report);
+            return Err(error);
+        }
+    };
+    run_report
+        .decisions
+        .push(format!("command_status={status}"));
+    write_last_run_report(config, &workspace, &run_report);
 
-    if status.success() {
-        Ok(ExitCode::SUCCESS)
-    } else {
-        Err(
-            AppError::project(format!("{phase} command exited with {status}")).with_hint(
-                "the runtime was prepared successfully; inspect the command output above.",
-            ),
-        )
-    }
+    Ok(exit_code_from_status(status))
 }
 
-fn shell_launch_command(config: Config, dev_env: &[(String, String)]) -> Result<Command, AppError> {
+fn shell_launch_command(
+    config: Config,
+    dev_env: &[(String, String)],
+    workspace: &Path,
+) -> Result<Command, AppError> {
     let launch = interactive_shell_launch().ok_or_else(|| {
         AppError::project("could not determine an interactive shell to launch")
             .with_hint("set ROBO_NIX_SHELL to the shell you want robo to launch.")
@@ -179,8 +257,9 @@ fn shell_launch_command(config: Config, dev_env: &[(String, String)]) -> Result<
     }
     set_active_shell_env(
         &mut command,
-        &workspace_root()?,
+        workspace,
         &runtime_input_state(Path::new(".")),
+        dev_env,
     );
     Ok(command)
 }
@@ -214,6 +293,205 @@ fn workspace_root() -> Result<PathBuf, AppError> {
         .map_err(|err| AppError::project(format!("failed to determine workspace root: {err}")))
 }
 
+fn exit_code_from_status(status: ExitStatus) -> ExitCode {
+    match status.code() {
+        Some(code) => ExitCode::from(code as u8),
+        None => ExitCode::FAILURE,
+    }
+}
+
+#[derive(Debug)]
+struct LastRunReport {
+    schema_version: u32,
+    timestamp_unix: u64,
+    command: String,
+    workspace: String,
+    python_version: Option<String>,
+    dependencies: Vec<String>,
+    components: Vec<String>,
+    decisions: Vec<String>,
+    env_names: Vec<String>,
+    warnings: Vec<String>,
+    errors: Vec<String>,
+}
+
+impl LastRunReport {
+    fn new(phase: &str, workspace: &Path, command_args: &[OsString]) -> Self {
+        let command = if command_args.is_empty() {
+            phase.to_string()
+        } else {
+            format!(
+                "{} {}",
+                phase,
+                command_args
+                    .first()
+                    .map(|arg| arg.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| "<missing>".to_string())
+            )
+        };
+        Self {
+            schema_version: 1,
+            timestamp_unix: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|duration| duration.as_secs())
+                .unwrap_or_default(),
+            command,
+            workspace: workspace.display().to_string(),
+            python_version: None,
+            dependencies: Vec::new(),
+            components: Vec::new(),
+            decisions: Vec::new(),
+            env_names: Vec::new(),
+            warnings: Vec::new(),
+            errors: Vec::new(),
+        }
+    }
+
+    fn to_json(&self) -> String {
+        let mut text = String::new();
+        text.push_str("{\n");
+        text.push_str(&format!("  \"schema_version\": {},\n", self.schema_version));
+        text.push_str(&format!("  \"timestamp_unix\": {},\n", self.timestamp_unix));
+        text.push_str(&format!("  \"command\": {},\n", json_string(&self.command)));
+        text.push_str(&format!(
+            "  \"workspace\": {},\n",
+            json_string(&self.workspace)
+        ));
+        text.push_str(&format!(
+            "  \"python_version\": {},\n",
+            json_optional_string(self.python_version.as_deref())
+        ));
+        text.push_str(&format!(
+            "  \"dependencies\": {},\n",
+            json_string_array(&self.dependencies)
+        ));
+        text.push_str(&format!(
+            "  \"components\": {},\n",
+            json_string_array(&self.components)
+        ));
+        text.push_str(&format!(
+            "  \"decisions\": {},\n",
+            json_string_array(&self.decisions)
+        ));
+        text.push_str(&format!(
+            "  \"env_names\": {},\n",
+            json_string_array(&self.env_names)
+        ));
+        text.push_str(&format!(
+            "  \"warnings\": {},\n",
+            json_string_array(&self.warnings)
+        ));
+        text.push_str(&format!(
+            "  \"errors\": {}\n",
+            json_string_array(&self.errors)
+        ));
+        text.push_str("}\n");
+        text
+    }
+}
+
+fn dependency_facts(workspace: &Path) -> Vec<String> {
+    dependency_evidence_from_pyproject(workspace)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|dependency| {
+            format!(
+                "{} from {}",
+                dependency.name,
+                dependency
+                    .sources
+                    .iter()
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join(",")
+            )
+        })
+        .collect()
+}
+
+fn env_names(envs: &[(String, String)]) -> Vec<String> {
+    let mut names = envs
+        .iter()
+        .map(|(name, _)| name.clone())
+        .collect::<Vec<_>>();
+    names.sort();
+    names.dedup();
+    names
+}
+
+fn dev_env_value<'a>(envs: &'a [(String, String)], name: &str) -> Option<&'a str> {
+    envs.iter()
+        .find_map(|(candidate, value)| (candidate == name).then_some(value.as_str()))
+}
+
+fn error_fact(error: &AppError) -> String {
+    match error.hint() {
+        Some(hint) => format!("{}; hint={hint}", error.message()),
+        None => error.message().to_string(),
+    }
+}
+
+fn write_last_run_report(config: Config, workspace: &Path, report: &LastRunReport) {
+    let result = write_last_run_report_inner(workspace, report);
+    if config.debug {
+        match result {
+            Ok(path) => debug(config, &format!("wrote {}", path.display())),
+            Err(err) => debug(
+                config,
+                &format!("failed to write .robo-nix/last-run.json: {}", err.message()),
+            ),
+        }
+    }
+}
+
+fn write_last_run_report_inner(
+    workspace: &Path,
+    report: &LastRunReport,
+) -> Result<PathBuf, AppError> {
+    let dir = workspace.join(".robo-nix");
+    fs::create_dir_all(&dir)
+        .map_err(|err| AppError::project(format!("failed to create .robo-nix/: {err}")))?;
+    let path = dir.join("last-run.json");
+    let tmp_path = dir.join(format!("last-run.json.tmp-{}", std::process::id()));
+    fs::write(&tmp_path, report.to_json())
+        .map_err(|err| AppError::project(format!("failed to write last-run.json: {err}")))?;
+    fs::rename(&tmp_path, &path)
+        .map_err(|err| AppError::project(format!("failed to publish last-run.json: {err}")))?;
+    Ok(path)
+}
+
+fn json_optional_string(value: Option<&str>) -> String {
+    value.map(json_string).unwrap_or_else(|| "null".to_string())
+}
+
+fn json_string_array(values: &[String]) -> String {
+    let body = values
+        .iter()
+        .map(|value| json_string(value))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("[{body}]")
+}
+
+fn json_string(value: &str) -> String {
+    let mut text = String::from("\"");
+    for character in value.chars() {
+        match character {
+            '"' => text.push_str("\\\""),
+            '\\' => text.push_str("\\\\"),
+            '\n' => text.push_str("\\n"),
+            '\r' => text.push_str("\\r"),
+            '\t' => text.push_str("\\t"),
+            character if character.is_control() => {
+                text.push_str(&format!("\\u{:04x}", character as u32));
+            }
+            character => text.push(character),
+        }
+    }
+    text.push('"');
+    text
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -223,5 +501,67 @@ mod tests {
         let error = nested_shell_error();
 
         assert!(error.message().contains("already inside a robo shell"));
+    }
+
+    #[test]
+    fn command_status_is_propagated() {
+        use std::os::unix::process::ExitStatusExt;
+
+        assert_eq!(
+            exit_code_from_status(ExitStatus::from_raw(7 << 8)),
+            ExitCode::from(7)
+        );
+        assert_eq!(
+            exit_code_from_status(ExitStatus::from_raw(9)),
+            ExitCode::FAILURE
+        );
+    }
+
+    #[test]
+    fn last_run_report_is_versioned_redacted_json() {
+        let workspace = env::temp_dir().join(format!("robo-last-run-test-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&workspace);
+        fs::create_dir_all(&workspace).unwrap();
+        let mut report = LastRunReport::new("run", &workspace, &[OsString::from("python")]);
+        report.python_version = Some("3.11".to_string());
+        report
+            .dependencies
+            .push("torch from project.dependencies".to_string());
+        report.components.push("native-build".to_string());
+        report.decisions.push("host_cuda=not-needed".to_string());
+        report.env_names.push("PATH".to_string());
+
+        let path = write_last_run_report_inner(&workspace, &report).unwrap();
+        let json = fs::read_to_string(path).unwrap();
+
+        assert!(json.contains("\"schema_version\": 1"));
+        assert!(json.contains("\"command\": \"run python\""));
+        assert!(json.contains("\"env_names\": [\"PATH\"]"));
+        assert!(!json.contains("LD_LIBRARY_PATH="));
+
+        let _ = fs::remove_dir_all(workspace);
+    }
+
+    #[test]
+    fn last_run_command_records_only_the_program() {
+        let report = LastRunReport::new(
+            "run",
+            Path::new("/workspace"),
+            &[
+                OsString::from("python"),
+                OsString::from("-c"),
+                OsString::from("secret"),
+            ],
+        );
+
+        assert_eq!(report.command, "run python");
+    }
+
+    #[test]
+    fn json_strings_escape_control_characters() {
+        assert_eq!(
+            json_string("quote\" slash\\ line\n"),
+            "\"quote\\\" slash\\\\ line\\n\""
+        );
     }
 }

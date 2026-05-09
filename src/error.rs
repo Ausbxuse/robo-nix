@@ -40,9 +40,12 @@ impl AppError {
         self.write_debug_log
     }
 
-    #[cfg(test)]
     pub(crate) fn message(&self) -> &str {
         &self.message
+    }
+
+    pub(crate) fn hint(&self) -> Option<&str> {
+        self.hint.as_deref()
     }
 }
 

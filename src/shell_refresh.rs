@@ -8,7 +8,10 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Output};
 
-use crate::nix_env::{add_env_capture_args, parse_env_zero};
+use crate::nix_env::{
+    add_env_capture_args, append_host_cuda_driver_bridge, is_robo_managed_env, parse_env_zero,
+    runtime_key_env_names,
+};
 use crate::ui::{error, hint, output_with_tree, row_err, status, Config};
 
 #[derive(Debug)]
@@ -37,6 +40,7 @@ pub(crate) fn set_active_shell_env(
     command: &mut Command,
     workspace: &Path,
     state: &RuntimeInputState,
+    dev_env: &[(String, String)],
 ) {
     command.env("ROBO_NIX_ACTIVE", "1");
     command.env("ROBO_NIX_ENV_NAME", "robo");
@@ -45,6 +49,10 @@ pub(crate) fn set_active_shell_env(
     command.env(
         "ROBO_NIX_RUNTIME_INPUT_FILES",
         serialize_runtime_input_files(&state.files),
+    );
+    command.env(
+        "ROBO_NIX_MANAGED_ENV_VARS",
+        managed_env_var_names_from_command_env(state, workspace, dev_env),
     );
 }
 
@@ -79,8 +87,9 @@ fn try_run(args: Vec<OsString>, config: Config) -> Result<(), RefreshError> {
     let changed = changed_runtime_inputs(&workspace, &current);
     print_runtime_refresh_notice(config, &workspace, &changed);
     let mut envs = refreshed_shell_env(&workspace, config)?;
+    let _ = append_host_cuda_driver_bridge(&mut envs, &workspace);
     append_active_shell_env(&mut envs, &workspace, &current);
-    print_shell_exports(shell, &envs);
+    print_shell_delta(shell, &envs);
     Ok(())
 }
 
@@ -121,7 +130,7 @@ fn refreshed_shell_env(
 }
 
 fn runtime_input_fingerprints(root: &Path) -> Vec<(String, String)> {
-    [
+    let mut files = [
         "flake.nix",
         "flake.lock",
         ".python-version",
@@ -131,7 +140,14 @@ fn runtime_input_fingerprints(root: &Path) -> Vec<(String, String)> {
     ]
     .into_iter()
     .map(|path| (path.to_string(), fingerprint_file(&root.join(path))))
-    .collect()
+    .collect::<Vec<_>>();
+    files.extend(runtime_key_env_names().map(|name| {
+        (
+            format!("env:{name}"),
+            env::var(name).unwrap_or_else(|_| "unset".to_string()),
+        )
+    }));
+    files
 }
 
 fn fingerprint_file(path: &Path) -> String {
@@ -203,6 +219,11 @@ fn append_active_shell_env(
         "ROBO_NIX_RUNTIME_INPUT_FILES",
         serialize_runtime_input_files(&state.files),
     );
+    set_env_value(
+        envs,
+        "ROBO_NIX_MANAGED_ENV_VARS",
+        managed_env_var_names(envs),
+    );
 }
 
 fn set_env_value(envs: &mut Vec<(String, String)>, name: &str, value: String) {
@@ -255,17 +276,70 @@ fn display_runtime_input_path(workspace: &Path, path: &Path) -> String {
         .unwrap_or_else(|_| path.display().to_string())
 }
 
-fn print_shell_exports(shell: &str, envs: &[(String, String)]) {
+fn print_shell_delta(shell: &str, envs: &[(String, String)]) {
+    for line in shell_delta_lines(shell, envs, &previous_managed_env_var_names()) {
+        println!("{line}");
+    }
+}
+
+fn shell_delta_lines(
+    shell: &str,
+    envs: &[(String, String)],
+    previous_names: &[String],
+) -> Vec<String> {
+    let mut lines = Vec::new();
+    let new_names: BTreeMap<_, _> = envs.iter().map(|(name, _)| (name.as_str(), ())).collect();
+    for name in previous_names {
+        if !new_names.contains_key(name.as_str()) && is_shell_identifier(&name) {
+            if shell == "fish" {
+                lines.push(format!("set -e {name}"));
+            } else {
+                lines.push(format!("unset {name}"));
+            }
+        }
+    }
+
     for (name, value) in envs {
         if !is_shell_identifier(name) {
             continue;
         }
         if shell == "fish" {
-            println!("set -gx {name} {}", shell_quote(value));
+            lines.push(format!("set -gx {name} {}", shell_quote(value)));
         } else {
-            println!("export {name}={}", shell_quote(value));
+            lines.push(format!("export {name}={}", shell_quote(value)));
         }
     }
+    lines
+}
+
+fn previous_managed_env_var_names() -> Vec<String> {
+    env::var("ROBO_NIX_MANAGED_ENV_VARS")
+        .unwrap_or_default()
+        .split(':')
+        .filter(|name| !name.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+fn managed_env_var_names(envs: &[(String, String)]) -> String {
+    let mut names = envs
+        .iter()
+        .map(|(name, _)| name.as_str())
+        .filter(|name| is_robo_managed_env(name))
+        .collect::<Vec<_>>();
+    names.sort_unstable();
+    names.dedup();
+    names.join(":")
+}
+
+fn managed_env_var_names_from_command_env(
+    state: &RuntimeInputState,
+    workspace: &Path,
+    dev_env: &[(String, String)],
+) -> String {
+    let mut envs = dev_env.to_vec();
+    append_active_shell_env(&mut envs, workspace, state);
+    managed_env_var_names(&envs)
 }
 
 fn is_shell_identifier(name: &str) -> bool {
@@ -367,6 +441,9 @@ mod tests {
             Some("/workspace/project")
         );
         assert_eq!(env_value(&envs, "KEEP_ME"), Some("1"));
+        assert!(env_value(&envs, "ROBO_NIX_MANAGED_ENV_VARS")
+            .unwrap()
+            .contains("ROBO_NIX_RUNTIME_INPUT_KEY"));
     }
 
     #[test]
@@ -397,6 +474,43 @@ mod tests {
         assert_eq!(shell_quote("a'b"), "'a'\\''b'");
         assert!(is_shell_identifier("ROBO_NIX_ACTIVE"));
         assert!(!is_shell_identifier("not-valid-name"));
+    }
+
+    #[test]
+    fn managed_env_names_exclude_unowned_shell_values() {
+        let envs = vec![
+            ("ROBO_NIX_ACTIVE".to_string(), "1".to_string()),
+            ("ROBO_NIX_SHELL".to_string(), "/bin/zsh".to_string()),
+            ("LD_LIBRARY_PATH".to_string(), "/nix/store/lib".to_string()),
+            ("UNRELATED".to_string(), "1".to_string()),
+        ];
+
+        assert_eq!(
+            managed_env_var_names(&envs),
+            "LD_LIBRARY_PATH:ROBO_NIX_ACTIVE"
+        );
+    }
+
+    #[test]
+    fn shell_delta_unsets_removed_robo_managed_values() {
+        let envs = vec![("ROBO_NIX_ACTIVE".to_string(), "1".to_string())];
+        let previous = vec![
+            "ROBO_NIX_ACTIVE".to_string(),
+            "LD_LIBRARY_PATH".to_string(),
+            "not-valid-name".to_string(),
+        ];
+
+        assert_eq!(
+            shell_delta_lines("zsh", &envs, &previous),
+            vec![
+                "unset LD_LIBRARY_PATH".to_string(),
+                "export ROBO_NIX_ACTIVE='1'".to_string()
+            ]
+        );
+        assert_eq!(
+            shell_delta_lines("fish", &envs, &previous)[0],
+            "set -e LD_LIBRARY_PATH"
+        );
     }
 
     fn env_value<'a>(envs: &'a [(String, String)], name: &str) -> Option<&'a str> {

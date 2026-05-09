@@ -1,16 +1,25 @@
-# Developers
+# Developer
 
-This branch is a greenfield rebuild of the `robo-nix` product surface.
+This branch is a focused rewrite of `robo-nix` around one user workflow:
+prepare a robot-learning runtime with `robo shell`, then let uv manage Python
+inside that runtime.
 
-Keep the product small:
+Current command surface:
 
-- `robo shell` prepares and enters the runtime.
-- `robo run <command>` prepares the same runtime, then runs one command.
-- uv owns Python package sync and project policy.
-- Nix owns CPython, native tools, runtime libraries, and shell environment.
-- Rust owns user-facing workflow, diagnostics, templates, and command wrapping.
+- `robo shell`: bootstrap missing runtime files, evaluate the Nix dev-shell
+  environment, then launch the user's interactive shell with that environment.
+- `robo run <command> [args...]`: use the same bootstrap and environment path,
+  then run one command with the resolved runtime environment.
+- `robo search <library>`: look up Nix package candidates for missing shared
+  libraries. It does not edit project files.
+- `robo __shell-refresh <shell>`: hidden prompt-hook helper used by active
+  `robo shell` sessions.
+
+There is no current `robo init`, `robo check`, or `robo diagnose` command.
 
 Read next:
 
-- [Developer Overview](./overview.md)
-- [CLI UX](./cli-ux.md)
+- [Overview](./overview.md): architecture, ownership, generated files, and
+  verification.
+- [CLI UX](./cli-ux.md): output style, progress tree, shell launch, and prompt
+  refresh behavior.

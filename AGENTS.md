@@ -76,9 +76,12 @@ environment manager.
 - Do not rewrite an existing `robo.nix` from `robo shell`.
 - Keep Nix-managed desktop graphics separate from host NVIDIA driver policy.
 - Do not add generated-shell scans over host CUDA, NVIDIA, EGL, Vulkan, WSL, or
-  distro driver directories. If host CUDA is needed in this branch, honor an
-  explicit `ROBO_NIX_LIBCUDA_PATH` and leave broader detection to a reviewed
-  future iteration.
+  distro driver directories. Host CUDA driver bridging is Rust-owned and may
+  use the reviewed develop-style probe path: explicit `ROBO_NIX_LIBCUDA_PATH`,
+  inherited `LD_LIBRARY_PATH`, `ldconfig`, and known host driver locations when
+  the project appears to need `libcuda.so.1`. Keep `ROBO_NIX_LIBCUDA_PATH` as an
+  override, honor `ROBO_NIX_DISABLE_HOST_CUDA_AUTO`, and leave EGL/Vulkan or
+  broader driver policy to a reviewed future iteration.
 - Linux input packages such as `evdev` are handled through the `linux-headers`
   component. Keep this as a generic native-header contract, not a downstream
   project workaround.

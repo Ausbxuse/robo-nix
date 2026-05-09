@@ -1,7 +1,9 @@
 # Troubleshooting
 
-The rewrite branch has one primary debugging surface: `robo shell` or
-`robo run <command>`. When project setup fails, `robo` writes
+The main debugging surface is `robo shell` or `robo run <command>`. Every
+runtime attempt writes `.robo-nix/last-run.json` with redacted facts such as
+dependency evidence, selected components, decision lines, and environment
+variable names. When project setup fails, `robo` also writes
 `.robo-nix/last-error.log` with pasteable context for an issue.
 
 ## Missing .python-version
@@ -46,11 +48,66 @@ robo search libassimp.so
 Then add the package that owns the failing library to `extraRuntimeLibraries` in
 `robo.nix`.
 
+## CUDA driver library not found
+
+Errors such as these usually mean the host NVIDIA driver is not visible inside
+the runtime:
+
+```text
+libcuda.so.1: cannot open shared object file
+CUDA driver version is insufficient
+CUDA_ERROR_UNKNOWN
+```
+
+For projects with CUDA wheel evidence in `uv.lock` or dependencies such as
+`cuda-python`, `cupy-cuda12x`, `nvidia-curobo`, or `isaacsim`, `robo shell` and
+`robo run` try to bridge host `libcuda.so.1` automatically. The probe checks
+`ROBO_NIX_LIBCUDA_PATH`, `LD_LIBRARY_PATH`, `ldconfig -p`, and known host driver
+locations.
+
+Check the host directly:
+
+```bash
+nvidia-smi
+ldconfig -p | grep libcuda.so.1
+```
+
+If the driver library is installed somewhere else, set:
+
+```bash
+export ROBO_NIX_LIBCUDA_PATH=/path/to/libcuda.so.1
+```
+
+To disable automatic host CUDA bridging:
+
+```bash
+export ROBO_NIX_DISABLE_HOST_CUDA_AUTO=1
+```
+
+For verbose decision lines during setup:
+
+```bash
+ROBO_NIX_DEBUG=1 robo shell
+```
+
 ## Existing robo.nix
 
 After `robo.nix` exists, `robo shell` uses it as the canonical runtime manifest.
 It will not re-infer dependencies or rewrite that file. Edit `robo.nix`
 directly when a project needs another component.
+
+## Runtime changed while shell is open
+
+Active `robo shell` sessions check runtime input files at the next prompt. When
+`flake.nix`, `flake.lock`, `.python-version`, `pyproject.toml`, `uv.lock`, or
+`robo.nix` changes, `robo` re-evaluates the shell and exports refreshed
+environment variables into the current shell.
+
+This refresh does not run `uv sync` and does not rewrite `robo.nix`.
+
+If two `robo` processes prepare the same project at once, robo-owned writes
+under `.robo-nix/` use lock files. Set `ROBO_NIX_LOCK_TIMEOUT=<seconds>` to
+change how long a process waits before reporting the held lock.
 
 ## Shell Selection
 

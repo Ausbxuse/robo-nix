@@ -120,6 +120,7 @@
                 export UV_PYTHON_DOWNLOADS=never
                 export UV_PROJECT_ENVIRONMENT="''${UV_PROJECT_ENVIRONMENT:-$PWD/.venv}"
                 export UV_CACHE_DIR="''${UV_CACHE_DIR:-$PWD/.robo-nix/uv-cache}"
+                export ROBO_NIX_COMPONENTS="${lib.concatStringsSep ":" selectedComponents}"
                 unset PYTHONHOME
                 unset PYTHONPATH
 
@@ -195,10 +196,17 @@
 
                   if [ -n "$robo_nix_cuda_driver_dir" ]; then
                     export TRITON_LIBCUDA_PATH="''${TRITON_LIBCUDA_PATH:-$robo_nix_cuda_driver_dir}"
-                    case ":''${LD_LIBRARY_PATH:-}:" in
-                      *":$robo_nix_cuda_driver_dir:"*) ;;
-                      *) export LD_LIBRARY_PATH="$robo_nix_cuda_driver_dir''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" ;;
-                    esac
+                    if [ -n "''${ROBO_NIX_HOST_LIBCUDA_BRIDGE:-}" ]; then
+                      case ":''${LD_LIBRARY_PATH:-}:" in
+                        *":$ROBO_NIX_HOST_LIBCUDA_BRIDGE:"*) ;;
+                        *) export LD_LIBRARY_PATH="$ROBO_NIX_HOST_LIBCUDA_BRIDGE''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" ;;
+                      esac
+                    else
+                      case ":''${LD_LIBRARY_PATH:-}:" in
+                        *":$robo_nix_cuda_driver_dir:"*) ;;
+                        *) export LD_LIBRARY_PATH="$robo_nix_cuda_driver_dir''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" ;;
+                      esac
+                    fi
                   fi
                   unset robo_nix_cuda_driver_dir
                 fi

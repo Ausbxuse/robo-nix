@@ -8,6 +8,7 @@ use crate::error::AppError;
 use crate::inference::{
     infer_initial_runtime, PyprojectStatus, RuntimeInference, KNOWN_COMPONENTS,
 };
+use crate::nix_env::with_project_lock;
 use crate::ui::{attention, detail, row, section, success, Config};
 
 const PROJECT_FLAKE_TEMPLATE: &str = include_str!("templates/project/flake.nix");
@@ -19,6 +20,15 @@ pub(crate) fn prepare_project(root: &Path) -> Result<BootstrapReport, AppError> 
         .map_err(|err| AppError::project(format!("failed to create .robo-nix/: {err}")))?;
 
     // NOTE: shell bootstraps missing files only. Existing robo.nix is user-owned.
+    with_project_lock(root, "bootstrap", || {
+        prepare_project_locked(root, python_version)
+    })
+}
+
+fn prepare_project_locked(
+    root: &Path,
+    python_version: String,
+) -> Result<BootstrapReport, AppError> {
     let mut report = BootstrapReport::default();
     let flake_path = root.join("flake.nix");
     if flake_path.exists() {
@@ -111,6 +121,15 @@ fn print_inference_report(config: Config, inference: &RuntimeInference) {
                     &matched.component,
                     &format!("pyproject.toml dependency `{}`", matched.package),
                 );
+                detail(
+                    config,
+                    &format!(
+                        "capability `{}` from {}; sources: {}",
+                        matched.capability,
+                        matched.provenance,
+                        matched.sources.join(", ")
+                    ),
+                );
                 detail(config, &matched.note);
             }
         }
@@ -197,6 +216,27 @@ pub(crate) struct BootstrapReport {
     inference: Option<RuntimeInference>,
 }
 
+impl BootstrapReport {
+    pub(crate) fn python_version(&self) -> &str {
+        &self.python_version
+    }
+
+    pub(crate) fn inference(&self) -> Option<&RuntimeInference> {
+        self.inference.as_ref()
+    }
+
+    pub(crate) fn wrote_files(&self) -> Vec<&'static str> {
+        let mut files = Vec::new();
+        if self.wrote_flake {
+            files.push("flake.nix");
+        }
+        if self.wrote_robo_nix {
+            files.push("robo.nix");
+        }
+        files
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -256,8 +296,43 @@ dependencies = [
         let robo_nix = fs::read_to_string(root.join("robo.nix")).unwrap();
 
         assert!(robo_nix.contains("\"python-uv\""));
-        assert!(robo_nix.contains("\"native-build\" # inferred from pyproject.toml: torch"));
+        assert!(robo_nix.contains("\"native-build\" # inferred from pyproject.toml:"));
+        assert!(robo_nix.contains("mujoco"));
+        assert!(robo_nix.contains("torch"));
         assert!(robo_nix.contains("\"desktop-gl\" # inferred from pyproject.toml: mujoco"));
+
+        cleanup(root);
+    }
+
+    #[test]
+    fn first_bootstrap_infers_components_from_optional_dependencies_and_groups() {
+        let root = temp_project("group-inference");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join(".python-version"), "3.11\n").unwrap();
+        fs::write(
+            root.join("pyproject.toml"),
+            r#"[project]
+dependencies = []
+
+[project.optional-dependencies]
+sim = [
+  "dm-control",
+]
+
+[dependency-groups]
+gpu = [
+  "flash-attn",
+]
+"#,
+        )
+        .unwrap();
+
+        prepare_project(&root).unwrap();
+        let robo_nix = fs::read_to_string(root.join("robo.nix")).unwrap();
+
+        assert!(robo_nix.contains("\"native-build\" # inferred from pyproject.toml:"));
+        assert!(robo_nix.contains("\"desktop-gl\" # inferred from pyproject.toml: dm-control"));
+        assert!(robo_nix.contains("\"cuda-toolkit\" # inferred from pyproject.toml: flash-attn"));
 
         cleanup(root);
     }

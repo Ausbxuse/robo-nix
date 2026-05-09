@@ -1,37 +1,133 @@
 # Developer Overview
 
-This branch is a greenfield rebuild. Keep the product surface small and
-reviewable.
+Keep `robo-nix` narrow: it prepares the native runtime layer for uv-managed
+robot-learning projects. It should not grow into a general environment manager
+or Python package resolver.
 
-## Boundaries
+## Runtime Flow
 
-- `robo shell` prepares and enters the runtime.
-- `robo run` prepares the same runtime, then runs one command.
-- uv owns `pyproject.toml`, dependency groups, extras, sync policy, and the
-  Python virtualenv.
-- Nix owns CPython, native tools, runtime libraries, and shell environment.
-- Rust owns CLI flow, diagnostics, templates, and command wrapping.
+`robo shell` and `robo run <command>` share the same preparation path:
+
+1. Read `.python-version`. Missing or empty files are hard errors.
+2. Create `.robo-nix/` if needed.
+3. Create `flake.nix` only when missing. Existing non-robo flakes are not
+   overwritten.
+4. Create `robo.nix` only when missing.
+5. Evaluate the dev shell with
+   `nix develop --accept-flake-config --command sh -c 'printf ...; env -0'`.
+6. Hide successful Nix stdout/stderr, parse the NUL-separated environment,
+   clear the inherited host environment, and apply the captured environment to
+   the final process.
+7. For `robo shell`, launch the selected interactive shell directly with the
+   resolved environment.
+8. For `robo run`, launch the requested command directly with the resolved
+   environment.
+9. Propagate the final shell or command exit status. A nonzero user command is
+   not treated as a robo setup failure.
+
+The preparation code lives in `src/bootstrap.rs`. Nix environment capture lives
+in `src/nix_env.rs`. The command wiring lives in `src/main.rs`.
+
+## Ownership
+
+- uv owns `pyproject.toml`, dependency groups, extras, lockfiles, virtualenv
+  sync, and Python package resolution.
+- Nix owns CPython, native tools, runtime libraries, shell environment, and
+  component implementation.
+- Rust owns command UX, diagnostics, project bootstrap, template rendering,
+  shell launch, and command wrapping.
+- `robo.nix` is canonical after first creation. `robo shell` and active shell
+  refresh must not rewrite it.
 
 ## Generated Files
 
-`robo shell` may create `flake.nix` and `robo.nix` during first bootstrap. The
-generated `flake.nix` should stay small: cache hints, one `robo-nix` input, and
-a handoff to `robo-nix.lib.mkProjectFlakeFromManifest ./robo.nix`.
+Generated text lives in checked-in resource files and is embedded with
+`include_str!`:
 
-After `robo.nix` exists, it is user-managed and canonical. Shell must not rewrite
-it.
+- `src/templates/project/flake.nix`
+- `src/templates/project/robo.nix`
+- `src/templates/shell/*`
+- `src/metadata/runtime-inference.tsv`
 
-`desktop-gl` is Nix-managed desktop graphics support. `cuda-toolkit` is the
-Nix-owned CUDA build toolkit. Host CUDA drivers remain host-owned; this branch
-only honors an explicit `ROBO_NIX_LIBCUDA_PATH` and does not scan host driver
-directories.
+The generated project `flake.nix` should stay minimal: cache hints, one
+`robo-nix` input, and a handoff to
+`robo-nix.lib.mkProjectFlakeFromManifest ./robo.nix`.
 
-`linux-headers` owns Linux kernel headers needed by native extensions such as
-`evdev`. Treat those headers as a reusable native build capability, not as a
-downstream teleoperation special case.
+`ROBO_NIX_DEFAULT_SOURCE_URL` can override the generated flake input URL. The
+default is `github:ausbxuse/robo-nix/rewrite`.
 
-Generated text should live in `templates/` or `metadata/` and be embedded with
-`include_str!`.
+## Runtime Inference
+
+Runtime inference is first-bootstrap only. If `robo.nix` already exists,
+inference is skipped.
+
+Rules live in `src/metadata/runtime-inference.tsv`, not hardcoded Rust
+conditionals. Current known components are:
+
+- `python-uv`: CPython from `nixpkgs-python` plus `uv`.
+- `native-build`: compiler tools plus runtime `libstdc++` and zlib.
+- `linux-headers`: Linux kernel headers for native input packages such as
+  `evdev`.
+- `desktop-gl`: desktop graphics and GLFW windowing libraries.
+- `cuda-toolkit`: Nix-owned CUDA compiler, headers, and CUDA runtime build
+  surface.
+
+Inference reads `[project].dependencies`, `[project].optional-dependencies`,
+`[dependency-groups]`, and legacy `[tool.uv].dev-dependencies` arrays from
+`pyproject.toml`, normalizes package names, and adds matching components.
+Missing or invalid `pyproject.toml` produces a base runtime instead of failing.
+
+## Project Nix Library
+
+The reusable project shell implementation is in `src/nix/project-flake.nix`.
+It reads `.python-version`, imports the project `robo.nix`, validates component
+names, and constructs the `devShell`.
+
+Important shell behavior:
+
+- `UV_PYTHON` points at the Nix-managed CPython.
+- `UV_PYTHON_DOWNLOADS=never` prevents uv from downloading another Python.
+- `UV_PROJECT_ENVIRONMENT` defaults to `$PWD/.venv`.
+- `UV_CACHE_DIR` defaults to `$PWD/.robo-nix/uv-cache`.
+- `PYTHONHOME` and `PYTHONPATH` are unset.
+- `LD_LIBRARY_PATH` is built from selected component runtime libraries plus
+  `extraRuntimeLibraries`.
+- `linux-headers` exports `ROBO_NIX_LINUX_HEADERS`, `CPATH`, and
+  `C_INCLUDE_PATH`.
+- `cuda-toolkit` exports CUDA build variables.
+
+Host CUDA drivers remain host-owned. The Rust launch path may add a narrow
+`libcuda.so.1` bridge when project dependencies or `uv.lock` indicate CUDA
+wheels that need the host driver. The bridge honors `ROBO_NIX_LIBCUDA_PATH`,
+supports `ROBO_NIX_DISABLE_HOST_CUDA_AUTO=1`, and does not add host EGL/Vulkan
+graphics policy.
+
+## Search
+
+`robo search <library>` is lookup-only. It first tries local `nix-locate`, then
+falls back to the prebuilt `nix-index-database` flake. It prints candidate
+`pkgs.*` attributes and an `extraRuntimeLibraries` snippet. It must not mutate
+`robo.nix` or become a package resolver.
+
+## Active Shell Refresh
+
+Interactive shells receive startup files under `.robo-nix/shell-startup/`.
+Those files prefix the user's existing prompt with `[robo]` and call the hidden
+`robo __shell-refresh <shell>` helper at prompt time.
+
+Refresh fingerprints these runtime inputs:
+
+- `flake.nix`
+- `flake.lock`
+- `.python-version`
+- `pyproject.toml`
+- `uv.lock`
+- `robo.nix`
+
+When the fingerprint changes, refresh runs the same Nix environment capture,
+exports the refreshed environment into the current shell, and updates the active
+fingerprint state. It reports changed paths. It does not run `uv sync`, migrate
+the shell process, or rewrite `robo.nix`.
 
 ## Iterations
 
@@ -42,3 +138,20 @@ Each iteration should:
 - Keep diffs narrow.
 - Update `AGENTS.md` only for durable rules.
 - Add focused verification notes to `docs/development/iteration-*.md`.
+
+The `docs/development/` ledger is intentionally excluded from the public
+VitePress build. Keep durable user and developer guidance in the user/developer
+pages instead of relying on iteration history.
+
+## Verification
+
+Use the narrowest useful checks first:
+
+```bash
+cargo test
+nix-instantiate --parse flake.nix
+npm --prefix docs run build
+```
+
+When generated project files change, also render a temporary project and parse
+its generated `flake.nix` and `robo.nix`.

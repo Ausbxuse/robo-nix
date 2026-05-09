@@ -15,6 +15,8 @@ generated
 inferred
   ✓ native-build   pyproject.toml dependency `evdev`
     evdev builds native extensions for Linux input devices.
+  ✓ linux-headers  pyproject.toml dependency `evdev`
+    evdev native extensions include Linux input headers.
 ```
 
 Color only the scanning anchors in terminals:
@@ -55,15 +57,15 @@ Leave a completed tree behind when the bounded setup phase succeeds:
 ```
 
 Do not animate while a child process is producing useful output. For `robo
-shell`, preflight the dev shell with the tree first, then launch the interactive
-shell without an active tree.
+shell`, capture the dev shell environment with the tree first, then launch the
+interactive shell directly without an active tree.
 
 Disable animated output when stderr is not a terminal, when `NO_COLOR` is set,
 when `ROBO_NIX_DEBUG=1` is set, or when `ROBO_NIX_NO_SPINNER=1` is set.
 
-## Shell
+## Shell Launch
 
-`robo shell` should launch the user's default interactive shell. Selection order:
+`robo shell` launches the user's default interactive shell. Selection order:
 
 - `ROBO_NIX_SHELL`
 - `$SHELL`, unless it points at generic Nix Bash or plain `sh`
@@ -71,15 +73,17 @@ when `ROBO_NIX_DEBUG=1` is set, or when `ROBO_NIX_NO_SPINNER=1` is set.
 - the parent interactive shell
 - `zsh`, `bash`, `fish`, then `sh` from `PATH`
 
-Interactive shells should show the original `[robo]` prompt prefix by default.
-The prefix is injected through temporary startup files under
-`.robo-nix/shell-startup/`; it should not edit user dotfiles.
+Interactive shells show the original `[robo]` prompt prefix by default. The
+prefix is injected through temporary startup files under
+`.robo-nix/shell-startup/`; it does not edit user dotfiles. The prefix is added
+to the user's existing prompt. `robo` does not invent a project-name prompt.
 
-The same startup files may run a prompt-time freshness check. If `flake.nix`,
+The same startup files run a prompt-time freshness check. If `flake.nix`,
 `flake.lock`, `.python-version`, `pyproject.toml`, `uv.lock`, or `robo.nix`
-changes while the shell is active, `robo` should report the changed inputs,
-re-evaluate the dev shell, and export the refreshed environment into the current
-shell. This refresh must not rewrite `robo.nix`.
+changes while the shell is active, `robo` reports the changed inputs,
+re-evaluates the dev shell, and exports the refreshed environment into the
+current shell. This refresh does not rewrite `robo.nix` and does not run
+`uv sync`.
 
 ## Wording
 
@@ -88,4 +92,5 @@ Describe ownership boundaries directly:
 - uv owns Python dependency sync.
 - Nix owns native/runtime libraries.
 - `robo.nix` is user-managed after first bootstrap.
-- Host CUDA drivers are host-owned.
+- Host CUDA drivers are host-owned; `robo` may bridge a detected `libcuda.so.1`
+  provider when the project needs it.

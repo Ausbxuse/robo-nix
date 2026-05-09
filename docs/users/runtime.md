@@ -1,7 +1,10 @@
-# Runtime Components
+# Runtime Examples
 
-Runtime components are named pieces in `robo.nix`. They describe what Nix should
-make visible inside `robo shell`.
+This is a user topic, not a separate product area. `robo.nix` is the file you
+edit when a project needs more native tools or runtime libraries inside
+`robo shell`.
+
+## Components
 
 <div class="runtime-grid">
   <div>
@@ -26,23 +29,28 @@ make visible inside `robo shell`.
   </div>
 </div>
 
-## CUDA Boundary
+## Example: native input package
 
-`cuda-toolkit` does not provide the host NVIDIA driver. If a workload needs
-`libcuda.so.1`, point robo-nix at the host-owned driver library explicitly:
+Use this when a Python package such as `evdev` builds against Linux input
+headers:
 
-```bash
-export ROBO_NIX_LIBCUDA_PATH=/path/to/libcuda.so.1
-robo shell
+```nix
+{
+  components = [
+    "python-uv"
+    "native-build"
+    "linux-headers"
+  ];
+
+  extraPackages = pkgs: [
+  ];
+
+  extraRuntimeLibraries = pkgs: [
+  ];
+}
 ```
 
-You may also set `ROBO_NIX_LIBCUDA_PATH` to a directory containing
-`libcuda.so.1`.
-
-## Editing robo.nix
-
-`robo shell` may generate `robo.nix` on first bootstrap. After that, the file is
-user-managed:
+## Example: simulator or desktop window
 
 ```nix
 {
@@ -60,6 +68,68 @@ user-managed:
 }
 ```
 
+`desktop-gl` covers the common GLFW Linux windowing path, including Wayland,
+X11, Vulkan loader, GLVND, EGL, and `libxkbcommon`.
+
+## Example: CUDA extension build
+
+Use `cuda-toolkit` when a Python package builds native CUDA extensions. The host
+NVIDIA driver is still outside the Nix-managed toolkit:
+
+```nix
+{
+  components = [
+    "python-uv"
+    "native-build"
+    "cuda-toolkit"
+  ];
+
+  extraPackages = pkgs: [
+  ];
+
+  extraRuntimeLibraries = pkgs: [
+  ];
+}
+```
+
+When a project appears to need host `libcuda.so.1`, `robo shell` and
+`robo run` try to bridge a visible host driver library automatically. The probe
+checks `ROBO_NIX_LIBCUDA_PATH`, `LD_LIBRARY_PATH`, `ldconfig -p`, and the same
+known host locations used by the `develop` branch.
+
+Override the detected library explicitly when the driver lives elsewhere:
+
+```bash
+export ROBO_NIX_LIBCUDA_PATH=/path/to/libcuda.so.1
+robo shell
+```
+
+You may also set `ROBO_NIX_LIBCUDA_PATH` to a directory containing
+`libcuda.so.1`. Disable automatic host CUDA bridging with:
+
+```bash
+export ROBO_NIX_DISABLE_HOST_CUDA_AUTO=1
+```
+
+Useful host checks:
+
+```bash
+nvidia-smi
+ldconfig -p | grep libcuda.so.1
+```
+
+Expected driver-boundary failures include `libcuda.so.1: cannot open shared
+object file`, `CUDA driver version is insufficient`, and CUDA driver API errors
+from packages such as Triton or CUDA Python. Nix can provide CUDA build tools,
+but the NVIDIA kernel driver and `libcuda.so.1` still come from the host.
+
+If the Nix CUDA toolkit root needs to come from a local driver/toolkit install,
+set `ROBO_NIX_CUDA_ROOT=/path/to/cuda`. This changes the toolkit path exposed
+by the `cuda-toolkit` component; it does not make `robo` own the host kernel
+driver.
+
+## Adding a missing shared library
+
 When a Python extension reports a missing shared library, search for the Nix
 package that provides it:
 
@@ -68,4 +138,39 @@ robo search libassimp.so
 ```
 
 `robo search` only prints candidates and a snippet. You still choose the package
-and edit `robo.nix` yourself.
+and edit `robo.nix` yourself:
+
+```nix
+{
+  components = [
+    "python-uv"
+    "native-build"
+  ];
+
+  extraPackages = pkgs: [
+  ];
+
+  extraRuntimeLibraries = pkgs: [
+    pkgs.assimp
+  ];
+}
+```
+
+## Environment variables
+
+Public environment knobs are intentionally small:
+
+| Variable | Purpose |
+| --- | --- |
+| `ROBO_NIX_SHELL` | Override the interactive shell launched by `robo shell`. |
+| `ROBO_NIX_DEBUG` | Print debug lines and use plain progress rendering. |
+| `ROBO_NIX_NO_SPINNER` | Disable spinner/progress tree rendering. |
+| `ROBO_NIX_LIBCUDA_PATH` | Explicit host `libcuda.so.1` file or containing directory. |
+| `ROBO_NIX_DISABLE_HOST_CUDA_AUTO` | Disable automatic host CUDA bridge probing. |
+| `ROBO_NIX_CUDA_ROOT` | Override the CUDA toolkit root exported by `cuda-toolkit`. |
+| `ROBO_NIX_LOCK_TIMEOUT` | Seconds to wait for robo-owned `.robo-nix/*.lock` files. |
+| `ROBO_NIX_DEFAULT_SOURCE_URL` | Override the generated flake input URL for local development. |
+
+Values that affect runtime construction, such as CUDA driver/toolkit paths, are
+part of the active shell freshness key. Existing `robo shell` sessions refresh
+at the next prompt when those inputs change.

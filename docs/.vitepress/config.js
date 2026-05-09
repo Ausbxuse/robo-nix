@@ -2,9 +2,10 @@ const docsStyles = `
 .hero-terminal {
   border: 1px solid var(--vp-c-divider);
   border-radius: 8px;
+  margin: 36px 0 28px;
   overflow: hidden;
   background: #0f172a;
-  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.22);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12);
 }
 
 .hero-terminal__bar {
@@ -37,7 +38,16 @@ const docsStyles = `
   overflow-x: auto;
 }
 
-.prompt { color: #60a5fa; }
+.prompt {
+  color: #a7f3d0;
+  font-weight: 700;
+}
+
+.robo-prompt {
+  color: #e5e7eb;
+  font-weight: 700;
+}
+
 .label-ok { color: #22c55e; }
 .label-note { color: #93c5fd; }
 .label-warn { color: #fbbf24; }
@@ -87,8 +97,9 @@ const docsStyles = `
 
 export default {
   title: 'robo-nix',
-  description: 'Robot-learning runtime environments powered by Nix and uv',
+  description: 'Robot-learning runtime for uv projects',
   base: process.env.ROBO_NIX_DOCS_BASE || '/',
+  srcExclude: ['development/**'],
   cleanUrls: true,
   head: [
     ['link', { rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' }],
@@ -98,24 +109,20 @@ export default {
   themeConfig: {
     outline: [2, 3],
     nav: [
-      { text: 'Install', link: '/users/install' },
-      { text: 'Users', link: '/users/' },
-      { text: 'Runtime', link: '/users/runtime' },
-      { text: 'Developers', link: '/developers/' }
+      { text: 'User', link: '/users/getting-started' },
+      { text: 'Developer', link: '/developers/' }
     ],
     sidebar: [
       {
-        text: 'Start',
+        text: 'User',
         items: [
-          { text: 'Home', link: '/' },
-          { text: 'Install', link: '/users/install' },
           { text: 'Getting Started', link: '/users/getting-started' },
-          { text: 'Runtime Components', link: '/users/runtime' },
+          { text: 'Runtime Examples', link: '/users/runtime' },
           { text: 'Troubleshooting', link: '/users/troubleshooting' }
         ]
       },
       {
-        text: 'Developers',
+        text: 'Developer',
         items: [
           { text: 'Overview', link: '/developers/' },
           { text: 'CLI UX', link: '/developers/cli-ux' }
