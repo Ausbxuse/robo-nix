@@ -331,8 +331,7 @@ fn collect_uv_lock_dependencies(root: &Path, scan: &mut DependencyScan) {
             scan.diagnostics.push(InferenceDiagnostic {
                 summary: "could not inspect uv.lock for resolved package metadata".to_string(),
                 detail: Some(
-                    "uv.lock is invalid TOML; static inference skipped lock metadata."
-                        .to_string(),
+                    "uv.lock is invalid TOML; static inference skipped lock metadata.".to_string(),
                 ),
             });
             return;
@@ -1071,8 +1070,7 @@ version = "1.9.3"
     }
 
     fn temp_project(label: &str) -> PathBuf {
-        let root =
-            env::temp_dir().join(format!("robo-inference-{label}-{}", std::process::id()));
+        let root = env::temp_dir().join(format!("robo-inference-{label}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         root
     }

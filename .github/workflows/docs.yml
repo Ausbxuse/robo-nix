@@ -3,8 +3,7 @@ name: Docs
 on:
   push:
     branches:
-      - develop
-      - rewrite
+      - master
   workflow_dispatch:
 
 permissions:

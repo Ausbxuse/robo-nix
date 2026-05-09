@@ -470,10 +470,14 @@ fn host_graphics_warning(
         return None;
     }
 
-    if ["VK_ICD_FILENAMES", "VK_DRIVER_FILES", "__EGL_VENDOR_LIBRARY_FILENAMES"]
-        .into_iter()
-        .filter_map(|name| runtime_env_value(envs, name))
-        .any(|value| value.to_ascii_lowercase().contains("nvidia"))
+    if [
+        "VK_ICD_FILENAMES",
+        "VK_DRIVER_FILES",
+        "__EGL_VENDOR_LIBRARY_FILENAMES",
+    ]
+    .into_iter()
+    .filter_map(|name| runtime_env_value(envs, name))
+    .any(|value| value.to_ascii_lowercase().contains("nvidia"))
     {
         return None;
     }
@@ -648,10 +652,7 @@ mod tests {
                 "__EGL_VENDOR_LIBRARY_FILENAMES".to_string(),
                 "/nix/store/mesa/share/glvnd/egl_vendor.d/50_mesa.json".to_string(),
             ),
-            (
-                "ROBO_NIX_HOST_GRAPHICS".to_string(),
-                "none".to_string(),
-            ),
+            ("ROBO_NIX_HOST_GRAPHICS".to_string(), "none".to_string()),
         ];
 
         let warning = host_graphics_warning(&dependencies, &env).unwrap();
@@ -667,10 +668,7 @@ mod tests {
                 "ROBO_NIX_LIBCUDA_PATH".to_string(),
                 "/run/opengl-driver/lib/libcuda.so.1".to_string(),
             ),
-            (
-                "ROBO_NIX_HOST_GRAPHICS".to_string(),
-                "nvidia".to_string(),
-            ),
+            ("ROBO_NIX_HOST_GRAPHICS".to_string(), "nvidia".to_string()),
         ];
 
         assert!(host_graphics_warning(&dependencies, &env).is_none());
