@@ -530,13 +530,12 @@ mod tests {
             ),
             ("ROBO_NIX_SHELL".to_string(), "/bin/zsh".to_string()),
             ("LD_LIBRARY_PATH".to_string(), "/nix/store/lib".to_string()),
-            ("VIRTUAL_ENV_DISABLE_PROMPT".to_string(), "1".to_string()),
             ("UNRELATED".to_string(), "1".to_string()),
         ];
 
         assert_eq!(
             managed_env_var_names(&envs),
-            "LD_LIBRARY_PATH:ROBO_NIX_ACTIVE:ROBO_NIX_LIBC_DEV:VIRTUAL_ENV_DISABLE_PROMPT"
+            "LD_LIBRARY_PATH:ROBO_NIX_ACTIVE:ROBO_NIX_LIBC_DEV"
         );
     }
 

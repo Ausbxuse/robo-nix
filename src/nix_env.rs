@@ -226,7 +226,6 @@ pub(crate) fn is_robo_managed_env(name: &str) -> bool {
             | "UV_PROJECT_ENVIRONMENT"
             | "UV_CACHE_DIR"
             | "VIRTUAL_ENV"
-            | "VIRTUAL_ENV_DISABLE_PROMPT"
             | "TRITON_LIBCUDA_PATH"
             | "CUDA_PATH"
             | "CUDA_HOME"

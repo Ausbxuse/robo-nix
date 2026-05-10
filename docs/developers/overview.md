@@ -113,8 +113,8 @@ Important shell behavior:
 - The `python-uv` component wraps `uv pip install` so ad hoc installs target
   `$UV_PROJECT_ENVIRONMENT/bin/python` when that venv exists and no explicit
   uv target was provided.
-- `VIRTUAL_ENV_DISABLE_PROMPT=1` keeps Python activation scripts from rewriting
-  the prompt that `robo shell` already owns.
+- Python activation scripts may add their virtualenv marker. The prompt hook
+  keeps the `[robo]` marker single when activation rewrites `PS1` or `PROMPT`.
 - `UV_CACHE_DIR` defaults to `$PWD/.robo-nix/uv-cache`.
 - `PYTHONHOME` and `PYTHONPATH` are unset.
 - `LD_LIBRARY_PATH` is built from selected component runtime libraries plus

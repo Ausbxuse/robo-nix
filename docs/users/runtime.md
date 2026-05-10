@@ -125,8 +125,8 @@ when that environment exists, unless you pass an explicit target such as
 `--python`, `--active`, `--system`, `--target`, or `--prefix`.
 
 You do not need to run `source .venv/bin/activate` inside `robo shell`. If a
-copied setup command does activate the venv anyway, the runtime shell disables
-virtualenv prompt rewrites so the `[robo]` prompt marker stays single.
+copied setup command does activate the venv anyway, the virtualenv marker may
+appear normally and the `[robo]` prompt marker stays single.
 
 Override the detected library explicitly when the driver lives elsewhere:
 

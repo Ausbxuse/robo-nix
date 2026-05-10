@@ -21,12 +21,8 @@ pub(crate) struct ShellLaunch {
 pub(crate) fn interactive_shell_launch() -> Option<ShellLaunch> {
     let shell = default_interactive_shell()?;
     let name = shell_name(&shell);
-    let (args, mut env) = prompted_interactive_shell_args(&name).unwrap_or_else(|| {
-        (
-            vec![OsString::from("-i")],
-            vec![("ROBO_NIX_PROMPT_PREFIX".to_string(), OsString::from("1"))],
-        )
-    });
+    let (args, mut env) = prompted_interactive_shell_args(&name)
+        .unwrap_or_else(|| (vec![OsString::from("-i")], prompt_env()));
     env.push(("SHELL".to_string(), shell.clone().into_os_string()));
 
     Some(ShellLaunch {
@@ -112,7 +108,7 @@ fn prompted_bash_args() -> Option<(Vec<OsString>, Vec<(String, OsString)>)> {
             path.into_os_string(),
             OsString::from("-i"),
         ],
-        vec![("ROBO_NIX_PROMPT_PREFIX".to_string(), OsString::from("1"))],
+        prompt_env(),
     ))
 }
 
@@ -150,8 +146,12 @@ fn prompted_fish_args() -> (Vec<OsString>, Vec<(String, OsString)>) {
             OsString::from(FISH_INIT),
             OsString::from("-i"),
         ],
-        vec![("ROBO_NIX_PROMPT_PREFIX".to_string(), OsString::from("1"))],
+        prompt_env(),
     )
+}
+
+fn prompt_env() -> Vec<(String, OsString)> {
+    vec![("ROBO_NIX_PROMPT_PREFIX".to_string(), OsString::from("1"))]
 }
 
 fn prompt_startup_dir() -> Option<PathBuf> {
@@ -287,6 +287,16 @@ mod tests {
         .unwrap();
 
         assert_eq!(selected, PathBuf::from("/bin/zsh"));
+    }
+
+    #[test]
+    fn prompt_env_enables_robo_prompt_prefix_only() {
+        let env = prompt_env();
+
+        assert_eq!(
+            env,
+            vec![("ROBO_NIX_PROMPT_PREFIX".to_string(), OsString::from("1"))]
+        );
     }
 
     fn fake_shell(name: &str) -> Option<PathBuf> {

@@ -6,16 +6,31 @@ __robo_prompt_prefix() {
   local ansi_prefix_0=$'\e[90m[\e[0m\e[37mro\e[0m\e[36mbo\e[0m\e[90m]\e[0m'
   local plain_prefix="[robo]"
   local base="${PROMPT-}"
+  __robo_strip_prompt_marker() {
+    local marker="$1"
+    if [[ "$base" == "$marker"* ]]; then
+      base="${base#"$marker"}"
+      return 0
+    fi
+    if [[ "$base" == \(*\)\ "$marker"* ]]; then
+      local before="${base%%"$marker"*}"
+      local after="${base#*"$marker"}"
+      if [[ "$before" == \(*\)\  ]]; then
+        base="${before}${after}"
+        return 0
+      fi
+    fi
+    return 1
+  }
   while true; do
-    local stripped="$base"
-    [[ "$base" == "$color_prefix"* ]] && stripped="${base#"$color_prefix"}"
-    [[ "$base" == "$prompt_start_marker$color_prefix"* ]] && stripped="${base#"$prompt_start_marker$color_prefix"}"
-    [[ "$base" == "$ansi_prefix_39"* ]] && stripped="${base#"$ansi_prefix_39"}"
-    [[ "$base" == "$ansi_prefix_0"* ]] && stripped="${base#"$ansi_prefix_0"}"
-    [[ "$base" == "$plain_prefix"* ]] && stripped="${base#"$plain_prefix"}"
-    [[ "$stripped" == "$base" ]] && break
-    base="$stripped"
+    __robo_strip_prompt_marker "$prompt_start_marker$color_prefix" && continue
+    __robo_strip_prompt_marker "$color_prefix" && continue
+    __robo_strip_prompt_marker "$ansi_prefix_39" && continue
+    __robo_strip_prompt_marker "$ansi_prefix_0" && continue
+    __robo_strip_prompt_marker "$plain_prefix" && continue
+    break
   done
+  unfunction __robo_strip_prompt_marker
   PROMPT="${color_prefix}${base}"
   PS1="$PROMPT"
 }

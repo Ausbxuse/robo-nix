@@ -5,15 +5,36 @@ __robo_prompt_prefix() {
   __robo_prompt_ansi_0="$(printf '\033[90m[\033[0m\033[37mro\033[0m\033[36mbo\033[0m\033[90m]\033[0m')"
   __robo_prompt_plain="[robo]"
   __robo_prompt_base="${PS1-}"
+  __robo_strip_prompt_marker() {
+    __robo_marker="$1"
+    case "$__robo_prompt_base" in
+      "$__robo_marker"*)
+        __robo_prompt_base="${__robo_prompt_base#"$__robo_marker"}"
+        return 0
+        ;;
+    esac
+    case "$__robo_prompt_base" in
+      \(*\)\ "$__robo_marker"*)
+        __robo_prompt_before="${__robo_prompt_base%%"$__robo_marker"*}"
+        __robo_prompt_after="${__robo_prompt_base#*"$__robo_marker"}"
+        case "$__robo_prompt_before" in
+          \(*\)\ )
+            __robo_prompt_base="${__robo_prompt_before}${__robo_prompt_after}"
+            return 0
+            ;;
+        esac
+        ;;
+    esac
+    return 1
+  }
   while true; do
-    __robo_prompt_stripped="$__robo_prompt_base"
-    case "$__robo_prompt_base" in "$__robo_prompt_color"*) __robo_prompt_stripped="${__robo_prompt_base#"$__robo_prompt_color"}" ;; esac
-    case "$__robo_prompt_base" in "$__robo_prompt_ansi_39"*) __robo_prompt_stripped="${__robo_prompt_base#"$__robo_prompt_ansi_39"}" ;; esac
-    case "$__robo_prompt_base" in "$__robo_prompt_ansi_0"*) __robo_prompt_stripped="${__robo_prompt_base#"$__robo_prompt_ansi_0"}" ;; esac
-    case "$__robo_prompt_base" in "$__robo_prompt_plain"*) __robo_prompt_stripped="${__robo_prompt_base#"$__robo_prompt_plain"}" ;; esac
-    [ "$__robo_prompt_stripped" = "$__robo_prompt_base" ] && break
-    __robo_prompt_base="$__robo_prompt_stripped"
+    __robo_strip_prompt_marker "$__robo_prompt_color" && continue
+    __robo_strip_prompt_marker "$__robo_prompt_ansi_39" && continue
+    __robo_strip_prompt_marker "$__robo_prompt_ansi_0" && continue
+    __robo_strip_prompt_marker "$__robo_prompt_plain" && continue
+    break
   done
+  unset -f __robo_strip_prompt_marker
   PS1="${__robo_prompt_color}${__robo_prompt_base}"
 }
 __robo_shell_refresh() {

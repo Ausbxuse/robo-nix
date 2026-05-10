@@ -31,8 +31,6 @@ a resolved transitive package in `uv.lock`.
   `--system`, `--target`, and `--prefix`.
 - Align `VIRTUAL_ENV` with `UV_PROJECT_ENVIRONMENT` for uv subprocesses when
   that environment exists.
-- Disable virtualenv prompt rewrites in runtime shells so copied activation
-  commands do not duplicate the `[robo]` prompt marker.
 - Read `uv.lock` package names as static inference evidence.
 
 ## Non-Goals
@@ -44,4 +42,4 @@ a resolved transitive package in `uv.lock`.
 
 - [x] `cargo test --no-default-features`
 - [x] `nix-instantiate --parse src/nix/project-flake.nix`
-- [x] temporary generated project confirms `VIRTUAL_ENV_DISABLE_PROMPT=1`
+- [x] temporary generated project confirms uv installs target the project venv

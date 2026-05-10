@@ -226,7 +226,6 @@
                 export UV_PYTHON_DOWNLOADS=never
                 export UV_PROJECT_ENVIRONMENT="''${UV_PROJECT_ENVIRONMENT:-$PWD/.venv}"
                 export UV_CACHE_DIR="''${UV_CACHE_DIR:-$PWD/.robo-nix/uv-cache}"
-                export VIRTUAL_ENV_DISABLE_PROMPT=1
                 export ROBO_NIX_COMPONENTS="${lib.concatStringsSep ":" selectedComponents}"
                 export ROBO_NIX_HOST_GRAPHICS="${if hostGraphics == null then "none" else hostGraphics}"
                 unset PYTHONHOME
