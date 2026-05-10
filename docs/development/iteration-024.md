@@ -28,6 +28,9 @@ environment variables made Isaac enumerate the NVIDIA GPU.
 - Warn Isaac Sim users when host CUDA is visible but no NVIDIA host graphics
   policy appears selected.
 
+Iteration 029 later extends the explicit `"nvidia"` policy from NixOS-only
+manifest paths to a reviewed NixOS/FHS distro candidate list.
+
 ## Non-Goals
 
 - No automatic host GPU scan.

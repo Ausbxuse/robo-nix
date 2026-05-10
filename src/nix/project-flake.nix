@@ -256,12 +256,39 @@
               ''
               + lib.optionalString (hostGraphics == "nvidia") ''
 
-                export VK_ICD_FILENAMES="''${ROBO_NIX_NVIDIA_VK_ICD:-/run/opengl-driver/share/vulkan/icd.d/nvidia_icd.json}"
+                robo_nix_select_host_manifest() {
+                  local override="$1"
+                  shift
+                  if [ -n "$override" ]; then
+                    printf '%s\n' "$override"
+                    return
+                  fi
+
+                  local fallback="$1"
+                  for candidate in "$@"; do
+                    if [ -e "$candidate" ]; then
+                      printf '%s\n' "$candidate"
+                      return
+                    fi
+                  done
+                  printf '%s\n' "$fallback"
+                }
+
+                robo_nix_nvidia_vk_icd="$(robo_nix_select_host_manifest "''${ROBO_NIX_NVIDIA_VK_ICD:-}" \
+                  /run/opengl-driver/share/vulkan/icd.d/nvidia_icd.json \
+                  /usr/share/vulkan/icd.d/nvidia_icd.json)"
+                robo_nix_nvidia_egl_vendor="$(robo_nix_select_host_manifest "''${ROBO_NIX_NVIDIA_EGL_VENDOR:-}" \
+                  /run/opengl-driver/share/glvnd/egl_vendor.d/10_nvidia.json \
+                  /usr/share/glvnd/egl_vendor.d/10_nvidia.json)"
+
+                export VK_ICD_FILENAMES="$robo_nix_nvidia_vk_icd"
                 export VK_DRIVER_FILES="$VK_ICD_FILENAMES"
-                export __EGL_VENDOR_LIBRARY_FILENAMES="''${ROBO_NIX_NVIDIA_EGL_VENDOR:-/run/opengl-driver/share/glvnd/egl_vendor.d/10_nvidia.json}"
+                export __EGL_VENDOR_LIBRARY_FILENAMES="$robo_nix_nvidia_egl_vendor"
                 export __NV_PRIME_RENDER_OFFLOAD="''${__NV_PRIME_RENDER_OFFLOAD:-1}"
                 export __GLX_VENDOR_LIBRARY_NAME="''${__GLX_VENDOR_LIBRARY_NAME:-nvidia}"
                 export __VK_LAYER_NV_optimus="''${__VK_LAYER_NV_optimus:-NVIDIA_only}"
+                unset -f robo_nix_select_host_manifest
+                unset robo_nix_nvidia_vk_icd robo_nix_nvidia_egl_vendor
               ''
               + lib.optionalString (hasComponent "linux-headers") ''
 

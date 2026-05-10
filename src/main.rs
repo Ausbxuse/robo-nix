@@ -488,7 +488,7 @@ fn host_graphics_warning(
 
     Some(HostGraphicsWarning {
         summary: "Isaac Sim can see host CUDA, but no NVIDIA host graphics policy is selected",
-        detail: "add `hostGraphics = \"nvidia\";` to `robo.nix` on NixOS or hybrid-GPU machines that need NVIDIA Vulkan/EGL rendering.",
+        detail: "add `hostGraphics = \"nvidia\";` to `robo.nix` on Linux hosts that need NVIDIA Vulkan/EGL rendering.",
     })
 }
 

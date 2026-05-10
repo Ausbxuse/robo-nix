@@ -137,6 +137,12 @@ wheels that need the host driver. The bridge honors `ROBO_NIX_LIBCUDA_PATH`,
 supports `ROBO_NIX_DISABLE_HOST_CUDA_AUTO=1`, and does not add host EGL/Vulkan
 graphics policy.
 
+Host graphics provider policy is still explicit. When users set
+`hostGraphics = "nvidia";`, the generated shell chooses from reviewed NVIDIA
+manifest paths for NixOS and common FHS distros, with
+`ROBO_NIX_NVIDIA_VK_ICD` and `ROBO_NIX_NVIDIA_EGL_VENDOR` as overrides. Keep
+that path list narrow; do not turn it into a general host driver scan.
+
 ## Search
 
 `robo search <library>` is lookup-only. It first tries local `nix-locate`, then

@@ -167,13 +167,13 @@ pub(crate) const ENV_VARS: &[EnvVarSpec] = &[
         name: "ROBO_NIX_NVIDIA_VK_ICD",
         visibility: EnvVarVisibility::Public,
         affects_runtime_key: true,
-        description: "Override the Vulkan ICD path used by hostGraphics = \"nvidia\".",
+        description: "Override the Vulkan ICD path selected by hostGraphics = \"nvidia\".",
     },
     EnvVarSpec {
         name: "ROBO_NIX_NVIDIA_EGL_VENDOR",
         visibility: EnvVarVisibility::Public,
         affects_runtime_key: true,
-        description: "Override the EGL vendor JSON path used by hostGraphics = \"nvidia\".",
+        description: "Override the EGL vendor JSON path selected by hostGraphics = \"nvidia\".",
     },
     EnvVarSpec {
         name: "ROBO_NIX_HOST_GRAPHICS",

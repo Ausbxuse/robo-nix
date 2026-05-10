@@ -139,6 +139,11 @@ provider explicitly:
 `robo` does not silently force this policy because hybrid-GPU, headless, and
 non-NVIDIA setups have different valid choices.
 
+When `hostGraphics = "nvidia";` is set, `robo` selects known NVIDIA manifest
+paths for NixOS and common FHS distros such as Ubuntu. If your host keeps the
+manifests somewhere else, set `ROBO_NIX_NVIDIA_VK_ICD` and
+`ROBO_NIX_NVIDIA_EGL_VENDOR` to the host paths before running `robo shell`.
+
 ## Existing robo.nix
 
 After `robo.nix` exists, `robo shell` uses it as the canonical runtime manifest.

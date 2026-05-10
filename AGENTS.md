@@ -100,13 +100,17 @@ environment manager.
 - Host graphics provider selection is explicit manifest policy. `hostGraphics`
   may expose named choices such as `"nvidia"` so users do not maintain fragile
   shell hooks, but `desktop-gl` must not silently force NVIDIA Vulkan/EGL/GLX.
-- Do not add generated-shell scans over host CUDA, NVIDIA, EGL, Vulkan, WSL, or
-  distro driver directories. Host CUDA driver bridging is Rust-owned and may
+  The explicit `"nvidia"` policy may select from a short reviewed list of known
+  NixOS and FHS distro manifest paths, with environment overrides for uncommon
+  host layouts. Do not turn this into a broad host driver scan.
+- Do not add generated-shell scans over host CUDA, NVIDIA, WSL, or distro
+  driver directories. Host CUDA driver bridging is Rust-owned and may
   use the reviewed probe path: explicit `ROBO_NIX_LIBCUDA_PATH`,
   inherited `LD_LIBRARY_PATH`, `ldconfig`, and known host driver locations when
   the project appears to need `libcuda.so.1`. Keep `ROBO_NIX_LIBCUDA_PATH` as an
-  override, honor `ROBO_NIX_DISABLE_HOST_CUDA_AUTO`, and leave EGL/Vulkan or
-  broader driver policy to a reviewed future iteration.
+  override, honor `ROBO_NIX_DISABLE_HOST_CUDA_AUTO`, and keep broader driver
+  policy out of generated shells unless it has an explicit manifest knob and a
+  reviewed iteration.
 - Linux input packages such as `evdev` are handled through the `linux-headers`
   component. Keep this as a generic native-header contract, not a
   package-specific workaround.

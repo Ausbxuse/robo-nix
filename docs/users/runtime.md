@@ -73,8 +73,8 @@ X11, Vulkan loader, GLVND, EGL, `libxkbcommon`, GLU, and legacy Xt libraries
 used by larger simulator stacks.
 
 Host GPU provider selection is separate from `desktop-gl`. If a simulator such
-as Isaac Sim needs the host NVIDIA Vulkan/EGL/GLX provider, set the explicit
-manifest policy:
+as Isaac Sim or MuJoCo needs the host NVIDIA Vulkan/EGL/GLX provider, set the
+explicit manifest policy:
 
 ```nix
 {
@@ -91,6 +91,16 @@ manifest policy:
 
 Leave `hostGraphics = null;` when the host session should choose the graphics
 provider. The generated `robo.nix` includes comments for the supported options.
+With `hostGraphics = "nvidia";`, `robo` selects the first existing NVIDIA
+manifest from common NixOS and FHS Linux paths:
+
+- Vulkan ICD: `/run/opengl-driver/share/vulkan/icd.d/nvidia_icd.json`, then
+  `/usr/share/vulkan/icd.d/nvidia_icd.json`
+- EGL vendor: `/run/opengl-driver/share/glvnd/egl_vendor.d/10_nvidia.json`,
+  then `/usr/share/glvnd/egl_vendor.d/10_nvidia.json`
+
+Use `ROBO_NIX_NVIDIA_VK_ICD` or `ROBO_NIX_NVIDIA_EGL_VENDOR` only when the host
+uses a different layout.
 
 ## Example: CUDA extension build
 
@@ -199,8 +209,8 @@ Public environment knobs are intentionally small:
 | `ROBO_NIX_LIBCUDA_PATH` | Explicit host `libcuda.so.1` file or containing directory. |
 | `ROBO_NIX_DISABLE_HOST_CUDA_AUTO` | Disable automatic host CUDA bridge probing. |
 | `ROBO_NIX_CUDA_ROOT` | Override the CUDA toolkit root exported by `cuda-toolkit`. |
-| `ROBO_NIX_NVIDIA_VK_ICD` | Override the Vulkan ICD path used by `hostGraphics = "nvidia";`. |
-| `ROBO_NIX_NVIDIA_EGL_VENDOR` | Override the EGL vendor JSON path used by `hostGraphics = "nvidia";`. |
+| `ROBO_NIX_NVIDIA_VK_ICD` | Override the Vulkan ICD path selected by `hostGraphics = "nvidia";`. |
+| `ROBO_NIX_NVIDIA_EGL_VENDOR` | Override the EGL vendor JSON path selected by `hostGraphics = "nvidia";`. |
 | `ROBO_NIX_LOCK_TIMEOUT` | Seconds to wait for robo-owned `.robo-nix/*.lock` files. |
 | `ROBO_NIX_DEFAULT_SOURCE_URL` | Override the generated flake input URL for local development. |
 
