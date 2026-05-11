@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::env;
 use std::fs;
 use std::fs::OpenOptions;
@@ -19,6 +20,42 @@ const KNOWN_HOST_LIBCUDA_DIRS: &[&str] = &[
     "/usr/lib64/nvidia",
     "/usr/lib/x86_64-linux-gnu",
     "/usr/lib/wsl/lib",
+];
+const KNOWN_HOST_NVIDIA_LIBRARY_DIRS: &[&str] = &[
+    "/run/opengl-driver/lib",
+    "/usr/lib64/nvidia",
+    "/usr/lib/x86_64-linux-gnu/nvidia/current",
+    "/usr/lib/x86_64-linux-gnu",
+    "/lib/x86_64-linux-gnu",
+];
+const KNOWN_HOST_NVIDIA_EGL_PLATFORM_DIRS: &[&str] = &[
+    "/run/opengl-driver/share/egl/egl_external_platform.d",
+    "/usr/share/egl/egl_external_platform.d",
+];
+const KNOWN_HOST_NVIDIA_GBM_BACKEND_DIRS: &[&str] = &[
+    "/run/opengl-driver/lib/gbm",
+    "/run/opengl-driver/lib",
+    "/usr/lib/x86_64-linux-gnu/gbm",
+    "/usr/lib/x86_64-linux-gnu/nvidia/current",
+    "/usr/lib64/gbm",
+    "/usr/lib64/nvidia",
+    "/usr/lib/gbm",
+];
+const REQUIRED_NVIDIA_GRAPHICS_LIBRARIES: &[&str] = &["libEGL_nvidia.so.0", "libGLX_nvidia.so.0"];
+const COMMON_NVIDIA_GRAPHICS_LIBRARIES: &[&str] = &[
+    "libGLESv1_CM_nvidia.so.1",
+    "libGLESv2_nvidia.so.2",
+    "libnvidia-egl-gbm.so.1",
+    "libnvidia-egl-wayland.so.1",
+];
+const NVIDIA_DRIVER_LIBRARY_PREFIXES: &[&str] = &[
+    "libEGL_nvidia.so",
+    "libGLX_nvidia.so",
+    "libGLESv1_CM_nvidia.so",
+    "libGLESv2_nvidia.so",
+    "libnvidia-",
+    "libnvcuvid.so",
+    "libnvoptix.so",
 ];
 const HOST_CUDA_DEPENDENCIES: &[&str] = &[
     "cuda-python",
@@ -176,10 +213,40 @@ pub(crate) const ENV_VARS: &[EnvVarSpec] = &[
         description: "Override the EGL vendor JSON path selected by hostGraphics = \"nvidia\".",
     },
     EnvVarSpec {
+        name: "ROBO_NIX_NVIDIA_DRIVER_LIB_DIR",
+        visibility: EnvVarVisibility::Public,
+        affects_runtime_key: true,
+        description: "Override the host NVIDIA userspace driver library directory selected by hostGraphics = \"nvidia\".",
+    },
+    EnvVarSpec {
         name: "ROBO_NIX_HOST_GRAPHICS",
         visibility: EnvVarVisibility::Internal,
         affects_runtime_key: false,
         description: "Selected host graphics provider policy reported by the Nix shell.",
+    },
+    EnvVarSpec {
+        name: "ROBO_NIX_HOST_GRAPHICS_EGL_PLATFORM_DIR",
+        visibility: EnvVarVisibility::Internal,
+        affects_runtime_key: false,
+        description: "Robo-owned EGL external platform config directory for host graphics.",
+    },
+    EnvVarSpec {
+        name: "ROBO_NIX_HOST_GRAPHICS_GBM_BACKEND_DIR",
+        visibility: EnvVarVisibility::Internal,
+        affects_runtime_key: false,
+        description: "Robo-owned GBM backend directory for host graphics.",
+    },
+    EnvVarSpec {
+        name: "__EGL_EXTERNAL_PLATFORM_CONFIG_DIRS",
+        visibility: EnvVarVisibility::External,
+        affects_runtime_key: true,
+        description: "EGL external platform config search path inherited from the host session.",
+    },
+    EnvVarSpec {
+        name: "GBM_BACKENDS_PATH",
+        visibility: EnvVarVisibility::External,
+        affects_runtime_key: true,
+        description: "GBM backend search path inherited from the host session.",
     },
     EnvVarSpec {
         name: "WORKSPACE_ROOT",
@@ -221,6 +288,9 @@ pub(crate) fn is_robo_managed_env(name: &str) -> bool {
             | "ROBO_NIX_HOST_LIBCUDA_AUTO"
             | "ROBO_NIX_HOST_LIBCUDA_BRIDGE"
             | "ROBO_NIX_HOST_LIBCUDA_LD_LIBRARY_PATH_SKIPPED"
+            | "ROBO_NIX_HOST_GRAPHICS_LIB_DIR"
+            | "ROBO_NIX_HOST_GRAPHICS_EGL_PLATFORM_DIR"
+            | "ROBO_NIX_HOST_GRAPHICS_GBM_BACKEND_DIR"
             | "UV_PYTHON"
             | "UV_PYTHON_DOWNLOADS"
             | "UV_PROJECT_ENVIRONMENT"
@@ -238,6 +308,8 @@ pub(crate) fn is_robo_managed_env(name: &str) -> bool {
             | "C_INCLUDE_PATH"
             | "LIBRARY_PATH"
             | "LD_LIBRARY_PATH"
+            | "__EGL_EXTERNAL_PLATFORM_CONFIG_DIRS"
+            | "GBM_BACKENDS_PATH"
             | "__EGL_VENDOR_LIBRARY_FILENAMES"
             | "VK_ICD_FILENAMES"
             | "VK_DRIVER_FILES"
@@ -386,9 +458,18 @@ fn split_once_byte(bytes: &[u8], needle: u8) -> Option<(&[u8], &[u8])> {
 }
 
 fn store_roots_exist(envs: &[(String, String)]) -> bool {
-    envs.iter()
+    missing_store_roots(envs).is_empty()
+}
+
+pub(crate) fn missing_store_roots(envs: &[(String, String)]) -> Vec<PathBuf> {
+    let mut paths = envs
+        .iter()
         .flat_map(|(_, value)| store_roots_in_value(value))
-        .all(|path| path.exists())
+        .filter(|path| !path.exists())
+        .collect::<Vec<_>>();
+    paths.sort();
+    paths.dedup();
+    paths
 }
 
 fn store_roots_in_value(value: &str) -> Vec<PathBuf> {
@@ -423,6 +504,545 @@ pub(crate) fn apply_env(command: &mut Command, envs: &[(String, String)]) {
 
 pub(crate) fn add_env_capture_args(command: &mut Command) {
     command.arg("sh").arg("-c").arg(ENV_CAPTURE_SCRIPT);
+}
+
+#[derive(Debug, Clone, Default)]
+pub(crate) struct HostGraphicsReport {
+    pub(crate) status: String,
+    pub(crate) checked: Vec<String>,
+    pub(crate) provider: Option<String>,
+    pub(crate) linked_libraries: usize,
+    pub(crate) egl_platform_dir: Option<String>,
+    pub(crate) linked_egl_platforms: usize,
+    pub(crate) gbm_backend_dir: Option<String>,
+    pub(crate) linked_gbm_backends: usize,
+    pub(crate) error: Option<String>,
+    pub(crate) env_updates: Vec<String>,
+}
+
+impl HostGraphicsReport {
+    pub(crate) fn decision_lines(&self) -> Vec<String> {
+        let mut lines = vec![format!("host_graphics={}", self.status)];
+        if !self.checked.is_empty() {
+            lines.push(format!("host_graphics_checked={}", self.checked.join(",")));
+        }
+        if let Some(provider) = &self.provider {
+            lines.push(format!("host_graphics_provider={provider}"));
+        }
+        lines.push(format!(
+            "host_graphics_linked_libraries={}",
+            self.linked_libraries
+        ));
+        if let Some(dir) = &self.egl_platform_dir {
+            lines.push(format!("host_graphics_egl_platform_dir={dir}"));
+        }
+        lines.push(format!(
+            "host_graphics_egl_platforms={}",
+            self.linked_egl_platforms
+        ));
+        if let Some(dir) = &self.gbm_backend_dir {
+            lines.push(format!("host_graphics_gbm_backend_dir={dir}"));
+        }
+        lines.push(format!(
+            "host_graphics_gbm_backends={}",
+            self.linked_gbm_backends
+        ));
+        if let Some(error) = &self.error {
+            lines.push(format!("host_graphics_error={error}"));
+        }
+        if !self.env_updates.is_empty() {
+            lines.push(format!(
+                "host_graphics_env_updates={}",
+                self.env_updates.join(",")
+            ));
+        }
+        lines
+    }
+
+    pub(crate) fn warning(&self) -> Option<String> {
+        match self.status.as_str() {
+            "not-selected" | "prepared" => None,
+            _ => Some(format!(
+                "NVIDIA host graphics provider was selected but could not be completed: {}",
+                self.error.as_deref().unwrap_or(self.status.as_str())
+            )),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+struct HostGraphicsInputs {
+    checked: Vec<String>,
+    library_dirs: Vec<PathBuf>,
+    library_aliases: Vec<(String, PathBuf)>,
+    egl_platform_dirs: Vec<PathBuf>,
+    gbm_backend_dirs: Vec<PathBuf>,
+}
+
+#[derive(Debug, Clone)]
+struct HostGraphicsProvider {
+    lib_dir: String,
+    linked_libraries: usize,
+    egl_platform_dir: Option<String>,
+    linked_egl_platforms: usize,
+    gbm_backend_dir: Option<String>,
+    linked_gbm_backends: usize,
+}
+
+pub(crate) fn append_host_nvidia_graphics_provider(
+    envs: &mut Vec<(String, String)>,
+    workspace: &Path,
+) -> HostGraphicsReport {
+    if shell_env_value(envs, "ROBO_NIX_HOST_GRAPHICS").map(String::as_str) != Some("nvidia") {
+        return HostGraphicsReport {
+            status: "not-selected".to_string(),
+            ..HostGraphicsReport::default()
+        };
+    }
+
+    let inputs = host_nvidia_provider_inputs(envs);
+
+    match create_host_graphics_provider(workspace, &inputs) {
+        Ok(provider) => {
+            set_shell_env(
+                envs,
+                "ROBO_NIX_HOST_GRAPHICS_LIB_DIR",
+                provider.lib_dir.clone(),
+            );
+            prepend_env_path(envs, "LD_LIBRARY_PATH", &provider.lib_dir);
+            let mut env_updates = vec![
+                "LD_LIBRARY_PATH".to_string(),
+                "ROBO_NIX_HOST_GRAPHICS_LIB_DIR".to_string(),
+            ];
+            if let Some(egl_platform_dir) = &provider.egl_platform_dir {
+                set_shell_env(
+                    envs,
+                    "ROBO_NIX_HOST_GRAPHICS_EGL_PLATFORM_DIR",
+                    egl_platform_dir.clone(),
+                );
+                prepend_env_path(
+                    envs,
+                    "__EGL_EXTERNAL_PLATFORM_CONFIG_DIRS",
+                    egl_platform_dir,
+                );
+                env_updates.extend([
+                    "__EGL_EXTERNAL_PLATFORM_CONFIG_DIRS".to_string(),
+                    "ROBO_NIX_HOST_GRAPHICS_EGL_PLATFORM_DIR".to_string(),
+                ]);
+            }
+            if let Some(gbm_backend_dir) = &provider.gbm_backend_dir {
+                set_shell_env(
+                    envs,
+                    "ROBO_NIX_HOST_GRAPHICS_GBM_BACKEND_DIR",
+                    gbm_backend_dir.clone(),
+                );
+                prepend_env_path(envs, "GBM_BACKENDS_PATH", gbm_backend_dir);
+                env_updates.extend([
+                    "GBM_BACKENDS_PATH".to_string(),
+                    "ROBO_NIX_HOST_GRAPHICS_GBM_BACKEND_DIR".to_string(),
+                ]);
+            }
+            HostGraphicsReport {
+                status: "prepared".to_string(),
+                checked: inputs.checked,
+                provider: Some(provider.lib_dir),
+                linked_libraries: provider.linked_libraries,
+                egl_platform_dir: provider.egl_platform_dir,
+                linked_egl_platforms: provider.linked_egl_platforms,
+                gbm_backend_dir: provider.gbm_backend_dir,
+                linked_gbm_backends: provider.linked_gbm_backends,
+                env_updates,
+                ..HostGraphicsReport::default()
+            }
+        }
+        Err(error) => HostGraphicsReport {
+            status: "provider-error".to_string(),
+            checked: inputs.checked,
+            error: Some(error.message().to_string()),
+            ..HostGraphicsReport::default()
+        },
+    }
+}
+
+fn host_nvidia_provider_inputs(envs: &[(String, String)]) -> HostGraphicsInputs {
+    let mut inputs = HostGraphicsInputs::default();
+
+    if let Some(dir) = shell_env_value(envs, "ROBO_NIX_NVIDIA_DRIVER_LIB_DIR")
+        .map(PathBuf::from)
+        .or_else(|| env::var_os("ROBO_NIX_NVIDIA_DRIVER_LIB_DIR").map(PathBuf::from))
+    {
+        inputs
+            .checked
+            .push(format!("ROBO_NIX_NVIDIA_DRIVER_LIB_DIR={}", dir.display()));
+        push_existing_dir(&mut inputs.gbm_backend_dirs, dir.clone());
+        push_existing_dir(&mut inputs.library_dirs, dir);
+    }
+
+    inputs.checked.push("ldconfig -p".to_string());
+    let ldconfig_names = REQUIRED_NVIDIA_GRAPHICS_LIBRARIES
+        .iter()
+        .chain(COMMON_NVIDIA_GRAPHICS_LIBRARIES.iter())
+        .copied()
+        .collect::<Vec<_>>();
+    for (name, path) in find_libraries_with_ldconfig(&ldconfig_names) {
+        if let Some(parent) = path.parent() {
+            push_existing_dir(&mut inputs.library_dirs, parent.to_path_buf());
+        }
+        push_library_alias(&mut inputs.library_aliases, name, path);
+    }
+
+    for dir in KNOWN_HOST_NVIDIA_LIBRARY_DIRS {
+        inputs.checked.push((*dir).to_string());
+        push_existing_dir(&mut inputs.library_dirs, PathBuf::from(dir));
+    }
+
+    for dir in KNOWN_HOST_NVIDIA_EGL_PLATFORM_DIRS {
+        inputs.checked.push((*dir).to_string());
+        push_existing_dir(&mut inputs.egl_platform_dirs, PathBuf::from(dir));
+    }
+    if let Some(paths) = shell_env_value(envs, "__EGL_EXTERNAL_PLATFORM_CONFIG_DIRS")
+        .map(std::ffi::OsString::from)
+        .or_else(|| env::var_os("__EGL_EXTERNAL_PLATFORM_CONFIG_DIRS"))
+    {
+        inputs
+            .checked
+            .push("__EGL_EXTERNAL_PLATFORM_CONFIG_DIRS".to_string());
+        for dir in env::split_paths(&paths) {
+            push_existing_dir(&mut inputs.egl_platform_dirs, dir);
+        }
+    }
+    for dir in KNOWN_HOST_NVIDIA_GBM_BACKEND_DIRS {
+        inputs.checked.push((*dir).to_string());
+        push_existing_dir(&mut inputs.gbm_backend_dirs, PathBuf::from(dir));
+    }
+    if let Some(paths) = shell_env_value(envs, "GBM_BACKENDS_PATH")
+        .map(std::ffi::OsString::from)
+        .or_else(|| env::var_os("GBM_BACKENDS_PATH"))
+    {
+        inputs.checked.push("GBM_BACKENDS_PATH".to_string());
+        for dir in env::split_paths(&paths) {
+            push_existing_dir(&mut inputs.gbm_backend_dirs, dir);
+        }
+    }
+
+    inputs
+}
+
+fn push_existing_dir(dirs: &mut Vec<PathBuf>, dir: PathBuf) {
+    if !dir.is_dir() || dirs.iter().any(|candidate| candidate == &dir) {
+        return;
+    }
+    dirs.push(dir);
+}
+
+fn push_library_alias(aliases: &mut Vec<(String, PathBuf)>, name: String, path: PathBuf) {
+    if !path.is_file() || aliases.iter().any(|(candidate, _)| candidate == &name) {
+        return;
+    }
+    aliases.push((name, path));
+}
+
+fn create_host_graphics_provider(
+    workspace: &Path,
+    inputs: &HostGraphicsInputs,
+) -> Result<HostGraphicsProvider, AppError> {
+    with_project_lock(workspace, "host-graphics", || {
+        let provider_dir = workspace.join(".robo-nix").join("host-graphics");
+        let lib_dir = provider_dir.join("lib");
+        let egl_platform_dir = provider_dir.join("egl_external_platform.d");
+        let gbm_backend_dir = provider_dir.join("gbm");
+        fs::create_dir_all(&lib_dir).map_err(|err| {
+            AppError::project(format!(
+                "failed to create host graphics bridge directory: {err}"
+            ))
+        })?;
+        fs::create_dir_all(&egl_platform_dir).map_err(|err| {
+            AppError::project(format!(
+                "failed to create host graphics EGL platform directory: {err}"
+            ))
+        })?;
+        fs::create_dir_all(&gbm_backend_dir).map_err(|err| {
+            AppError::project(format!(
+                "failed to create host graphics GBM backend directory: {err}"
+            ))
+        })?;
+        clean_robo_owned_dir(&lib_dir, "host graphics bridge")?;
+        clean_robo_owned_dir(&egl_platform_dir, "host graphics EGL platform")?;
+        clean_robo_owned_dir(&gbm_backend_dir, "host graphics GBM backend")?;
+
+        let mut linked_libraries = link_nvidia_driver_libraries(&inputs.library_dirs, &lib_dir)?;
+        linked_libraries += link_nvidia_library_aliases(&inputs.library_aliases, &lib_dir)?;
+        let missing = REQUIRED_NVIDIA_GRAPHICS_LIBRARIES
+            .iter()
+            .filter(|name| !lib_dir.join(name).exists())
+            .copied()
+            .collect::<Vec<_>>();
+        if !missing.is_empty() {
+            return Err(AppError::project(format!(
+                "missing required NVIDIA graphics libraries: {}",
+                missing.join(", ")
+            )));
+        }
+
+        let linked_egl_platforms =
+            link_nvidia_egl_platform_configs(&inputs.egl_platform_dirs, &egl_platform_dir)?;
+        let linked_gbm_backends =
+            link_nvidia_gbm_backends(&inputs.gbm_backend_dirs, &gbm_backend_dir)?;
+        Ok(HostGraphicsProvider {
+            lib_dir: lib_dir.display().to_string(),
+            linked_libraries,
+            egl_platform_dir: (linked_egl_platforms > 0)
+                .then(|| egl_platform_dir.display().to_string()),
+            linked_egl_platforms,
+            gbm_backend_dir: (linked_gbm_backends > 0)
+                .then(|| gbm_backend_dir.display().to_string()),
+            linked_gbm_backends,
+        })
+    })
+}
+
+fn clean_robo_owned_dir(dir: &Path, label: &str) -> Result<(), AppError> {
+    for entry in fs::read_dir(dir).map_err(|err| {
+        AppError::project(format!(
+            "failed to inspect {label} directory {}: {err}",
+            dir.display()
+        ))
+    })? {
+        let entry = entry.map_err(|err| {
+            AppError::project(format!(
+                "failed to inspect {label} directory {}: {err}",
+                dir.display()
+            ))
+        })?;
+        let path = entry.path();
+        let metadata = fs::symlink_metadata(&path).map_err(|err| {
+            AppError::project(format!(
+                "failed to inspect {label} entry {}: {err}",
+                path.display()
+            ))
+        })?;
+        if metadata.is_dir() && !metadata.file_type().is_symlink() {
+            fs::remove_dir_all(&path).map_err(|err| {
+                AppError::project(format!(
+                    "failed to clean {label} directory {}: {err}",
+                    path.display()
+                ))
+            })?;
+        } else {
+            fs::remove_file(&path).map_err(|err| {
+                AppError::project(format!(
+                    "failed to clean {label} entry {}: {err}",
+                    path.display()
+                ))
+            })?;
+        }
+    }
+    Ok(())
+}
+
+fn link_nvidia_driver_libraries(
+    driver_dirs: &[PathBuf],
+    lib_dir: &Path,
+) -> Result<usize, AppError> {
+    let mut linked = 0;
+    let mut linked_names = BTreeSet::new();
+    for driver_dir in driver_dirs {
+        let mut entries = fs::read_dir(driver_dir)
+            .map_err(|err| {
+                AppError::project(format!(
+                    "failed to inspect host NVIDIA driver directory {}: {err}",
+                    driver_dir.display()
+                ))
+            })?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|err| {
+                AppError::project(format!(
+                    "failed to inspect host NVIDIA driver directory {}: {err}",
+                    driver_dir.display()
+                ))
+            })?;
+        entries.sort_by_key(|entry| entry.file_name());
+        for entry in entries {
+            let file_name = entry.file_name();
+            let file_name_text = file_name.to_string_lossy();
+            if !is_nvidia_driver_library_name(&file_name_text) {
+                continue;
+            }
+            let source = entry.path();
+            if !source.is_file() {
+                continue;
+            }
+            if !linked_names.insert(file_name_text.to_string()) {
+                continue;
+            }
+            let link = lib_dir.join(&file_name);
+            replace_file_link(&source, &link).map_err(|err| {
+                AppError::project(format!(
+                    "failed to link host NVIDIA driver library into {}: {err}",
+                    link.display()
+                ))
+            })?;
+            linked += 1;
+        }
+    }
+    Ok(linked)
+}
+
+fn link_nvidia_library_aliases(
+    aliases: &[(String, PathBuf)],
+    lib_dir: &Path,
+) -> Result<usize, AppError> {
+    let mut linked = 0;
+    for (name, source) in aliases {
+        if !is_nvidia_driver_library_name(name) {
+            continue;
+        }
+        let link = lib_dir.join(name);
+        if link.exists() || fs::symlink_metadata(&link).is_ok() {
+            continue;
+        }
+        replace_file_link(source, &link).map_err(|err| {
+            AppError::project(format!(
+                "failed to link host NVIDIA driver library into {}: {err}",
+                link.display()
+            ))
+        })?;
+        linked += 1;
+    }
+    Ok(linked)
+}
+
+fn link_nvidia_egl_platform_configs(
+    config_dirs: &[PathBuf],
+    provider_dir: &Path,
+) -> Result<usize, AppError> {
+    let mut linked = 0;
+    let mut linked_names = BTreeSet::new();
+    for config_dir in config_dirs {
+        let mut entries = fs::read_dir(config_dir)
+            .map_err(|err| {
+                AppError::project(format!(
+                    "failed to inspect host EGL platform directory {}: {err}",
+                    config_dir.display()
+                ))
+            })?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|err| {
+                AppError::project(format!(
+                    "failed to inspect host EGL platform directory {}: {err}",
+                    config_dir.display()
+                ))
+            })?;
+        entries.sort_by_key(|entry| entry.file_name());
+        for entry in entries {
+            let file_name = entry.file_name();
+            let file_name_text = file_name.to_string_lossy();
+            if !is_nvidia_egl_platform_config_name(&file_name_text) {
+                continue;
+            }
+            let source = entry.path();
+            if !source.is_file() {
+                continue;
+            }
+            if !linked_names.insert(file_name_text.to_string()) {
+                continue;
+            }
+            let link = provider_dir.join(&file_name);
+            replace_file_link(&source, &link).map_err(|err| {
+                AppError::project(format!(
+                    "failed to link host NVIDIA EGL platform config into {}: {err}",
+                    link.display()
+                ))
+            })?;
+            linked += 1;
+        }
+    }
+    Ok(linked)
+}
+
+fn link_nvidia_gbm_backends(
+    backend_dirs: &[PathBuf],
+    provider_dir: &Path,
+) -> Result<usize, AppError> {
+    let mut linked = 0;
+    let mut linked_names = BTreeSet::new();
+    for backend_dir in backend_dirs {
+        let mut entries = fs::read_dir(backend_dir)
+            .map_err(|err| {
+                AppError::project(format!(
+                    "failed to inspect host GBM backend directory {}: {err}",
+                    backend_dir.display()
+                ))
+            })?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|err| {
+                AppError::project(format!(
+                    "failed to inspect host GBM backend directory {}: {err}",
+                    backend_dir.display()
+                ))
+            })?;
+        entries.sort_by_key(|entry| entry.file_name());
+        for entry in entries {
+            let file_name = entry.file_name();
+            let file_name_text = file_name.to_string_lossy();
+            if !is_nvidia_gbm_backend_name(&file_name_text) {
+                continue;
+            }
+            let source = entry.path();
+            if !source.is_file() {
+                continue;
+            }
+            if !linked_names.insert(file_name_text.to_string()) {
+                continue;
+            }
+            let link = provider_dir.join(&file_name);
+            replace_file_link(&source, &link).map_err(|err| {
+                AppError::project(format!(
+                    "failed to link host NVIDIA GBM backend into {}: {err}",
+                    link.display()
+                ))
+            })?;
+            linked += 1;
+        }
+    }
+    Ok(linked)
+}
+
+fn find_libraries_with_ldconfig(names: &[&str]) -> Vec<(String, PathBuf)> {
+    let output = match Command::new("ldconfig").arg("-p").output() {
+        Ok(output) if output.status.success() => output,
+        _ => return Vec::new(),
+    };
+    let mut found_names = BTreeSet::new();
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter_map(|line| {
+            let line = line.trim();
+            let found_name = line.split_whitespace().next()?;
+            if !names.contains(&found_name) || !found_names.insert(found_name.to_string()) {
+                return None;
+            }
+            line.rsplit_once(" => ")
+                .map(|(_, path)| (found_name.to_string(), PathBuf::from(path.trim())))
+                .filter(|(_, path)| path.is_file())
+        })
+        .collect()
+}
+
+fn is_nvidia_egl_platform_config_name(name: &str) -> bool {
+    name.ends_with(".json") && name.to_ascii_lowercase().contains("nvidia")
+}
+
+fn is_nvidia_gbm_backend_name(name: &str) -> bool {
+    name == "nvidia-drm_gbm.so"
+        || (name.ends_with(".so") && name.to_ascii_lowercase().contains("nvidia"))
+}
+
+fn is_nvidia_driver_library_name(name: &str) -> bool {
+    NVIDIA_DRIVER_LIBRARY_PREFIXES
+        .iter()
+        .any(|prefix| name.starts_with(prefix))
+        && name.contains(".so")
 }
 
 #[derive(Debug, Clone, Default)]
@@ -634,6 +1254,10 @@ fn find_host_libcuda(envs: &[(String, String)]) -> HostLibcudaProbe {
 }
 
 fn find_libcuda_with_ldconfig() -> Option<String> {
+    find_library_with_ldconfig_names(LIBCUDA_NAMES)
+}
+
+fn find_library_with_ldconfig_names(names: &[&str]) -> Option<String> {
     let output = Command::new("ldconfig").arg("-p").output().ok()?;
     if !output.status.success() {
         return None;
@@ -643,7 +1267,10 @@ fn find_libcuda_with_ldconfig() -> Option<String> {
         .lines()
         .find_map(|line| {
             let line = line.trim();
-            if !LIBCUDA_NAMES.iter().any(|name| line.starts_with(name)) {
+            let Some(found_name) = line.split_whitespace().next() else {
+                return None;
+            };
+            if !names.contains(&found_name) {
                 return None;
             }
             line.rsplit_once(" => ")
@@ -766,6 +1393,19 @@ fn append_ld_library_path(envs: &mut Vec<(String, String)>, path: &str) {
         format!("{library_path}:{path}")
     };
     set_shell_env(envs, "LD_LIBRARY_PATH", value);
+}
+
+fn prepend_env_path(envs: &mut Vec<(String, String)>, name: &str, path: &str) {
+    let current = shell_env_value(envs, name).cloned().unwrap_or_default();
+    if path_list_contains(&current, path) {
+        return;
+    }
+    let value = if current.is_empty() {
+        path.to_string()
+    } else {
+        format!("{path}:{current}")
+    };
+    set_shell_env(envs, name, value);
 }
 
 fn shell_env_value<'a>(envs: &'a [(String, String)], name: &str) -> Option<&'a String> {
@@ -1052,6 +1692,110 @@ version = "2.0.0"
         );
         assert!(fs::symlink_metadata(bridge_dir.join("libcuda.so.1")).is_ok());
         assert!(fs::symlink_metadata(bridge_dir.join("libcuda.so")).is_ok());
+
+        cleanup(root);
+    }
+
+    #[test]
+    fn host_graphics_provider_links_nvidia_libs_without_host_system_libs() {
+        let root = temp_project("host-graphics-provider");
+        let driver_dir = root.join("driver");
+        let egl_platform_source = root.join("egl-platforms");
+        let gbm_backend_source = root.join("gbm");
+        fs::create_dir_all(&driver_dir).unwrap();
+        fs::create_dir_all(&egl_platform_source).unwrap();
+        fs::create_dir_all(&gbm_backend_source).unwrap();
+        fs::write(driver_dir.join("libGLX_nvidia.so.0"), b"").unwrap();
+        fs::write(driver_dir.join("libEGL_nvidia.so.0"), b"").unwrap();
+        fs::write(driver_dir.join("libnvidia-glcore.so.555.1"), b"").unwrap();
+        fs::write(driver_dir.join("libcuda.so.1"), b"").unwrap();
+        fs::write(driver_dir.join("libc.so.6"), b"").unwrap();
+        fs::write(egl_platform_source.join("15_nvidia_gbm.json"), b"{}").unwrap();
+        fs::write(egl_platform_source.join("50_mesa.json"), b"{}").unwrap();
+        fs::write(gbm_backend_source.join("nvidia-drm_gbm.so"), b"").unwrap();
+        fs::write(gbm_backend_source.join("kms_swrast_dri.so"), b"").unwrap();
+        fs::create_dir_all(root.join(".robo-nix/host-graphics/lib")).unwrap();
+        fs::create_dir_all(root.join(".robo-nix/host-graphics/egl_external_platform.d")).unwrap();
+        fs::create_dir_all(root.join(".robo-nix/host-graphics/gbm")).unwrap();
+        fs::write(
+            root.join(".robo-nix/host-graphics/lib/libcuda.so.1"),
+            b"stale",
+        )
+        .unwrap();
+        fs::write(root.join(".robo-nix/host-graphics/lib/libc.so.6"), b"stale").unwrap();
+        fs::write(
+            root.join(".robo-nix/host-graphics/egl_external_platform.d/50_mesa.json"),
+            b"stale",
+        )
+        .unwrap();
+        let mut env = vec![
+            ("ROBO_NIX_HOST_GRAPHICS".to_string(), "nvidia".to_string()),
+            (
+                "VK_ICD_FILENAMES".to_string(),
+                "/host/nvidia_icd.json".to_string(),
+            ),
+            (
+                "ROBO_NIX_NVIDIA_DRIVER_LIB_DIR".to_string(),
+                driver_dir.display().to_string(),
+            ),
+            (
+                "__EGL_EXTERNAL_PLATFORM_CONFIG_DIRS".to_string(),
+                egl_platform_source.display().to_string(),
+            ),
+            (
+                "GBM_BACKENDS_PATH".to_string(),
+                gbm_backend_source.display().to_string(),
+            ),
+            ("LD_LIBRARY_PATH".to_string(), "/nix/store/lib".to_string()),
+        ];
+
+        let report = append_host_nvidia_graphics_provider(&mut env, &root);
+
+        assert_eq!(report.status, "prepared");
+        let provider_lib = root.join(".robo-nix/host-graphics/lib");
+        let provider_lib_text = provider_lib.display().to_string();
+        let provider_egl_platform = root.join(".robo-nix/host-graphics/egl_external_platform.d");
+        let provider_egl_platform_text = provider_egl_platform.display().to_string();
+        let provider_gbm_backend = root.join(".robo-nix/host-graphics/gbm");
+        let provider_gbm_backend_text = provider_gbm_backend.display().to_string();
+        let expected_library_path = format!("{provider_lib_text}:/nix/store/lib");
+        let expected_egl_platform_path = format!(
+            "{}:{}",
+            provider_egl_platform_text,
+            egl_platform_source.display()
+        );
+        let expected_gbm_backend_path = format!(
+            "{}:{}",
+            provider_gbm_backend_text,
+            gbm_backend_source.display()
+        );
+        assert_eq!(
+            shell_env_value(&env, "LD_LIBRARY_PATH").map(String::as_str),
+            Some(expected_library_path.as_str())
+        );
+        assert_eq!(
+            shell_env_value(&env, "__EGL_EXTERNAL_PLATFORM_CONFIG_DIRS").map(String::as_str),
+            Some(expected_egl_platform_path.as_str())
+        );
+        assert_eq!(
+            shell_env_value(&env, "GBM_BACKENDS_PATH").map(String::as_str),
+            Some(expected_gbm_backend_path.as_str())
+        );
+        assert_eq!(
+            shell_env_value(&env, "VK_ICD_FILENAMES").map(String::as_str),
+            Some("/host/nvidia_icd.json")
+        );
+        assert!(report.linked_egl_platforms >= 1);
+        assert!(report.linked_gbm_backends >= 1);
+        assert!(fs::symlink_metadata(provider_lib.join("libGLX_nvidia.so.0")).is_ok());
+        assert!(fs::symlink_metadata(provider_lib.join("libEGL_nvidia.so.0")).is_ok());
+        assert!(fs::symlink_metadata(provider_lib.join("libnvidia-glcore.so.555.1")).is_ok());
+        assert!(fs::symlink_metadata(provider_lib.join("libcuda.so.1")).is_err());
+        assert!(fs::symlink_metadata(provider_lib.join("libc.so.6")).is_err());
+        assert!(fs::symlink_metadata(provider_egl_platform.join("15_nvidia_gbm.json")).is_ok());
+        assert!(fs::symlink_metadata(provider_egl_platform.join("50_mesa.json")).is_err());
+        assert!(fs::symlink_metadata(provider_gbm_backend.join("nvidia-drm_gbm.so")).is_ok());
+        assert!(fs::symlink_metadata(provider_gbm_backend.join("kms_swrast_dri.so")).is_err());
 
         cleanup(root);
     }

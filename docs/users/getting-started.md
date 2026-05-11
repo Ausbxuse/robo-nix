@@ -101,7 +101,7 @@ runtime libraries and headers exposed by Nix.
 ## 5. Adjust runtime components
 
 After first bootstrap, edit `robo.nix` for project runtime choices such as
-native build tools, Linux headers, desktop graphics, or CUDA build tooling.
+native build tools, Linux headers, desktop graphics, Qt, or CUDA build tooling.
 
 For example, a project using `evdev` and GLFW-style windows usually needs:
 

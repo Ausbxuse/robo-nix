@@ -140,6 +140,7 @@ Common components include:
 | `native-build`  | Compiler/build tools plus C++, zlib, and legacy crypt runtime libraries. |
 | `desktop-gl`    | OpenGL/EGL/Vulkan/X11/Wayland libraries for MuJoCo and desktop viewers. |
 | `linux-headers` | Kernel headers for Linux input packages such as `evdev`.         |
+| `qt6`           | Qt6 CMake packages, tools, plugins, and runtime libraries.       |
 | `cuda-toolkit`  | Nix-managed CUDA toolkit for native builds and CUDA packages.    |
 
 Host NVIDIA driver libraries remain host-owned. For projects that appear to
@@ -150,8 +151,11 @@ automatic bridge.
 
 Host graphics provider selection is explicit project policy. Use
 `hostGraphics = "nvidia";` in `robo.nix` when a project such as Isaac Sim needs
-the host NVIDIA Vulkan/EGL/GLX provider. Leave `hostGraphics = null;` when the
-host session should choose the graphics provider.
+the host NVIDIA Vulkan/EGL/GLX provider. `robo` keeps generic GLVND/OpenGL
+dispatch libraries Nix-owned, then prepares the selected host NVIDIA manifests,
+vendor libraries, EGL external platform configs, and GBM backends automatically.
+Leave `hostGraphics = null;` when the project should not select a host graphics
+provider.
 
 ## Diagnostics
 

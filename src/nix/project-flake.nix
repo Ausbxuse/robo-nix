@@ -125,8 +125,16 @@
             if [ -n "$robo_cmake_package" ]; then
               printf '%s\n' "robo-nix hint: CMake could not find package '$robo_cmake_package'." >&2
               printf '%s\n' "robo-nix hint: native-build supplies compiler tools and common native runtime libraries; package-specific CMake config files must come from the project, the uv build environment, or explicit robo.nix additions." >&2
+              if [ "$robo_cmake_package" = "Qt6" ]; then
+                printf '%s\n' "robo-nix hint: add \"qt6\" to components in robo.nix for Qt6 CMake packages and runtime libraries." >&2
+              fi
               printf '%s\n' "robo-nix hint: patch the package build to set ''${robo_cmake_package}_DIR or CMAKE_PREFIX_PATH to the prefix containing ''${robo_cmake_package}Config.cmake." >&2
             fi
+          fi
+
+          if [ "$robo_cmake_status" -ne 0 ] && ${pkgs.gnugrep}/bin/grep -q "is not a full path to an existing compiler tool" "$robo_cmake_stderr" "$robo_cmake_stdout"; then
+            printf '%s\n' "robo-nix hint: CMake is using a cached compiler path that no longer exists." >&2
+            printf '%s\n' "robo-nix hint: remove the affected CMake build directory or CMakeCache.txt, then rerun inside the current runtime shell." >&2
           fi
 
           exit "$robo_cmake_status"
@@ -184,6 +192,10 @@
           pkgs.libXt
           pkgs.libxtst
         ];
+        qt6 = [
+          pkgs.qt6.qtbase
+          pkgs.qt6.qt5compat
+        ];
         cuda-toolkit = [
           cudaPackages.backendStdenv.cc
           cudaToolkit
@@ -195,6 +207,7 @@
         native-build = [ccRuntimeLib legacyCryptRuntimeLib zlibRuntimeLib];
         linux-headers = [];
         desktop-gl = componentPackages.desktop-gl;
+        qt6 = componentPackages.qt6;
         cuda-toolkit = [
           cudaPackages.cuda_cudart
           cudaPackages.cuda_nvrtc
@@ -284,9 +297,9 @@
                 export VK_ICD_FILENAMES="$robo_nix_nvidia_vk_icd"
                 export VK_DRIVER_FILES="$VK_ICD_FILENAMES"
                 export __EGL_VENDOR_LIBRARY_FILENAMES="$robo_nix_nvidia_egl_vendor"
-                export __NV_PRIME_RENDER_OFFLOAD="''${__NV_PRIME_RENDER_OFFLOAD:-1}"
-                export __GLX_VENDOR_LIBRARY_NAME="''${__GLX_VENDOR_LIBRARY_NAME:-nvidia}"
-                export __VK_LAYER_NV_optimus="''${__VK_LAYER_NV_optimus:-NVIDIA_only}"
+                export __NV_PRIME_RENDER_OFFLOAD=1
+                export __GLX_VENDOR_LIBRARY_NAME=nvidia
+                export __VK_LAYER_NV_optimus=NVIDIA_only
                 unset -f robo_nix_select_host_manifest
                 unset robo_nix_nvidia_vk_icd robo_nix_nvidia_egl_vendor
               ''

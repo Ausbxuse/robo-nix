@@ -68,6 +68,16 @@ compiler tools, and common compiler runtime libraries, but package-specific
 CMake config files must come from the project, the uv build environment, or an
 explicit package you add to `robo.nix`.
 
+For Qt6 projects, use the component instead of raw Nix package attributes:
+
+```nix
+components = [
+  "python-uv"
+  "native-build"
+  "qt6"
+];
+```
+
 Fix the package build to pass either `SomePackage_DIR` or
 `CMAKE_PREFIX_PATH` to the prefix that contains `SomePackageConfig.cmake`. If
 the config file is provided by a Python package, derive that path from the
@@ -137,12 +147,21 @@ provider explicitly:
 ```
 
 `robo` does not silently force this policy because hybrid-GPU, headless, and
-non-NVIDIA setups have different valid choices.
+non-NVIDIA setups have different valid choices. `hostGraphics = null;` only
+means no explicit host graphics provider is selected; it does not provide the
+host NVIDIA GLX/EGL/GBM bridge.
 
 When `hostGraphics = "nvidia";` is set, `robo` selects known NVIDIA manifest
-paths for NixOS and common FHS distros such as Ubuntu. If your host keeps the
-manifests somewhere else, set `ROBO_NIX_NVIDIA_VK_ICD` and
-`ROBO_NIX_NVIDIA_EGL_VENDOR` to the host paths before running `robo shell`.
+paths for NixOS and common FHS distros such as Ubuntu. It then prepares a narrow
+robo-owned provider view for NVIDIA GLX/EGL vendor libraries and NVIDIA EGL
+external platform configs. When found, NVIDIA GBM backends such as
+`nvidia-drm_gbm.so` are linked into a robo-owned GBM backend directory as well.
+Generic GLVND/OpenGL libraries stay Nix-owned. This targets failures where GLX
+config discovery returns nothing, Mesa/swrast is selected unexpectedly, or
+OpenCV EGL cannot initialize because the NVIDIA vendor or GBM provider is
+incomplete. If your host keeps the manifests or NVIDIA driver libraries
+somewhere else, set `ROBO_NIX_NVIDIA_VK_ICD`, `ROBO_NIX_NVIDIA_EGL_VENDOR`, or
+`ROBO_NIX_NVIDIA_DRIVER_LIB_DIR` before running `robo shell`.
 
 ## Existing robo.nix
 

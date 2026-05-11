@@ -9,8 +9,8 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Output};
 
 use crate::nix_env::{
-    add_env_capture_args, append_host_cuda_driver_bridge, is_robo_managed_env, parse_env_zero,
-    runtime_key_env_names,
+    add_env_capture_args, append_host_cuda_driver_bridge, append_host_nvidia_graphics_provider,
+    is_robo_managed_env, missing_store_roots, parse_env_zero, runtime_key_env_names,
 };
 use crate::ui::{error, hint, output_with_tree, row_err, status, Config};
 
@@ -100,17 +100,37 @@ fn try_run(args: Vec<OsString>, config: Config) -> Result<(), RefreshError> {
     }
 
     let current = runtime_input_state(&workspace);
-    if env::var("ROBO_NIX_RUNTIME_INPUT_KEY").ok().as_deref() == Some(current.key.as_str()) {
+    let missing_store_paths = missing_active_store_roots();
+    if env::var("ROBO_NIX_RUNTIME_INPUT_KEY").ok().as_deref() == Some(current.key.as_str())
+        && missing_store_paths.is_empty()
+    {
         return Ok(());
     }
 
     let changed = changed_runtime_inputs(&workspace, &current);
-    print_runtime_refresh_notice(config, &workspace, &changed);
+    print_runtime_refresh_notice(config, &workspace, &changed, &missing_store_paths);
     let mut envs = refreshed_shell_env(&workspace, config)?;
+    let _ = append_host_nvidia_graphics_provider(&mut envs, &workspace);
     let _ = append_host_cuda_driver_bridge(&mut envs, &workspace);
     append_active_shell_env(&mut envs, &workspace, &current);
     print_shell_delta(shell, &envs);
     Ok(())
+}
+
+fn missing_active_store_roots() -> Vec<PathBuf> {
+    let names = previous_managed_env_var_names();
+    missing_managed_store_roots(&names, |name| env::var(name).ok())
+}
+
+fn missing_managed_store_roots<F>(names: &[String], mut env_value: F) -> Vec<PathBuf>
+where
+    F: FnMut(&str) -> Option<String>,
+{
+    let envs: Vec<(String, String)> = names
+        .iter()
+        .filter_map(|name| env_value(name).map(|value| (name.clone(), value)))
+        .collect();
+    missing_store_roots(&envs)
 }
 
 fn refreshed_shell_env(
@@ -279,10 +299,22 @@ fn write_command_output_to_stderr(output: &Output) -> Result<(), RefreshError> {
     Ok(())
 }
 
-fn print_runtime_refresh_notice(config: Config, workspace: &Path, changed: &[PathBuf]) {
+fn print_runtime_refresh_notice(
+    config: Config,
+    workspace: &Path,
+    changed: &[PathBuf],
+    missing_store_paths: &[PathBuf],
+) {
+    let reason = if changed.is_empty() {
+        "runtime store paths disappeared"
+    } else if missing_store_paths.is_empty() {
+        "runtime inputs changed"
+    } else {
+        "runtime inputs changed and store paths disappeared"
+    };
     status(
         config,
-        &format!("shell: runtime inputs changed in {}", workspace.display()),
+        &format!("shell: {reason} in {}", workspace.display()),
     );
     for path in changed {
         row_err(
@@ -291,6 +323,9 @@ fn print_runtime_refresh_notice(config: Config, workspace: &Path, changed: &[Pat
             "changed",
             &display_runtime_input_path(workspace, path),
         );
+    }
+    for path in missing_store_paths {
+        row_err(config, "!", "missing", &path.display().to_string());
     }
 }
 
@@ -456,6 +491,25 @@ mod tests {
         }));
 
         cleanup(root);
+    }
+
+    #[test]
+    fn missing_managed_store_roots_detects_stale_compiler_paths() {
+        let names = vec!["CC".to_string(), "CXX".to_string(), "UNRELATED".to_string()];
+
+        let missing = missing_managed_store_roots(&names, |name| match name {
+            "CC" => Some("/nix/store/robo-missing-gcc-wrapper-14.3.0/bin/cc".to_string()),
+            "CXX" => Some("/usr/bin/c++".to_string()),
+            "UNRELATED" => Some("1".to_string()),
+            _ => None,
+        });
+
+        assert_eq!(
+            missing,
+            vec![PathBuf::from(
+                "/nix/store/robo-missing-gcc-wrapper-14.3.0/bin/cc"
+            )]
+        );
     }
 
     #[test]

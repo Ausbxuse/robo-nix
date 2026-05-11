@@ -18,7 +18,9 @@ gymnasium-robotics	native-runtime	native-build	Gymnasium Robotics simulator stac
 glfw	desktop-graphics	desktop-gl	GLFW viewer dependencies	GLFW viewers need desktop graphics and windowing runtime libraries.
 pyglet	desktop-graphics	desktop-gl	Pyglet viewer dependencies	Pyglet viewers need desktop graphics and windowing runtime libraries.
 pyside6	desktop-graphics	desktop-gl	Qt visualization tooling	Qt bindings commonly need desktop display and OpenGL runtime libraries.
+pyside6	qt-runtime	qt6	Qt visualization tooling	Qt bindings and helper services commonly need Qt6 runtime libraries and plugins.
 pyqt6	desktop-graphics	desktop-gl	Qt visualization tooling	Qt bindings commonly need desktop display and OpenGL runtime libraries.
+pyqt6	qt-runtime	qt6	Qt visualization tooling	Qt bindings and helper services commonly need Qt6 runtime libraries and plugins.
 pyqt5	desktop-graphics	desktop-gl	Qt visualization tooling	Qt bindings commonly need desktop display and OpenGL runtime libraries.
 isaacsim	desktop-graphics	desktop-gl	Isaac Sim Python runtime stacks	Isaac Sim Python wheels need host NVIDIA CUDA support and desktop graphics runtime libraries.
 evdev	native-runtime	native-build	Linux teleoperation and input stacks	evdev builds native extensions for Linux input devices.

@@ -24,6 +24,10 @@ edit when a project needs more native tools or runtime libraries inside
     <p>OpenGL, EGL, GLVND, Vulkan loader, Wayland, X11, GLFW windowing, GLU, and legacy Xt support.</p>
   </div>
   <div>
+    <h3>qt6</h3>
+    <p>Qt6 CMake packages, tools such as qtpaths6, plugins, and runtime libraries for Qt services and viewers.</p>
+  </div>
+  <div>
     <h3>cuda-toolkit</h3>
     <p>Nix-managed CUDA compiler, headers, and CUDA build/link surface.</p>
   </div>
@@ -72,6 +76,22 @@ headers:
 X11, Vulkan loader, GLVND, EGL, `libxkbcommon`, GLU, and legacy Xt libraries
 used by larger simulator stacks.
 
+## Example: Qt service or viewer
+
+Use `qt6` when a vendor service or local CMake project needs Qt6 packages such
+as `Qt6::Core`, `Qt6::Network`, or `Qt6::Core5Compat`:
+
+```nix
+{
+  components = [
+    "python-uv"
+    "native-build"
+    "desktop-gl"
+    "qt6"
+  ];
+}
+```
+
 Host GPU provider selection is separate from `desktop-gl`. If a simulator such
 as Isaac Sim or MuJoCo needs the host NVIDIA Vulkan/EGL/GLX provider, set the
 explicit manifest policy:
@@ -89,18 +109,29 @@ explicit manifest policy:
 }
 ```
 
-Leave `hostGraphics = null;` when the host session should choose the graphics
-provider. The generated `robo.nix` includes comments for the supported options.
+Leave `hostGraphics = null;` when the project should not select a host graphics
+provider. With `desktop-gl`, that means the Nix-managed component defaults still
+apply; it is not a NVIDIA provider bridge.
 With `hostGraphics = "nvidia";`, `robo` selects the first existing NVIDIA
-manifest from common NixOS and FHS Linux paths:
+manifest from common NixOS and FHS Linux paths. It then keeps generic
+GLVND/OpenGL dispatch libraries Nix-owned and prepares a robo-owned NVIDIA
+provider view so NVIDIA GLX/EGL vendor libraries such as
+`libGLX_nvidia.so.0` and `libEGL_nvidia.so.0` are visible inside the runtime
+without exposing the full host system library directory:
 
 - Vulkan ICD: `/run/opengl-driver/share/vulkan/icd.d/nvidia_icd.json`, then
   `/usr/share/vulkan/icd.d/nvidia_icd.json`
 - EGL vendor: `/run/opengl-driver/share/glvnd/egl_vendor.d/10_nvidia.json`,
   then `/usr/share/glvnd/egl_vendor.d/10_nvidia.json`
 
-Use `ROBO_NIX_NVIDIA_VK_ICD` or `ROBO_NIX_NVIDIA_EGL_VENDOR` only when the host
-uses a different layout.
+When present, NVIDIA EGL external platform configs from common host locations
+are also exposed through the robo-owned provider view. NVIDIA GBM backends such
+as `nvidia-drm_gbm.so` are linked into a robo-owned GBM backend directory when
+found. This is useful for EGL and GBM paths used by OpenCV and headless
+simulator stacks.
+
+Use `ROBO_NIX_NVIDIA_VK_ICD`, `ROBO_NIX_NVIDIA_EGL_VENDOR`, or
+`ROBO_NIX_NVIDIA_DRIVER_LIB_DIR` only when the host uses a different layout.
 
 ## Example: CUDA extension build
 
@@ -211,6 +242,7 @@ Public environment knobs are intentionally small:
 | `ROBO_NIX_CUDA_ROOT` | Override the CUDA toolkit root exported by `cuda-toolkit`. |
 | `ROBO_NIX_NVIDIA_VK_ICD` | Override the Vulkan ICD path selected by `hostGraphics = "nvidia";`. |
 | `ROBO_NIX_NVIDIA_EGL_VENDOR` | Override the EGL vendor JSON path selected by `hostGraphics = "nvidia";`. |
+| `ROBO_NIX_NVIDIA_DRIVER_LIB_DIR` | Override the host NVIDIA userspace driver library directory selected by `hostGraphics = "nvidia";`. |
 | `ROBO_NIX_LOCK_TIMEOUT` | Seconds to wait for robo-owned `.robo-nix/*.lock` files. |
 | `ROBO_NIX_DEFAULT_SOURCE_URL` | Override the generated flake input URL for local development. |
 

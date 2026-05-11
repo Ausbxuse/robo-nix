@@ -407,6 +407,30 @@ dependencies = [
     }
 
     #[test]
+    fn first_bootstrap_infers_qt6_for_qt_bindings() {
+        let root = temp_project("qt6-inference");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join(".python-version"), "3.11\n").unwrap();
+        fs::write(
+            root.join("pyproject.toml"),
+            r#"[project]
+dependencies = [
+  "PySide6",
+]
+"#,
+        )
+        .unwrap();
+
+        prepare_project(&root).unwrap();
+        let robo_nix = fs::read_to_string(root.join("robo.nix")).unwrap();
+
+        assert!(robo_nix.contains("\"desktop-gl\" # inferred from pyproject.toml: pyside6"));
+        assert!(robo_nix.contains("\"qt6\" # inferred from pyproject.toml: pyside6"));
+
+        cleanup(root);
+    }
+
+    #[test]
     fn first_bootstrap_infers_linux_headers_for_evdev() {
         let root = temp_project("evdev-inference");
         fs::create_dir_all(&root).unwrap();

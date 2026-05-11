@@ -19,7 +19,8 @@ use bootstrap::{prepare_project, print_bootstrap_report};
 use error::{print_error, write_debug_log, AppError};
 use inference::dependency_evidence_from_pyproject;
 use nix_env::{
-    append_host_cuda_driver_bridge, apply_env, cache_runtime_environment, runtime_environment,
+    append_host_cuda_driver_bridge, append_host_nvidia_graphics_provider, apply_env,
+    cache_runtime_environment, runtime_environment,
 };
 use shell_launch::interactive_shell_launch;
 use shell_refresh::{runtime_input_state, runtime_input_state_for_env, set_active_shell_env};
@@ -196,7 +197,24 @@ fn run_nix_develop(command_args: Vec<OsString>, config: Config) -> Result<ExitCo
         }
     };
     let post_nix_state = runtime_input_state(&workspace);
-    cache_runtime_environment(&workspace, post_nix_state.key(), &runtime_env);
+    let graphics_report = append_host_nvidia_graphics_provider(&mut runtime_env, &workspace);
+    run_report
+        .decisions
+        .extend(graphics_report.decision_lines());
+    if let Some(warning) = graphics_report.warning() {
+        section(config, "attention");
+        attention(config, &warning);
+        detail(
+            config,
+            "review the selected NVIDIA manifests and ROBO_NIX_NVIDIA_DRIVER_LIB_DIR if this host uses an uncommon graphics provider layout.",
+        );
+        run_report.warnings.push(warning);
+    }
+    if config.debug {
+        for line in graphics_report.decision_lines() {
+            debug(config, &line);
+        }
+    }
     let cuda_report = append_host_cuda_driver_bridge(&mut runtime_env, &workspace);
     run_report.decisions.extend(cuda_report.decision_lines());
     if cuda_report.status == "needed-missing" {
@@ -214,6 +232,7 @@ fn run_nix_develop(command_args: Vec<OsString>, config: Config) -> Result<ExitCo
             debug(config, &line);
         }
     }
+    cache_runtime_environment(&workspace, post_nix_state.key(), &runtime_env);
     if let Some(components) = runtime_env_value(&runtime_env, "ROBO_NIX_COMPONENTS") {
         run_report.components = components
             .split(':')

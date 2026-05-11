@@ -17,7 +17,7 @@ features:
   - title: Start from an existing uv project
     details: Pin Python with `uv python pin`, run `robo shell`, then use `uv sync` inside the prepared runtime.
   - title: Get native libraries into Python
-    details: Add components such as `native-build`, `linux-headers`, `desktop-gl`, or `cuda-toolkit` in `robo.nix`.
+    details: Add components such as `native-build`, `linux-headers`, `desktop-gl`, `qt6`, or `cuda-toolkit` in `robo.nix`.
   - title: Fix missing shared libraries
     details: When an import fails on `libassimp.so` or another native library, use `robo search` to find Nix package candidates.
 ---

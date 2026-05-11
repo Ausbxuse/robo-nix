@@ -81,6 +81,8 @@ conditionals. Current known components are:
   `evdev`.
 - `desktop-gl`: desktop graphics, Vulkan loader, GLFW windowing, GLU, and
   legacy X libraries used by simulator stacks.
+- `qt6`: Qt6 base and Core5Compat build/runtime support for Qt CMake projects,
+  services, and viewers.
 - `cuda-toolkit`: Nix-owned CUDA compiler, headers, and CUDA runtime build
   surface.
 
@@ -140,8 +142,13 @@ graphics policy.
 Host graphics provider policy is still explicit. When users set
 `hostGraphics = "nvidia";`, the generated shell chooses from reviewed NVIDIA
 manifest paths for NixOS and common FHS distros, with
-`ROBO_NIX_NVIDIA_VK_ICD` and `ROBO_NIX_NVIDIA_EGL_VENDOR` as overrides. Keep
-that path list narrow; do not turn it into a general host driver scan.
+`ROBO_NIX_NVIDIA_VK_ICD` and `ROBO_NIX_NVIDIA_EGL_VENDOR` as overrides. The
+Rust launch path completes that explicit policy by generating a narrow
+robo-owned NVIDIA provider view for GLVND vendor libraries and NVIDIA EGL
+external platform configs. It also links NVIDIA GBM backends such as
+`nvidia-drm_gbm.so` when present; `ROBO_NIX_NVIDIA_DRIVER_LIB_DIR` handles
+uncommon library layouts. Keep these path lists narrow; do not turn them into a
+general host driver scan or a nixGL dependency.
 
 ## Search
 

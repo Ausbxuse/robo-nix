@@ -11,12 +11,14 @@ pub(crate) const KNOWN_COMPONENTS: &[&str] = &[
     "native-build",
     "linux-headers",
     "desktop-gl",
+    "qt6",
     "cuda-toolkit",
 ];
 const KNOWN_CAPABILITIES: &[&str] = &[
     "native-runtime",
     "linux-kernel-headers",
     "desktop-graphics",
+    "qt-runtime",
     "cuda-build",
 ];
 
