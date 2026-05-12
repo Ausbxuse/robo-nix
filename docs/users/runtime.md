@@ -133,6 +133,12 @@ simulator stacks.
 Use `ROBO_NIX_NVIDIA_VK_ICD`, `ROBO_NIX_NVIDIA_EGL_VENDOR`, or
 `ROBO_NIX_NVIDIA_DRIVER_LIB_DIR` only when the host uses a different layout.
 
+If a project already works correctly under a nixGL wrapper, set
+`hostGraphics = "nixgl";` instead. In that mode, `robo` keeps using the
+Nix-managed Python and runtime libraries from the project shell, then imports
+only graphics-related variables from `nixGL`, `nixGLNvidia`, `nixGLMesa`, or the
+wrapper path named by `ROBO_NIX_NIXGL`.
+
 ## Example: CUDA extension build
 
 Use `cuda-toolkit` when a Python package builds native CUDA extensions. The host
@@ -243,6 +249,7 @@ Public environment knobs are intentionally small:
 | `ROBO_NIX_NVIDIA_VK_ICD` | Override the Vulkan ICD path selected by `hostGraphics = "nvidia";`. |
 | `ROBO_NIX_NVIDIA_EGL_VENDOR` | Override the EGL vendor JSON path selected by `hostGraphics = "nvidia";`. |
 | `ROBO_NIX_NVIDIA_DRIVER_LIB_DIR` | Override the host NVIDIA userspace driver library directory selected by `hostGraphics = "nvidia";`. |
+| `ROBO_NIX_NIXGL` | Override the nixGL wrapper path selected by `hostGraphics = "nixgl";`. |
 | `ROBO_NIX_LOCK_TIMEOUT` | Seconds to wait for robo-owned `.robo-nix/*.lock` files. |
 | `ROBO_NIX_DEFAULT_SOURCE_URL` | Override the generated flake input URL for local development. |
 

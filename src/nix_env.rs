@@ -230,6 +230,12 @@ pub(crate) const ENV_VARS: &[EnvVarSpec] = &[
         description: "Override the host NVIDIA userspace driver library directory selected by hostGraphics = \"nvidia\".",
     },
     EnvVarSpec {
+        name: "ROBO_NIX_NIXGL",
+        visibility: EnvVarVisibility::Public,
+        affects_runtime_key: true,
+        description: "Override the nixGL wrapper path selected by hostGraphics = \"nixgl\".",
+    },
+    EnvVarSpec {
         name: "ROBO_NIX_HOST_GRAPHICS",
         visibility: EnvVarVisibility::Internal,
         affects_runtime_key: false,
@@ -258,6 +264,60 @@ pub(crate) const ENV_VARS: &[EnvVarSpec] = &[
         visibility: EnvVarVisibility::External,
         affects_runtime_key: true,
         description: "GBM backend search path inherited from the host session.",
+    },
+    EnvVarSpec {
+        name: "LIBGL_DRIVERS_PATH",
+        visibility: EnvVarVisibility::External,
+        affects_runtime_key: true,
+        description: "Mesa/OpenGL driver search path inherited from host graphics wrappers.",
+    },
+    EnvVarSpec {
+        name: "LIBVA_DRIVERS_PATH",
+        visibility: EnvVarVisibility::External,
+        affects_runtime_key: true,
+        description: "VA-API driver search path inherited from host graphics wrappers.",
+    },
+    EnvVarSpec {
+        name: "__EGL_VENDOR_LIBRARY_FILENAMES",
+        visibility: EnvVarVisibility::External,
+        affects_runtime_key: true,
+        description: "GLVND EGL vendor manifest path selected by graphics policy.",
+    },
+    EnvVarSpec {
+        name: "__GLX_VENDOR_LIBRARY_NAME",
+        visibility: EnvVarVisibility::External,
+        affects_runtime_key: true,
+        description: "GLVND GLX vendor name selected by graphics policy.",
+    },
+    EnvVarSpec {
+        name: "__NV_PRIME_RENDER_OFFLOAD",
+        visibility: EnvVarVisibility::External,
+        affects_runtime_key: true,
+        description: "NVIDIA PRIME render offload mode selected by graphics policy.",
+    },
+    EnvVarSpec {
+        name: "__VK_LAYER_NV_optimus",
+        visibility: EnvVarVisibility::External,
+        affects_runtime_key: true,
+        description: "NVIDIA Vulkan layer offload mode selected by graphics policy.",
+    },
+    EnvVarSpec {
+        name: "VK_ICD_FILENAMES",
+        visibility: EnvVarVisibility::External,
+        affects_runtime_key: true,
+        description: "Vulkan ICD manifests selected by graphics policy.",
+    },
+    EnvVarSpec {
+        name: "VK_DRIVER_FILES",
+        visibility: EnvVarVisibility::External,
+        affects_runtime_key: true,
+        description: "Vulkan driver manifests selected by graphics policy.",
+    },
+    EnvVarSpec {
+        name: "VK_LAYER_PATH",
+        visibility: EnvVarVisibility::External,
+        affects_runtime_key: true,
+        description: "Vulkan layer path selected by graphics policy.",
     },
     EnvVarSpec {
         name: "WORKSPACE_ROOT",
@@ -321,9 +381,12 @@ pub(crate) fn is_robo_managed_env(name: &str) -> bool {
             | "LD_LIBRARY_PATH"
             | "__EGL_EXTERNAL_PLATFORM_CONFIG_DIRS"
             | "GBM_BACKENDS_PATH"
+            | "LIBGL_DRIVERS_PATH"
+            | "LIBVA_DRIVERS_PATH"
             | "__EGL_VENDOR_LIBRARY_FILENAMES"
             | "VK_ICD_FILENAMES"
             | "VK_DRIVER_FILES"
+            | "VK_LAYER_PATH"
             | "__NV_PRIME_RENDER_OFFLOAD"
             | "__GLX_VENDOR_LIBRARY_NAME"
             | "__VK_LAYER_NV_optimus"

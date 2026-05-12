@@ -103,6 +103,9 @@ environment manager.
   The explicit `"nvidia"` policy may select from a short reviewed list of known
   NixOS and FHS distro manifest paths, with environment overrides for uncommon
   host layouts. Do not turn this into a broad host driver scan.
+- The explicit `"nixgl"` host graphics policy may import graphics variables from
+  a nixGL wrapper found on `PATH` or named by `ROBO_NIX_NIXGL`. Keep this as an
+  explicit escape hatch for host OpenGL dispatch; do not auto-select it.
 - Do not add generated-shell scans over host CUDA, NVIDIA, WSL, or distro
   driver directories. Host CUDA driver bridging is Rust-owned and may
   use the reviewed probe path: explicit `ROBO_NIX_LIBCUDA_PATH`,

@@ -1,0 +1,44 @@
+# Iteration 034 - Explicit nixGL Host Graphics Provider
+
+## Goal
+
+Add an explicit `hostGraphics = "nixgl"` policy for non-NixOS desktop graphics
+sessions where nixGL already supplies the correct host OpenGL environment.
+
+## Conflict Check
+
+- Host graphics provider selection must stay explicit manifest policy.
+- Keep Nix-managed desktop graphics separate from host NVIDIA driver policy.
+- Do not turn `desktop-gl` into a broad host driver scanner.
+- Existing `hostGraphics = "nvidia"` remains a curated robo-owned provider.
+
+No active review-ledger conflict blocks adding a separate explicit nixGL policy.
+
+## Failure Observed
+
+On the same Ubuntu host:
+
+- `hostGraphics = null` selected Mesa GLVND defaults and failed GLFW with
+  `GLX: No GLXFBConfigs returned`.
+- `hostGraphics = "nvidia"` selected robo's NVIDIA bridge and created an NVIDIA
+  GLX context, but the interactive window could remain transparent.
+- Running through nixGL was reported to make the application render correctly.
+
+The clean boundary is to let robo continue to own Python, native libraries, and
+runtime shell setup, while nixGL owns host OpenGL dispatch when explicitly
+selected.
+
+## Scope
+
+- Accept `hostGraphics = "nixgl"` in project manifests.
+- During shell setup, find `ROBO_NIX_NIXGL` or a `nixGL`/`nixGLNvidia`/
+  `nixGLMesa` executable on `PATH`.
+- Import only graphics-related variables from `nixGL env -0`.
+- Track nixGL-controlled graphics variables in active-shell refresh state.
+- Update the generated `robo.nix` comments.
+
+## Non-Goals
+
+- Do not auto-select nixGL.
+- Do not vendor nixGL into robo-nix.
+- Do not remove the curated `hostGraphics = "nvidia"` provider.

@@ -220,7 +220,7 @@
       };
 
       unknownComponents = lib.filter (component: !(builtins.hasAttr component componentPackages)) selectedComponents;
-      validHostGraphics = [null "nvidia"];
+      validHostGraphics = [null "nvidia" "nixgl"];
       hasComponent = component: builtins.elem component selectedComponents;
       componentPackageLists = map (component: builtins.getAttr component componentPackages) selectedComponents;
       componentRuntimeLibraryLists = map (component: builtins.getAttr component componentRuntimeLibraries) selectedComponents;
@@ -231,7 +231,7 @@
         if unknownComponents != []
         then throw "robo-nix: unknown components in robo.nix: ${lib.concatStringsSep ", " unknownComponents}"
         else if !(builtins.elem hostGraphics validHostGraphics)
-        then throw "robo-nix: hostGraphics in robo.nix must be null or \"nvidia\""
+        then throw "robo-nix: hostGraphics in robo.nix must be null, \"nvidia\", or \"nixgl\""
         else
           pkgs.mkShell {
             packages = (builtins.concatLists componentPackageLists) ++ extraPackages pkgs;
@@ -306,6 +306,34 @@
                 export __VK_LAYER_NV_optimus=NVIDIA_only
                 unset -f robo_nix_select_host_manifest
                 unset robo_nix_nvidia_vk_icd robo_nix_nvidia_egl_vendor
+              ''
+              + lib.optionalString (hostGraphics == "nixgl") ''
+
+                robo_nix_nixgl="''${ROBO_NIX_NIXGL:-}"
+                if [ -z "$robo_nix_nixgl" ]; then
+                  for robo_nix_nixgl_candidate in nixGL nixGLNvidia nixGLMesa; do
+                    if command -v "$robo_nix_nixgl_candidate" >/dev/null 2>&1; then
+                      robo_nix_nixgl="$(command -v "$robo_nix_nixgl_candidate")"
+                      break
+                    fi
+                  done
+                fi
+
+                if [ -z "$robo_nix_nixgl" ] || [ ! -x "$robo_nix_nixgl" ]; then
+                  printf '%s\n' "robo-nix: hostGraphics = \"nixgl\" requires nixGL, nixGLNvidia, or nixGLMesa on PATH." >&2
+                  printf '%s\n' "robo-nix: set ROBO_NIX_NIXGL to the nixGL wrapper path for uncommon layouts." >&2
+                  return 1 2>/dev/null || exit 1
+                fi
+
+                while IFS= read -r -d "" robo_nix_nixgl_entry; do
+                  case "$robo_nix_nixgl_entry" in
+                    LD_LIBRARY_PATH=*|LIBGL_DRIVERS_PATH=*|LIBVA_DRIVERS_PATH=*|GBM_BACKENDS_PATH=*|__EGL_VENDOR_LIBRARY_FILENAMES=*|__GLX_VENDOR_LIBRARY_NAME=*|__NV_PRIME_RENDER_OFFLOAD=*|__VK_LAYER_NV_optimus=*|VK_ICD_FILENAMES=*|VK_DRIVER_FILES=*|VK_LAYER_PATH=*)
+                      export "$robo_nix_nixgl_entry"
+                      ;;
+                  esac
+                done < <("$robo_nix_nixgl" env -0)
+
+                unset robo_nix_nixgl robo_nix_nixgl_candidate robo_nix_nixgl_entry
               ''
               + lib.optionalString (hasComponent "linux-headers") ''
 
