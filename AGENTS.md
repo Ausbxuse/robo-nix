@@ -128,7 +128,7 @@ environment manager.
   `libxkbcommon` for Wayland keyboard support.
 - `desktop-gl` must expose generic Linux graphics/display client libraries
   needed by EGL/GLX platform loaders, including `libdrm.so.2`, `libgbm.so.1`,
-  and `libxcb.so.1`.
+  `libxcb.so.1`, and `libxshmfence.so.1`.
 - `desktop-gl` must expose common legacy X/GL runtime libraries used by large
   simulator stacks, including `libXt.so.6` and `libGLU.so.1`.
 - CLI human output should go through the local styled output helpers so labels,

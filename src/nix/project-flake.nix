@@ -192,6 +192,7 @@
           pkgs.libxkbcommon
           pkgs.libxrandr
           pkgs.libxrender
+          pkgs.xorg.libxshmfence
           pkgs.libXt
           pkgs.libxtst
         ];

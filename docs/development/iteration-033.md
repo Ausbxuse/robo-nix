@@ -65,6 +65,27 @@ plugins loaded. The target GLFW viewer still needed its project-specific
 `PYGLFW_LIBRARY_VARIANT=x11` policy because the Wayland PyGLFW path continued to
 fail EGL display creation, while the X11 PyGLFW path rendered on the RTX 5090.
 
+On another user account on the same host, `hostGraphics = "nvidia"` produced a
+valid NVIDIA GLX context and MuJoCo offscreen readback, but the interactive
+MuJoCo window was transparent. The visible GLFW probe used a 32-bit X visual:
+
+```text
+Depth: 32
+Visual Class: TrueColor
+```
+
+The same application reportedly rendered when launched through `nixGL`, but a
+first smoke comparison only tested `nixGL robo run ...`, where `robo` rebuilt
+the runtime environment and put its own host graphics bridge before the nixGL
+library additions.
+
+A focused presentation smoke test then showed that GLFW created an NVIDIA GLX
+context and GL readback returned the expected rendered pixel, but the X client
+window capture did not contain the rendered stripes. That narrows the failure to
+the GLX present path rather than MuJoCo, GLFW initialization, or alpha visuals.
+The host exposes `libxshmfence.so.1`, while `desktop-gl` exposed XCB/DRI3
+libraries without the shared-memory fence library used by DRI3/Present.
+
 ## Scope
 
 - Compute prompt-refresh active shell state from the refreshed environment after
@@ -72,7 +93,8 @@ fail EGL display creation, while the X11 PyGLFW path rendered on the RTX 5090.
 - Inherit terminal identity variables from the active process for `robo shell`
   and prompt refresh, and keep them out of the runtime cache.
 - Add generic `desktop-gl` runtime libraries required by NVIDIA EGL/GLX platform
-  loaders: `libdrm`, `libgbm`, and `libxcb`.
+  loaders and presentation paths: `libdrm`, `libgbm`, `libxcb`, and
+  `libxshmfence`.
 - Add a unit test that managed runtime-input environment values are recorded in
   the exported active shell state.
 
