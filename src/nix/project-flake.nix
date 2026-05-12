@@ -261,7 +261,7 @@
                 if [ "$robo_nix_host_graphics_policy" = "auto" ]; then
                   if [ -d /run/opengl-driver/lib ]; then
                     robo_nix_host_graphics_policy=nixos
-                  elif command -v nvidia-smi >/dev/null 2>&1 || [ -r /proc/driver/nvidia/version ]; then
+                  elif command -v nvidia-smi >/dev/null 2>&1 || [ -x /usr/bin/nvidia-smi ] || [ -x /run/current-system/sw/bin/nvidia-smi ] || [ -r /proc/driver/nvidia/version ]; then
                     robo_nix_host_graphics_policy=nixgl-nvidia
                   else
                     robo_nix_host_graphics_policy=nixgl
@@ -312,8 +312,15 @@
                   fi
                   if [ -z "$robo_nix_nixgl" ] && [ "$robo_nix_host_graphics_policy" = "nixgl-nvidia" ] && [ -n "${nixglSource}" ]; then
                     robo_nix_nvidia_version="''${ROBO_NIX_NVIDIA_VERSION:-}"
-                    if [ -z "$robo_nix_nvidia_version" ] && command -v nvidia-smi >/dev/null 2>&1; then
-                      robo_nix_nvidia_version="$(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>/dev/null | sed -n '1s/[[:space:]]//gp')"
+                    if [ -z "$robo_nix_nvidia_version" ]; then
+                      for robo_nix_nvidia_smi in "$(command -v nvidia-smi 2>/dev/null || true)" /usr/bin/nvidia-smi /run/current-system/sw/bin/nvidia-smi; do
+                        if [ -n "$robo_nix_nvidia_smi" ] && [ -x "$robo_nix_nvidia_smi" ]; then
+                          robo_nix_nvidia_version="$("$robo_nix_nvidia_smi" --query-gpu=driver_version --format=csv,noheader 2>/dev/null | sed -n '1p' | tr -d '[:space:]')"
+                          if [ -n "$robo_nix_nvidia_version" ]; then
+                            break
+                          fi
+                        fi
+                      done
                     fi
                     if [ -z "$robo_nix_nvidia_version" ] && [ -r /proc/driver/nvidia/version ]; then
                       robo_nix_nvidia_version="$(sed -n 's/.*Module  *\([0-9.][0-9.]*\).*/\1/p' /proc/driver/nvidia/version | head -n1)"
@@ -390,7 +397,7 @@
                   fi
 
                   unset robo_nix_nixgl robo_nix_nixgl_candidate robo_nix_nixgl_entry
-                  unset robo_nix_nvidia_version robo_nix_nixgl_store
+                  unset robo_nix_nvidia_version robo_nix_nvidia_smi robo_nix_nixgl_store
                   unset robo_nix_nixgl_ld_library_path robo_nix_runtime_ld_library_path
                 fi
 
