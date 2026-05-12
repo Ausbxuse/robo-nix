@@ -117,14 +117,13 @@ apply; it is not a NVIDIA provider bridge.
 If a project already works correctly under a nixGL wrapper, set
 `hostGraphics = "nixgl";` instead. In that mode, `robo` keeps using the
 Nix-managed Python and runtime libraries from the project shell, then imports
-only graphics-related variables from `nixGLNvidia`, `nixGL`, `nixGLMesa`, or the
-wrapper path named by `ROBO_NIX_NIXGL`. `robo-nix` provides the nixGL wrappers
-through its own flake inputs, so users do not need to install nixGL in their
-profile for normal use. Use `hostGraphics = "nixgl-nvidia";` only when the project
-must use the NVIDIA nixGL wrapper and should fail rather than falling back to a
-Mesa wrapper. `robo` detects the host NVIDIA driver version with `nvidia-smi` or
-`/proc/driver/nvidia/version`; set `ROBO_NIX_NVIDIA_VERSION` only when those
-host probes are unavailable.
+only graphics-related variables from the selected nixGL wrapper. `robo-nix`
+provides nixGL through its own flake inputs, so users do not need to install
+nixGL in their profile for normal use. Use `hostGraphics = "nixgl-nvidia";`
+only when the project must use the NVIDIA nixGL wrapper and should fail rather
+than falling back to a Mesa wrapper. `robo` detects the host NVIDIA driver
+version with `nvidia-smi` or `/proc/driver/nvidia/version`; set
+`ROBO_NIX_NVIDIA_VERSION` only when those host probes are unavailable.
 
 ## Example: CUDA extension build
 
@@ -233,7 +232,7 @@ Public environment knobs are intentionally small:
 | `ROBO_NIX_LIBCUDA_PATH` | Explicit host `libcuda.so.1` file or containing directory. |
 | `ROBO_NIX_DISABLE_HOST_CUDA_AUTO` | Disable automatic host CUDA bridge probing. |
 | `ROBO_NIX_CUDA_ROOT` | Override the CUDA toolkit root exported by `cuda-toolkit`. |
-| `ROBO_NIX_NIXGL` | Override the nixGL wrapper path selected by `hostGraphics = "nixgl";` or `hostGraphics = "nixgl-nvidia";`. |
+| `ROBO_NIX_NIXGL` | Override the nixGL wrapper path selected by `hostGraphics = "auto";`, `"nixgl";`, or `"nixgl-nvidia";`. |
 | `ROBO_NIX_NVIDIA_VERSION` | Override the detected host NVIDIA driver version used by `hostGraphics = "nixgl-nvidia";`. |
 | `ROBO_NIX_LOCK_TIMEOUT` | Seconds to wait for robo-owned `.robo-nix/*.lock` files. |
 | `ROBO_NIX_DEFAULT_SOURCE_URL` | Override the generated flake input URL for local development. |

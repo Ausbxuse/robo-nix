@@ -2,10 +2,11 @@
 
 ## Concern
 
-On the Alienware Ubuntu host, `hostGraphics = "nixgl-nvidia"` created an
-NVIDIA GL context but MuJoCo's visible window stayed transparent. The generic
-nixGL path rendered correctly, though slower. Selecting NVIDIA automatically on
-any host with `nvidia-smi` therefore made the default less robust.
+On a non-NixOS Linux workstation, `hostGraphics = "nixgl-nvidia"` created an
+NVIDIA GL context but a simulator's visible window stayed transparent. The
+generic nixGL path rendered correctly, though slower. Selecting NVIDIA
+automatically on any host with `nvidia-smi` therefore made the default less
+robust.
 
 ## Decision
 

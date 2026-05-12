@@ -34,7 +34,7 @@ configure/build path, but the manifest was not user-friendly.
 - Wire `qt6` to Qt6 base and Qt6 Core5Compat build/runtime inputs.
 - Document `qt6` as the user-facing way to request Qt CMake files, Qt tools,
   plugins, and runtime libraries.
-- Update the dexmate project manifest to use `"qt6"` instead of raw Nixpkgs
+- Update the downstream project manifest to use `"qt6"` instead of raw Nixpkgs
   package attributes.
 
 ## Non-Goals
@@ -50,5 +50,5 @@ configure/build path, but the manifest was not user-friendly.
 - [x] `nix-instantiate --parse src/nix/project-flake.nix`
 - [x] Render a temporary project with `qt6` and verify CMake finds Qt6 Core,
   Network, and Core5Compat.
-- [x] Verify XRoboToolkit PC service configure/build with a dexmate manifest
+- [x] Verify XRoboToolkit PC service configure/build with a downstream manifest
   that uses `"qt6"`.

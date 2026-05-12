@@ -227,14 +227,8 @@
       componentRuntimeLibraryLists = map (component: builtins.getAttr component componentRuntimeLibraries) selectedComponents;
       runtimeLibraries = (builtins.concatLists componentRuntimeLibraryLists) ++ extraRuntimeLibraries pkgs;
       runtimeLibraryPath = lib.makeLibraryPath runtimeLibraries;
-      nixglPackages =
-        if nixgl == null
-        then {}
-        else nixgl.packages.${system};
-      nixglSource =
-        if nixgl == null
-        then ""
-        else nixgl.outPath;
+      nixglPackages = if nixgl == null then {} else nixgl.packages.${system};
+      nixglSource = if nixgl == null then "" else nixgl.outPath;
       bundledNixglWrapper =
         if (hostGraphics == "auto" || hostGraphics == "nixgl") && builtins.hasAttr "nixGLDefault" nixglPackages
         then "${nixglPackages.nixGLDefault}/bin/nixGL"
@@ -339,15 +333,6 @@
                       fi
                     done
                   fi
-                  if [ -z "$robo_nix_nixgl" ]; then
-                    for robo_nix_nixgl_candidate in $(if [ "$robo_nix_host_graphics_policy" = "nixgl-nvidia" ]; then printf '%s\n' nixGLNvidia; else printf '%s\n' nixGLNvidia nixGL nixGLMesa; fi); do
-                      if command -v "$robo_nix_nixgl_candidate" >/dev/null 2>&1; then
-                        robo_nix_nixgl="$(command -v "$robo_nix_nixgl_candidate")"
-                        break
-                      fi
-                    done
-                  fi
-
                   if [ -z "$robo_nix_nixgl" ] || [ ! -x "$robo_nix_nixgl" ]; then
                     printf '%s\n' "robo-nix: hostGraphics resolved to \"$robo_nix_host_graphics_policy\" but no matching nixGL wrapper is available." >&2
                     printf '%s\n' "robo-nix: set ROBO_NIX_NIXGL to the nixGL wrapper path for uncommon layouts." >&2
@@ -387,12 +372,6 @@
                     -u VK_DRIVER_FILES \
                     -u VK_LAYER_PATH \
                     "$robo_nix_nixgl" env -0)
-
-                  if [ "$robo_nix_host_graphics_policy" = "nixgl-nvidia" ]; then
-                    export __GLX_VENDOR_LIBRARY_NAME=nvidia
-                    export __NV_PRIME_RENDER_OFFLOAD="''${__NV_PRIME_RENDER_OFFLOAD:-1}"
-                    export __VK_LAYER_NV_optimus="''${__VK_LAYER_NV_optimus:-NVIDIA_only}"
-                  fi
 
                   unset robo_nix_nixgl robo_nix_nixgl_candidate robo_nix_nixgl_entry
                   unset robo_nix_nvidia_version robo_nix_nvidia_smi robo_nix_nixgl_store

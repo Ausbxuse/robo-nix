@@ -105,6 +105,8 @@ environment manager.
   use `ROBO_NIX_NVIDIA_VERSION` when host driver version detection is
   unavailable. `hostGraphics = "nvidia"` is a compatibility alias for that
   policy.
+- Let nixGL wrappers own graphics-provider variables. Do not add robo-owned
+  PRIME render-offload defaults on top of nixGL output.
 - Do not maintain a second Rust-owned GLX/EGL/GBM provider bridge now that
   host graphics is delegated to nixGL or `/run/opengl-driver`.
 - Do not add generated-shell scans over host CUDA, WSL, or distro driver

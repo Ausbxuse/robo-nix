@@ -178,7 +178,7 @@ pub(crate) const ENV_VARS: &[EnvVarSpec] = &[
         name: "ROBO_NIX_NIXGL",
         visibility: EnvVarVisibility::Public,
         affects_runtime_key: true,
-        description: "Override the nixGL wrapper path selected by hostGraphics = \"nixgl\" or \"nixgl-nvidia\".",
+        description: "Override the nixGL wrapper path selected by hostGraphics.",
     },
     EnvVarSpec {
         name: "ROBO_NIX_NVIDIA_VERSION",
@@ -232,13 +232,13 @@ pub(crate) const ENV_VARS: &[EnvVarSpec] = &[
         name: "__NV_PRIME_RENDER_OFFLOAD",
         visibility: EnvVarVisibility::External,
         affects_runtime_key: true,
-        description: "NVIDIA PRIME render offload mode selected by graphics policy.",
+        description: "NVIDIA PRIME render offload mode imported from the selected graphics wrapper.",
     },
     EnvVarSpec {
         name: "__VK_LAYER_NV_optimus",
         visibility: EnvVarVisibility::External,
         affects_runtime_key: true,
-        description: "NVIDIA Vulkan layer offload mode selected by graphics policy.",
+        description: "NVIDIA Vulkan layer offload mode imported from the selected graphics wrapper.",
     },
     EnvVarSpec {
         name: "VK_ICD_FILENAMES",

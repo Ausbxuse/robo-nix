@@ -144,7 +144,9 @@ Host graphics provider policy is Nix-owned. The generated shell defaults to
 the generic robo-provided nixGL wrapper on other Linux hosts. `hostGraphics =
 "nixgl-nvidia";` requires the NVIDIA nixGL wrapper and may use
 `ROBO_NIX_NVIDIA_VERSION` when host driver version detection is unavailable.
-Rust must not maintain a second host GLX/EGL/GBM provider bridge.
+Robo imports graphics variables from nixGL without adding its own PRIME
+render-offload defaults. Rust must not maintain a second host GLX/EGL/GBM
+provider bridge.
 
 ## Search
 
