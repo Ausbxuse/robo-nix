@@ -101,7 +101,7 @@ export default {
   title: 'robo-nix',
   description: 'Robot-learning runtime for uv projects',
   base: docsBase,
-  srcExclude: ['development/**'],
+  srcExclude: ['changelog/**'],
   cleanUrls: true,
   head: [
     ['link', { rel: 'icon', type: 'image/svg+xml', href: `${docsBase}favicon.svg` }],

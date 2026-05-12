@@ -29,7 +29,8 @@
     ignoredSourcePath = path: let
       relativePath = sourceRelativePath path;
     in
-      relativePath == "target"
+      relativePath
+      == "target"
       || lib.hasPrefix "target/" relativePath
       || relativePath == ".robo-nix"
       || lib.hasPrefix ".robo-nix/" relativePath

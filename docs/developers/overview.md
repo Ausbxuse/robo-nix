@@ -182,19 +182,19 @@ verifying referenced `/nix/store` paths still exist. Active shell fingerprints
 are computed from the final launched environment so prompt refresh does not
 immediately re-run after host CUDA or library path preparation.
 
-## Iterations
+## Changelog
 
-Each iteration should:
+Each changelog-backed change should:
 
 - Start from the review ledger.
 - Call out conflicts before coding.
 - Keep diffs narrow.
 - Update `AGENTS.md` only for durable rules.
-- Add focused verification notes to `docs/development/iteration-*.md`.
+- Add focused verification notes to `docs/changelog/YYYY-MM-DD-short-title.md`.
 
-The `docs/development/` ledger is intentionally excluded from the public
+The `docs/changelog/` ledger is intentionally excluded from the public
 VitePress build. Keep durable user and developer guidance in the user/developer
-pages instead of relying on iteration history.
+pages instead of relying on internal changelog history.
 
 ## Verification
 

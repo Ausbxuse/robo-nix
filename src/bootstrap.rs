@@ -8,7 +8,7 @@ use crate::error::AppError;
 use crate::inference::{
     infer_initial_runtime, PyprojectStatus, RuntimeInference, KNOWN_COMPONENTS,
 };
-use crate::nix_env::with_project_lock;
+use crate::project_lock::with_project_lock;
 use crate::ui::{attention, detail, row, section, success, Config};
 
 const PROJECT_FLAKE_TEMPLATE: &str = include_str!("templates/project/flake.nix");

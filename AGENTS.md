@@ -64,16 +64,16 @@ environment manager.
 - Installer docs and scripts must end with the current `robo shell` workflow.
   Do not leave stale installer text pointing users at removed commands.
 
-## Iteration Rules
+## Changelog Rules
 
-- Keep each iteration small enough to review line by line.
+- Keep each changelog-backed change small enough to review line by line.
 - For concrete project failures with logs or a known command, reproduce the
   failure before coding whenever practical. Record the failing command and key
-  error in the iteration doc before or alongside the fix.
-- Record review concerns in `docs/development/iteration-*.md` before turning
-  them into code.
+  error in the changelog entry before or alongside the fix.
+- Record review concerns in `docs/changelog/YYYY-MM-DD-short-title.md` before
+  turning them into code.
 - Promote only durable operating rules into this file.
-- Before starting an implementation iteration, check for conflicts in the review
+- Before starting an implementation pass, check for conflicts in the review
   ledger and call them out.
 
 ## Editing Rules

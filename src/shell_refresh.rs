@@ -8,9 +8,10 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Output};
 
+use crate::env_vars::{is_robo_managed_env, runtime_key_env_names};
+use crate::host_cuda::append_host_cuda_driver_bridge;
 use crate::nix_env::{
-    add_env_capture_args, append_host_cuda_driver_bridge, inherit_terminal_environment,
-    is_robo_managed_env, missing_store_roots, parse_env_zero, runtime_key_env_names,
+    add_env_capture_args, inherit_terminal_environment, missing_store_roots, parse_env_zero,
 };
 use crate::ui::{error, hint, output_with_tree, row_err, status, Config};
 

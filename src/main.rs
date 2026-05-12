@@ -7,9 +7,12 @@ use std::process::{Command, ExitCode, ExitStatus, Output};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 mod bootstrap;
+mod env_vars;
 mod error;
+mod host_cuda;
 mod inference;
 mod nix_env;
+mod project_lock;
 mod search;
 mod shell_launch;
 mod shell_refresh;
@@ -17,10 +20,9 @@ mod ui;
 
 use bootstrap::{prepare_project, print_bootstrap_report};
 use error::{print_error, write_debug_log, AppError};
+use host_cuda::append_host_cuda_driver_bridge;
 use inference::dependency_evidence_from_pyproject;
-use nix_env::{
-    append_host_cuda_driver_bridge, apply_env, cache_runtime_environment, runtime_environment,
-};
+use nix_env::{apply_env, cache_runtime_environment, runtime_environment};
 use shell_launch::interactive_shell_launch;
 use shell_refresh::{runtime_input_state, runtime_input_state_for_env, set_active_shell_env};
 use ui::{attention, debug, detail, help_row, list_item, section, status, Config};
