@@ -1,6 +1,7 @@
 {
   nixpkgs,
   nixpkgs-python,
+  nixgl ? null,
 }: let
   systems = ["x86_64-linux" "aarch64-linux"];
 
@@ -226,6 +227,16 @@
       componentRuntimeLibraryLists = map (component: builtins.getAttr component componentRuntimeLibraries) selectedComponents;
       runtimeLibraries = (builtins.concatLists componentRuntimeLibraryLists) ++ extraRuntimeLibraries pkgs;
       runtimeLibraryPath = lib.makeLibraryPath runtimeLibraries;
+      nixglPackages =
+        if nixgl == null
+        then {}
+        else nixgl.packages.${system};
+      bundledNixglWrapper =
+        if hostGraphics == "nixgl-nvidia" && builtins.hasAttr "nixGLNvidia" nixglPackages
+        then "${nixglPackages.nixGLNvidia}/bin/nixGLNvidia"
+        else if hostGraphics == "nixgl" && builtins.hasAttr "nixGLDefault" nixglPackages
+        then "${nixglPackages.nixGLDefault}/bin/nixGL"
+        else "";
     in {
       default =
         if unknownComponents != []
@@ -310,6 +321,9 @@
               + lib.optionalString (hostGraphics == "nixgl" || hostGraphics == "nixgl-nvidia") ''
 
                 robo_nix_nixgl="''${ROBO_NIX_NIXGL:-}"
+                if [ -z "$robo_nix_nixgl" ] && [ -n "${bundledNixglWrapper}" ] && [ -x "${bundledNixglWrapper}" ]; then
+                  robo_nix_nixgl="${bundledNixglWrapper}"
+                fi
                 if [ -z "$robo_nix_nixgl" ]; then
                   for robo_nix_nixgl_candidate in ${if hostGraphics == "nixgl-nvidia" then "nixGLNvidia" else "nixGLNvidia nixGL nixGLMesa"}; do
                     if command -v "$robo_nix_nixgl_candidate" >/dev/null 2>&1; then

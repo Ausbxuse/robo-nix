@@ -7,12 +7,17 @@
       url = "github:cachix/nixpkgs-python";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    nixgl = {
+      url = "github:nix-community/nixGL";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs = {
     self,
     nixpkgs,
     nixpkgs-python,
+    nixgl,
     ...
   }: let
     lib = nixpkgs.lib;
@@ -39,7 +44,7 @@
       filter = path: _type: !(ignoredSourcePath path);
     };
     projectLib = import ./src/nix/project-flake.nix {
-      inherit nixpkgs nixpkgs-python;
+      inherit nixpkgs nixpkgs-python nixgl;
     };
   in {
     lib = {

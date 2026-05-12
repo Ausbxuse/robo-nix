@@ -144,6 +144,7 @@ fn refreshed_shell_env(
     command
         .current_dir(workspace)
         .arg("develop")
+        .arg("--impure")
         .arg("--accept-flake-config")
         .arg("--command");
     add_env_capture_args(&mut command);

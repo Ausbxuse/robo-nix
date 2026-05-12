@@ -413,6 +413,7 @@ pub(crate) fn runtime_environment(
     let mut command = Command::new("nix");
     command
         .arg("develop")
+        .arg("--impure")
         .arg("--accept-flake-config")
         .arg("--command")
         .arg("sh")

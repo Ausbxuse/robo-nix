@@ -137,9 +137,11 @@ If a project already works correctly under a nixGL wrapper, set
 `hostGraphics = "nixgl";` instead. In that mode, `robo` keeps using the
 Nix-managed Python and runtime libraries from the project shell, then imports
 only graphics-related variables from `nixGLNvidia`, `nixGL`, `nixGLMesa`, or the
-wrapper path named by `ROBO_NIX_NIXGL`. Use `hostGraphics = "nixgl-nvidia";`
-when the project must use the NVIDIA nixGL wrapper and should fail rather than
-falling back to a Mesa wrapper.
+wrapper path named by `ROBO_NIX_NIXGL`. `robo-nix` provides the nixGL wrappers
+through its own flake inputs, so users do not need to install nixGL in their
+profile for normal use. Use `hostGraphics = "nixgl-nvidia";` when the project
+must use the NVIDIA nixGL wrapper and should fail rather than falling back to a
+Mesa wrapper.
 
 ## Example: CUDA extension build
 
