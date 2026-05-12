@@ -298,7 +298,7 @@ mod tests {
             .contains("\"python-uv\""));
         assert!(fs::read_to_string(root.join("robo.nix"))
             .unwrap()
-            .contains("hostGraphics = null;"));
+            .contains("hostGraphics = \"auto\";"));
 
         cleanup(root);
     }

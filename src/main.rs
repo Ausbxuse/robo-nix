@@ -19,8 +19,7 @@ use bootstrap::{prepare_project, print_bootstrap_report};
 use error::{print_error, write_debug_log, AppError};
 use inference::dependency_evidence_from_pyproject;
 use nix_env::{
-    append_host_cuda_driver_bridge, append_host_nvidia_graphics_provider, apply_env,
-    cache_runtime_environment, runtime_environment,
+    append_host_cuda_driver_bridge, apply_env, cache_runtime_environment, runtime_environment,
 };
 use shell_launch::interactive_shell_launch;
 use shell_refresh::{runtime_input_state, runtime_input_state_for_env, set_active_shell_env};
@@ -197,24 +196,6 @@ fn run_nix_develop(command_args: Vec<OsString>, config: Config) -> Result<ExitCo
         }
     };
     let post_nix_state = runtime_input_state(&workspace);
-    let graphics_report = append_host_nvidia_graphics_provider(&mut runtime_env, &workspace);
-    run_report
-        .decisions
-        .extend(graphics_report.decision_lines());
-    if let Some(warning) = graphics_report.warning() {
-        section(config, "attention");
-        attention(config, &warning);
-        detail(
-            config,
-            "review the selected NVIDIA manifests and ROBO_NIX_NVIDIA_DRIVER_LIB_DIR if this host uses an uncommon graphics provider layout.",
-        );
-        run_report.warnings.push(warning);
-    }
-    if config.debug {
-        for line in graphics_report.decision_lines() {
-            debug(config, &line);
-        }
-    }
     let cuda_report = append_host_cuda_driver_bridge(&mut runtime_env, &workspace);
     run_report.decisions.extend(cuda_report.decision_lines());
     if cuda_report.status == "needed-missing" {
@@ -485,7 +466,10 @@ fn host_graphics_warning(
         return None;
     }
 
-    if runtime_env_value(envs, "ROBO_NIX_HOST_GRAPHICS") == Some("nvidia") {
+    if matches!(
+        runtime_env_value(envs, "ROBO_NIX_HOST_GRAPHICS"),
+        Some("nvidia" | "nixgl-nvidia")
+    ) {
         return None;
     }
 
@@ -506,8 +490,8 @@ fn host_graphics_warning(
     }
 
     Some(HostGraphicsWarning {
-        summary: "Isaac Sim can see host CUDA, but no NVIDIA host graphics policy is selected",
-        detail: "add `hostGraphics = \"nvidia\";` to `robo.nix` on Linux hosts that need NVIDIA Vulkan/EGL rendering.",
+        summary: "Isaac Sim can see host CUDA, but no NVIDIA host graphics provider is selected",
+        detail: "use `hostGraphics = \"nixgl-nvidia\";` on non-NixOS Linux hosts that need NVIDIA Vulkan/EGL rendering.",
     })
 }
 
@@ -676,7 +660,7 @@ mod tests {
 
         let warning = host_graphics_warning(&dependencies, &env).unwrap();
 
-        assert!(warning.detail.contains("hostGraphics = \"nvidia\""));
+        assert!(warning.detail.contains("hostGraphics = \"nixgl-nvidia\""));
     }
 
     #[test]
@@ -687,7 +671,10 @@ mod tests {
                 "ROBO_NIX_LIBCUDA_PATH".to_string(),
                 "/run/opengl-driver/lib/libcuda.so.1".to_string(),
             ),
-            ("ROBO_NIX_HOST_GRAPHICS".to_string(), "nvidia".to_string()),
+            (
+                "ROBO_NIX_HOST_GRAPHICS".to_string(),
+                "nixgl-nvidia".to_string(),
+            ),
         ];
 
         assert!(host_graphics_warning(&dependencies, &env).is_none());

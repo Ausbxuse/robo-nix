@@ -38,7 +38,7 @@
       selectedComponents = spec.components or [];
       extraPackages = spec.extraPackages or (_: []);
       extraRuntimeLibraries = spec.extraRuntimeLibraries or (_: []);
-      hostGraphics = spec.hostGraphics or null;
+      hostGraphics = spec.hostGraphics or "auto";
       ccRuntimeLib = lib.getLib pkgs.stdenv.cc.cc;
       libcDev = pkgs.stdenv.cc.libc_dev;
       legacyCryptRuntimeLib = pkgs.libxcrypt-legacy;
@@ -221,7 +221,7 @@
       };
 
       unknownComponents = lib.filter (component: !(builtins.hasAttr component componentPackages)) selectedComponents;
-      validHostGraphics = [null "nvidia" "nixgl" "nixgl-nvidia"];
+      validHostGraphics = [null "auto" "nvidia" "nixgl" "nixgl-nvidia"];
       hasComponent = component: builtins.elem component selectedComponents;
       componentPackageLists = map (component: builtins.getAttr component componentPackages) selectedComponents;
       componentRuntimeLibraryLists = map (component: builtins.getAttr component componentRuntimeLibraries) selectedComponents;
@@ -231,10 +231,12 @@
         if nixgl == null
         then {}
         else nixgl.packages.${system};
+      nixglSource =
+        if nixgl == null
+        then ""
+        else nixgl.outPath;
       bundledNixglWrapper =
-        if hostGraphics == "nixgl-nvidia" && builtins.hasAttr "nixGLNvidia" nixglPackages
-        then "${nixglPackages.nixGLNvidia}/bin/nixGLNvidia"
-        else if hostGraphics == "nixgl" && builtins.hasAttr "nixGLDefault" nixglPackages
+        if (hostGraphics == "auto" || hostGraphics == "nixgl") && builtins.hasAttr "nixGLDefault" nixglPackages
         then "${nixglPackages.nixGLDefault}/bin/nixGL"
         else "";
     in {
@@ -242,7 +244,7 @@
         if unknownComponents != []
         then throw "robo-nix: unknown components in robo.nix: ${lib.concatStringsSep ", " unknownComponents}"
         else if !(builtins.elem hostGraphics validHostGraphics)
-        then throw "robo-nix: hostGraphics in robo.nix must be null, \"nvidia\", \"nixgl\", or \"nixgl-nvidia\""
+        then throw "robo-nix: hostGraphics in robo.nix must be null, \"auto\", \"nvidia\", \"nixgl\", or \"nixgl-nvidia\""
         else
           pkgs.mkShell {
             packages = (builtins.concatLists componentPackageLists) ++ extraPackages pkgs;
@@ -255,7 +257,19 @@
                 export UV_PROJECT_ENVIRONMENT="''${UV_PROJECT_ENVIRONMENT:-$PWD/.venv}"
                 export UV_CACHE_DIR="''${UV_CACHE_DIR:-$PWD/.robo-nix/uv-cache}"
                 export ROBO_NIX_COMPONENTS="${lib.concatStringsSep ":" selectedComponents}"
-                export ROBO_NIX_HOST_GRAPHICS="${if hostGraphics == null then "none" else hostGraphics}"
+                robo_nix_host_graphics_policy="${if hostGraphics == null then "none" else hostGraphics}"
+                if [ "$robo_nix_host_graphics_policy" = "auto" ]; then
+                  if [ -d /run/opengl-driver/lib ]; then
+                    robo_nix_host_graphics_policy=nixos
+                  elif command -v nvidia-smi >/dev/null 2>&1 || [ -r /proc/driver/nvidia/version ]; then
+                    robo_nix_host_graphics_policy=nixgl-nvidia
+                  else
+                    robo_nix_host_graphics_policy=nixgl
+                  fi
+                elif [ "$robo_nix_host_graphics_policy" = "nvidia" ]; then
+                  robo_nix_host_graphics_policy=nixgl-nvidia
+                fi
+                export ROBO_NIX_HOST_GRAPHICS="$robo_nix_host_graphics_policy"
                 unset PYTHONHOME
                 unset PYTHONPATH
 
@@ -282,99 +296,105 @@
 
                 export __EGL_VENDOR_LIBRARY_FILENAMES="''${__EGL_VENDOR_LIBRARY_FILENAMES:-${pkgs.mesa}/share/glvnd/egl_vendor.d/50_mesa.json}"
               ''
-              + lib.optionalString (hostGraphics == "nvidia") ''
+              + lib.optionalString (hostGraphics != null) ''
 
-                robo_nix_select_host_manifest() {
-                  local override="$1"
-                  shift
-                  if [ -n "$override" ]; then
-                    printf '%s\n' "$override"
-                    return
+                if [ "$robo_nix_host_graphics_policy" = "nixos" ] && [ -d /run/opengl-driver/lib ]; then
+                  case ":''${LD_LIBRARY_PATH:-}:" in
+                    *":/run/opengl-driver/lib:"*) ;;
+                    *) export LD_LIBRARY_PATH="/run/opengl-driver/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" ;;
+                  esac
+                fi
+
+                if [ "$robo_nix_host_graphics_policy" = "nixgl" ] || [ "$robo_nix_host_graphics_policy" = "nixgl-nvidia" ]; then
+                  robo_nix_nixgl="''${ROBO_NIX_NIXGL:-}"
+                  if [ -z "$robo_nix_nixgl" ] && [ "$robo_nix_host_graphics_policy" != "nixgl-nvidia" ] && [ -n "${bundledNixglWrapper}" ] && [ -x "${bundledNixglWrapper}" ]; then
+                    robo_nix_nixgl="${bundledNixglWrapper}"
+                  fi
+                  if [ -z "$robo_nix_nixgl" ] && [ "$robo_nix_host_graphics_policy" = "nixgl-nvidia" ] && [ -n "${nixglSource}" ]; then
+                    robo_nix_nvidia_version="''${ROBO_NIX_NVIDIA_VERSION:-}"
+                    if [ -z "$robo_nix_nvidia_version" ] && command -v nvidia-smi >/dev/null 2>&1; then
+                      robo_nix_nvidia_version="$(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>/dev/null | sed -n '1s/[[:space:]]//gp')"
+                    fi
+                    if [ -z "$robo_nix_nvidia_version" ] && [ -r /proc/driver/nvidia/version ]; then
+                      robo_nix_nvidia_version="$(sed -n 's/.*Module  *\([0-9.][0-9.]*\).*/\1/p' /proc/driver/nvidia/version | head -n1)"
+                    fi
+                    if [ -z "$robo_nix_nvidia_version" ]; then
+                      printf '%s\n' "robo-nix: hostGraphics = \"nixgl-nvidia\" could not detect the NVIDIA driver version." >&2
+                      printf '%s\n' "robo-nix: set ROBO_NIX_NVIDIA_VERSION to the host driver version, for example 580.65.06." >&2
+                      return 1 2>/dev/null || exit 1
+                    fi
+                    robo_nix_nixgl_store="$(nix-build --no-out-link "${nixglSource}" -A auto.nixGLNvidia --argstr nvidiaVersion "$robo_nix_nvidia_version" --arg enable32bits false)" || {
+                      printf '%s\n' "robo-nix: failed to build nixGLNvidia for NVIDIA driver $robo_nix_nvidia_version." >&2
+                      return 1 2>/dev/null || exit 1
+                    }
+                    for robo_nix_nixgl_candidate in "$robo_nix_nixgl_store"/bin/nixGLNvidia*; do
+                      if [ -x "$robo_nix_nixgl_candidate" ]; then
+                        robo_nix_nixgl="$robo_nix_nixgl_candidate"
+                        break
+                      fi
+                    done
+                  fi
+                  if [ -z "$robo_nix_nixgl" ]; then
+                    for robo_nix_nixgl_candidate in $(if [ "$robo_nix_host_graphics_policy" = "nixgl-nvidia" ]; then printf '%s\n' nixGLNvidia; else printf '%s\n' nixGLNvidia nixGL nixGLMesa; fi); do
+                      if command -v "$robo_nix_nixgl_candidate" >/dev/null 2>&1; then
+                        robo_nix_nixgl="$(command -v "$robo_nix_nixgl_candidate")"
+                        break
+                      fi
+                    done
                   fi
 
-                  local fallback="$1"
-                  for candidate in "$@"; do
-                    if [ -e "$candidate" ]; then
-                      printf '%s\n' "$candidate"
-                      return
-                    fi
-                  done
-                  printf '%s\n' "$fallback"
-                }
+                  if [ -z "$robo_nix_nixgl" ] || [ ! -x "$robo_nix_nixgl" ]; then
+                    printf '%s\n' "robo-nix: hostGraphics resolved to \"$robo_nix_host_graphics_policy\" but no matching nixGL wrapper is available." >&2
+                    printf '%s\n' "robo-nix: set ROBO_NIX_NIXGL to the nixGL wrapper path for uncommon layouts." >&2
+                    return 1 2>/dev/null || exit 1
+                  fi
 
-                robo_nix_nvidia_vk_icd="$(robo_nix_select_host_manifest "''${ROBO_NIX_NVIDIA_VK_ICD:-}" \
-                  /run/opengl-driver/share/vulkan/icd.d/nvidia_icd.json \
-                  /usr/share/vulkan/icd.d/nvidia_icd.json)"
-                robo_nix_nvidia_egl_vendor="$(robo_nix_select_host_manifest "''${ROBO_NIX_NVIDIA_EGL_VENDOR:-}" \
-                  /run/opengl-driver/share/glvnd/egl_vendor.d/10_nvidia.json \
-                  /usr/share/glvnd/egl_vendor.d/10_nvidia.json)"
+                  robo_nix_runtime_ld_library_path="''${LD_LIBRARY_PATH:-}"
+                  unset LIBGL_DRIVERS_PATH LIBVA_DRIVERS_PATH GBM_BACKENDS_PATH
+                  unset __EGL_VENDOR_LIBRARY_FILENAMES __GLX_VENDOR_LIBRARY_NAME
+                  unset __NV_PRIME_RENDER_OFFLOAD __VK_LAYER_NV_optimus
+                  unset VK_ICD_FILENAMES VK_DRIVER_FILES VK_LAYER_PATH
 
-                export VK_ICD_FILENAMES="$robo_nix_nvidia_vk_icd"
-                export VK_DRIVER_FILES="$VK_ICD_FILENAMES"
-                export __EGL_VENDOR_LIBRARY_FILENAMES="$robo_nix_nvidia_egl_vendor"
-                export __NV_PRIME_RENDER_OFFLOAD=1
-                export __GLX_VENDOR_LIBRARY_NAME=nvidia
-                export __VK_LAYER_NV_optimus=NVIDIA_only
-                unset -f robo_nix_select_host_manifest
-                unset robo_nix_nvidia_vk_icd robo_nix_nvidia_egl_vendor
-              ''
-              + lib.optionalString (hostGraphics == "nixgl" || hostGraphics == "nixgl-nvidia") ''
+                  while IFS= read -r -d "" robo_nix_nixgl_entry; do
+                    case "$robo_nix_nixgl_entry" in
+                      LD_LIBRARY_PATH=*)
+                        robo_nix_nixgl_ld_library_path="''${robo_nix_nixgl_entry#LD_LIBRARY_PATH=}"
+                        if [ -n "$robo_nix_nixgl_ld_library_path" ] && [ -n "$robo_nix_runtime_ld_library_path" ]; then
+                          export LD_LIBRARY_PATH="$robo_nix_nixgl_ld_library_path:$robo_nix_runtime_ld_library_path"
+                        elif [ -n "$robo_nix_nixgl_ld_library_path" ]; then
+                          export LD_LIBRARY_PATH="$robo_nix_nixgl_ld_library_path"
+                        fi
+                        ;;
+                      LIBGL_DRIVERS_PATH=*|LIBVA_DRIVERS_PATH=*|GBM_BACKENDS_PATH=*|__EGL_VENDOR_LIBRARY_FILENAMES=*|__GLX_VENDOR_LIBRARY_NAME=*|__NV_PRIME_RENDER_OFFLOAD=*|__VK_LAYER_NV_optimus=*|VK_ICD_FILENAMES=*|VK_DRIVER_FILES=*|VK_LAYER_PATH=*)
+                        export "$robo_nix_nixgl_entry"
+                        ;;
+                    esac
+                  done < <(env \
+                    -u LD_LIBRARY_PATH \
+                    -u LIBGL_DRIVERS_PATH \
+                    -u LIBVA_DRIVERS_PATH \
+                    -u GBM_BACKENDS_PATH \
+                    -u __EGL_VENDOR_LIBRARY_FILENAMES \
+                    -u __GLX_VENDOR_LIBRARY_NAME \
+                    -u __NV_PRIME_RENDER_OFFLOAD \
+                    -u __VK_LAYER_NV_optimus \
+                    -u VK_ICD_FILENAMES \
+                    -u VK_DRIVER_FILES \
+                    -u VK_LAYER_PATH \
+                    "$robo_nix_nixgl" env -0)
 
-                robo_nix_nixgl="''${ROBO_NIX_NIXGL:-}"
-                if [ -z "$robo_nix_nixgl" ] && [ -n "${bundledNixglWrapper}" ] && [ -x "${bundledNixglWrapper}" ]; then
-                  robo_nix_nixgl="${bundledNixglWrapper}"
+                  if [ "$robo_nix_host_graphics_policy" = "nixgl-nvidia" ]; then
+                    export __GLX_VENDOR_LIBRARY_NAME=nvidia
+                    export __NV_PRIME_RENDER_OFFLOAD="''${__NV_PRIME_RENDER_OFFLOAD:-1}"
+                    export __VK_LAYER_NV_optimus="''${__VK_LAYER_NV_optimus:-NVIDIA_only}"
+                  fi
+
+                  unset robo_nix_nixgl robo_nix_nixgl_candidate robo_nix_nixgl_entry
+                  unset robo_nix_nvidia_version robo_nix_nixgl_store
+                  unset robo_nix_nixgl_ld_library_path robo_nix_runtime_ld_library_path
                 fi
-                if [ -z "$robo_nix_nixgl" ]; then
-                  for robo_nix_nixgl_candidate in ${if hostGraphics == "nixgl-nvidia" then "nixGLNvidia" else "nixGLNvidia nixGL nixGLMesa"}; do
-                    if command -v "$robo_nix_nixgl_candidate" >/dev/null 2>&1; then
-                      robo_nix_nixgl="$(command -v "$robo_nix_nixgl_candidate")"
-                      break
-                    fi
-                  done
-                fi
 
-                if [ -z "$robo_nix_nixgl" ] || [ ! -x "$robo_nix_nixgl" ]; then
-                  printf '%s\n' "robo-nix: hostGraphics = \"${hostGraphics}\" requires ${if hostGraphics == "nixgl-nvidia" then "nixGLNvidia" else "nixGL, nixGLNvidia, or nixGLMesa"} on PATH." >&2
-                  printf '%s\n' "robo-nix: set ROBO_NIX_NIXGL to the nixGL wrapper path for uncommon layouts." >&2
-                  return 1 2>/dev/null || exit 1
-                fi
-
-                robo_nix_runtime_ld_library_path="''${LD_LIBRARY_PATH:-}"
-                unset LIBGL_DRIVERS_PATH LIBVA_DRIVERS_PATH GBM_BACKENDS_PATH
-                unset __EGL_VENDOR_LIBRARY_FILENAMES __GLX_VENDOR_LIBRARY_NAME
-                unset __NV_PRIME_RENDER_OFFLOAD __VK_LAYER_NV_optimus
-                unset VK_ICD_FILENAMES VK_DRIVER_FILES VK_LAYER_PATH
-
-                while IFS= read -r -d "" robo_nix_nixgl_entry; do
-                  case "$robo_nix_nixgl_entry" in
-                    LD_LIBRARY_PATH=*)
-                      robo_nix_nixgl_ld_library_path="''${robo_nix_nixgl_entry#LD_LIBRARY_PATH=}"
-                      if [ -n "$robo_nix_nixgl_ld_library_path" ] && [ -n "$robo_nix_runtime_ld_library_path" ]; then
-                        export LD_LIBRARY_PATH="$robo_nix_nixgl_ld_library_path:$robo_nix_runtime_ld_library_path"
-                      elif [ -n "$robo_nix_nixgl_ld_library_path" ]; then
-                        export LD_LIBRARY_PATH="$robo_nix_nixgl_ld_library_path"
-                      fi
-                      ;;
-                    LIBGL_DRIVERS_PATH=*|LIBVA_DRIVERS_PATH=*|GBM_BACKENDS_PATH=*|__EGL_VENDOR_LIBRARY_FILENAMES=*|__GLX_VENDOR_LIBRARY_NAME=*|__NV_PRIME_RENDER_OFFLOAD=*|__VK_LAYER_NV_optimus=*|VK_ICD_FILENAMES=*|VK_DRIVER_FILES=*|VK_LAYER_PATH=*)
-                      export "$robo_nix_nixgl_entry"
-                      ;;
-                  esac
-                done < <(env \
-                  -u LD_LIBRARY_PATH \
-                  -u LIBGL_DRIVERS_PATH \
-                  -u LIBVA_DRIVERS_PATH \
-                  -u GBM_BACKENDS_PATH \
-                  -u __EGL_VENDOR_LIBRARY_FILENAMES \
-                  -u __GLX_VENDOR_LIBRARY_NAME \
-                  -u __NV_PRIME_RENDER_OFFLOAD \
-                  -u __VK_LAYER_NV_optimus \
-                  -u VK_ICD_FILENAMES \
-                  -u VK_DRIVER_FILES \
-                  -u VK_LAYER_PATH \
-                  "$robo_nix_nixgl" env -0)
-
-                unset robo_nix_nixgl robo_nix_nixgl_candidate robo_nix_nixgl_entry
-                unset robo_nix_nixgl_ld_library_path robo_nix_runtime_ld_library_path
+                unset robo_nix_host_graphics_policy
               ''
               + lib.optionalString (hasComponent "linux-headers") ''
 

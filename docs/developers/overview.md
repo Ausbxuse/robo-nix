@@ -139,16 +139,12 @@ wheels that need the host driver. The bridge honors `ROBO_NIX_LIBCUDA_PATH`,
 supports `ROBO_NIX_DISABLE_HOST_CUDA_AUTO=1`, and does not add host EGL/Vulkan
 graphics policy.
 
-Host graphics provider policy is still explicit. When users set
-`hostGraphics = "nvidia";`, the generated shell chooses from reviewed NVIDIA
-manifest paths for NixOS and common FHS distros, with
-`ROBO_NIX_NVIDIA_VK_ICD` and `ROBO_NIX_NVIDIA_EGL_VENDOR` as overrides. The
-Rust launch path completes that explicit policy by generating a narrow
-robo-owned NVIDIA provider view for GLVND vendor libraries and NVIDIA EGL
-external platform configs. It also links NVIDIA GBM backends such as
-`nvidia-drm_gbm.so` when present; `ROBO_NIX_NVIDIA_DRIVER_LIB_DIR` handles
-uncommon library layouts. Keep these path lists narrow; do not turn them into a
-general host driver scan or a nixGL dependency.
+Host graphics provider policy is Nix-owned. The generated shell defaults to
+`hostGraphics = "auto";`, uses `/run/opengl-driver` on NixOS hosts, and uses
+the robo-provided nixGL input on other Linux hosts. `hostGraphics =
+"nixgl-nvidia";` requires the NVIDIA nixGL wrapper and may use
+`ROBO_NIX_NVIDIA_VERSION` when host driver version detection is unavailable.
+Rust must not maintain a second host GLX/EGL/GBM provider bridge.
 
 ## Search
 

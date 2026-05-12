@@ -142,26 +142,15 @@ provider explicitly:
     "cuda-toolkit"
   ];
 
-  hostGraphics = "nvidia";
+  hostGraphics = "nixgl-nvidia";
 }
 ```
 
-`robo` does not silently force this policy because hybrid-GPU, headless, and
-non-NVIDIA setups have different valid choices. `hostGraphics = null;` only
-means no explicit host graphics provider is selected; it does not provide the
-host NVIDIA GLX/EGL/GBM bridge.
-
-When `hostGraphics = "nvidia";` is set, `robo` selects known NVIDIA manifest
-paths for NixOS and common FHS distros such as Ubuntu. It then prepares a narrow
-robo-owned provider view for NVIDIA GLX/EGL vendor libraries and NVIDIA EGL
-external platform configs. When found, NVIDIA GBM backends such as
-`nvidia-drm_gbm.so` are linked into a robo-owned GBM backend directory as well.
-Generic GLVND/OpenGL libraries stay Nix-owned. This targets failures where GLX
-config discovery returns nothing, Mesa/swrast is selected unexpectedly, or
-OpenCV EGL cannot initialize because the NVIDIA vendor or GBM provider is
-incomplete. If your host keeps the manifests or NVIDIA driver libraries
-somewhere else, set `ROBO_NIX_NVIDIA_VK_ICD`, `ROBO_NIX_NVIDIA_EGL_VENDOR`, or
-`ROBO_NIX_NVIDIA_DRIVER_LIB_DIR` before running `robo shell`.
+`hostGraphics = "auto";` is the default and selects `/run/opengl-driver` on
+NixOS hosts or robo-provided nixGL wrappers on other Linux hosts. Use
+`hostGraphics = "nixgl-nvidia";` when the project must fail instead of falling
+back to Mesa. Set `ROBO_NIX_NVIDIA_VERSION` only when `nvidia-smi` and
+`/proc/driver/nvidia/version` are unavailable.
 
 ## Existing robo.nix
 

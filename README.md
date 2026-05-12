@@ -149,12 +149,11 @@ visible driver library automatically. Set `ROBO_NIX_LIBCUDA_PATH` to override
 the detected library, or `ROBO_NIX_DISABLE_HOST_CUDA_AUTO=1` to disable the
 automatic bridge.
 
-Host graphics provider selection is explicit project policy. Use
-`hostGraphics = "nvidia";` in `robo.nix` when a project such as Isaac Sim needs
-the host NVIDIA Vulkan/EGL/GLX provider. `robo` keeps generic GLVND/OpenGL
-dispatch libraries Nix-owned, then prepares the selected host NVIDIA manifests,
-vendor libraries, EGL external platform configs, and GBM backends automatically.
-Leave `hostGraphics = null;` when the project should not select a host graphics
+Host graphics provider selection is project policy. The generated default is
+`hostGraphics = "auto";`, which uses `/run/opengl-driver` on NixOS hosts and
+robo-provided nixGL wrappers on other Linux hosts. Use `hostGraphics =
+"nixgl-nvidia";` when a project must use the NVIDIA nixGL wrapper. Leave
+`hostGraphics = null;` when the project should not select a host graphics
 provider.
 
 ## Diagnostics

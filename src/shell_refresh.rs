@@ -9,9 +9,8 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Output};
 
 use crate::nix_env::{
-    add_env_capture_args, append_host_cuda_driver_bridge, append_host_nvidia_graphics_provider,
-    inherit_terminal_environment, is_robo_managed_env, missing_store_roots, parse_env_zero,
-    runtime_key_env_names,
+    add_env_capture_args, append_host_cuda_driver_bridge, inherit_terminal_environment,
+    is_robo_managed_env, missing_store_roots, parse_env_zero, runtime_key_env_names,
 };
 use crate::ui::{error, hint, output_with_tree, row_err, status, Config};
 
@@ -111,7 +110,6 @@ fn try_run(args: Vec<OsString>, config: Config) -> Result<(), RefreshError> {
     let changed = changed_runtime_inputs(&workspace, &current);
     print_runtime_refresh_notice(config, &workspace, &changed, &missing_store_paths);
     let mut envs = refreshed_shell_env(&workspace, config)?;
-    let _ = append_host_nvidia_graphics_provider(&mut envs, &workspace);
     let _ = append_host_cuda_driver_bridge(&mut envs, &workspace);
     append_refreshed_active_shell_env(&mut envs, &workspace);
     print_shell_delta(shell, &envs);

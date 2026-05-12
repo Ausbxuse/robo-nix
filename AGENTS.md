@@ -96,24 +96,26 @@ environment manager.
 - Generated project `flake.nix` should stay minimal and delegate runtime
   complexity to `robo-nix.lib.mkProjectFlakeFromManifest ./robo.nix`.
 - Do not rewrite an existing `robo.nix` from `robo shell`.
-- Keep Nix-managed desktop graphics separate from host NVIDIA driver policy.
-- Host graphics provider selection is explicit manifest policy. `hostGraphics`
-  may expose named choices such as `"nvidia"` so users do not maintain fragile
-  shell hooks, but `desktop-gl` must not silently force NVIDIA Vulkan/EGL/GLX.
-  The explicit `"nvidia"` policy may select from a short reviewed list of known
-  NixOS and FHS distro manifest paths, with environment overrides for uncommon
-  host layouts. Do not turn this into a broad host driver scan.
-- The explicit `"nixgl"` host graphics policy may import graphics variables from
-  a nixGL wrapper found on `PATH` or named by `ROBO_NIX_NIXGL`. Keep this as an
-  explicit escape hatch for host OpenGL dispatch; do not auto-select it.
-- Do not add generated-shell scans over host CUDA, NVIDIA, WSL, or distro
-  driver directories. Host CUDA driver bridging is Rust-owned and may
+- Keep Nix-managed desktop graphics separate from host CUDA driver policy.
+- Host graphics provider selection is generated-shell policy. `hostGraphics =
+  "auto"` is the default, uses `/run/opengl-driver` on NixOS hosts, and uses the
+  robo-provided nixGL input on other Linux hosts. Keep `null` as an explicit
+  opt-out.
+- `hostGraphics = "nixgl-nvidia"` must require the NVIDIA nixGL wrapper and may
+  use `ROBO_NIX_NVIDIA_VERSION` when host driver version detection is
+  unavailable. `hostGraphics = "nvidia"` is a compatibility alias for that
+  policy.
+- Do not maintain a second Rust-owned GLX/EGL/GBM provider bridge now that
+  host graphics is delegated to nixGL or `/run/opengl-driver`.
+- Do not add generated-shell scans over host CUDA, WSL, or distro driver
+  directories. Host CUDA driver bridging is Rust-owned and may
   use the reviewed probe path: explicit `ROBO_NIX_LIBCUDA_PATH`,
   inherited `LD_LIBRARY_PATH`, `ldconfig`, and known host driver locations when
   the project appears to need `libcuda.so.1`. Keep `ROBO_NIX_LIBCUDA_PATH` as an
-  override, honor `ROBO_NIX_DISABLE_HOST_CUDA_AUTO`, and keep broader driver
-  policy out of generated shells unless it has an explicit manifest knob and a
-  reviewed iteration.
+  override and honor `ROBO_NIX_DISABLE_HOST_CUDA_AUTO`. Host NVIDIA graphics
+  version probing is allowed only for `hostGraphics = "auto"` and
+  `hostGraphics = "nixgl-nvidia"` so nixGL can be built with the matching
+  driver version.
 - Linux input packages such as `evdev` are handled through the `linux-headers`
   component. Keep this as a generic native-header contract, not a
   package-specific workaround.
