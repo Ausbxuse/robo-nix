@@ -82,6 +82,16 @@ fail EGL display creation, while the X11 PyGLFW path rendered on the RTX 5090.
 - Do not add broad host graphics library directories to `LD_LIBRARY_PATH`.
 - Do not mutate an existing project `robo.nix` from `robo shell`.
 
+## Follow-Up
+
+- TODO: make the native Wayland NVIDIA path work without requiring
+  `PYGLFW_LIBRARY_VARIANT=x11`. The current failing primitive is below GLFW:
+  `wl_display_connect` succeeds, but
+  `eglGetPlatformDisplayEXT(EGL_PLATFORM_WAYLAND_EXT, wl_display, ...)` returns
+  `EGL_NO_DISPLAY` in the Nix runtime. Keep the current X11/XWayland PyGLFW
+  selection as a project workaround until the host NVIDIA Wayland EGL bridge is
+  fixed.
+
 ## Verification
 
 - [x] `nix develop -c cargo fmt -- --check`
