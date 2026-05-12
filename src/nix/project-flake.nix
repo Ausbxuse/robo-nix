@@ -208,7 +208,7 @@
       };
 
       componentRuntimeLibraries = {
-        python-uv = [python];
+        python-uv = [python pkgs.gmp pkgs.ffmpeg_7];
         native-build = [ccRuntimeLib legacyCryptRuntimeLib zlibRuntimeLib];
         linux-headers = [];
         desktop-gl = componentPackages.desktop-gl;
@@ -227,19 +227,15 @@
       componentRuntimeLibraryLists = map (component: builtins.getAttr component componentRuntimeLibraries) selectedComponents;
       runtimeLibraries = (builtins.concatLists componentRuntimeLibraryLists) ++ extraRuntimeLibraries pkgs;
       runtimeLibraryPath = lib.makeLibraryPath runtimeLibraries;
-      nixglPackages =
-        if nixgl == null
-        then {}
-        else nixgl.packages.${system};
       nixglSource =
         if nixgl == null
         then ""
         else nixgl.outPath;
-      nixglNvidiaSource =
-        if nixgl == null || hostGraphics != "nixgl-nvidia"
+      patchedNixglSource =
+        if nixgl == null || hostGraphics == null
         then ""
         else
-          pkgs.runCommand "robo-nixgl-nvidia-source" {} ''
+          pkgs.runCommand "robo-nixgl-source" {} ''
             cp -R --no-preserve=mode ${nixglSource}/. "$out"
             if ! grep -Fq '        kernel = null;' "$out/nixGL.nix"; then
               printf '%s\n' "robo-nix: expected nixGL NVIDIA compatibility patch target missing" >&2
@@ -247,10 +243,19 @@
             fi
             substituteInPlace "$out/nixGL.nix" --replace '        kernel = null;' ""
           '';
+      patchedNixgl =
+        if patchedNixglSource == ""
+        then {}
+        else
+          import "${patchedNixglSource}/default.nix" {
+            inherit pkgs;
+            enable32bits = system == "x86_64-linux";
+            enableIntelX86Extensions = system == "x86_64-linux";
+          };
       nixglNvidiaPkgsArg = ''import ${nixpkgs} { system = "${system}"; config.allowUnfree = true; }'';
       bundledNixglWrapper =
-        if (hostGraphics == "auto" || hostGraphics == "nixgl") && builtins.hasAttr "nixGLDefault" nixglPackages
-        then "${nixglPackages.nixGLDefault}/bin/nixGL"
+        if (hostGraphics == "auto" || hostGraphics == "nixgl") && builtins.hasAttr "auto" patchedNixgl
+        then "${patchedNixgl.auto.nixGLDefault}/bin/nixGL"
         else "";
       graphicsWrapperEnvNames = [
         "LIBGL_DRIVERS_PATH"
@@ -353,7 +358,7 @@
                   if [ -z "$robo_nix_nixgl" ] && [ "$robo_nix_host_graphics_policy" != "nixgl-nvidia" ] && [ -n "${bundledNixglWrapper}" ] && [ -x "${bundledNixglWrapper}" ]; then
                     robo_nix_nixgl="${bundledNixglWrapper}"
                   fi
-                  if [ -z "$robo_nix_nixgl" ] && [ "$robo_nix_host_graphics_policy" = "nixgl-nvidia" ] && [ -n "${nixglNvidiaSource}" ]; then
+                  if [ -z "$robo_nix_nixgl" ] && [ "$robo_nix_host_graphics_policy" = "nixgl-nvidia" ] && [ -n "${patchedNixglSource}" ]; then
                     robo_nix_nvidia_version="''${ROBO_NIX_NVIDIA_VERSION:-}"
                     if [ -z "$robo_nix_nvidia_version" ]; then
                       for robo_nix_nvidia_smi in "$(command -v nvidia-smi 2>/dev/null || true)" /usr/bin/nvidia-smi /run/current-system/sw/bin/nvidia-smi; do
@@ -373,7 +378,7 @@
                       printf '%s\n' "robo-nix: set ROBO_NIX_NVIDIA_VERSION to the host driver version, for example 580.65.06." >&2
                       return 1 2>/dev/null || exit 1
                     fi
-                    robo_nix_nixgl_store="$(nix-build --no-out-link "${nixglNvidiaSource}" -A auto.nixGLNvidia --arg pkgs '${nixglNvidiaPkgsArg}' --argstr nvidiaVersion "$robo_nix_nvidia_version" --arg enable32bits false)" || {
+                    robo_nix_nixgl_store="$(nix-build --no-out-link "${patchedNixglSource}" -A auto.nixGLNvidia --arg pkgs '${nixglNvidiaPkgsArg}' --argstr nvidiaVersion "$robo_nix_nvidia_version" --arg enable32bits false)" || {
                       printf '%s\n' "robo-nix: failed to build nixGLNvidia for NVIDIA driver $robo_nix_nvidia_version." >&2
                       return 1 2>/dev/null || exit 1
                     }
