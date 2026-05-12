@@ -68,6 +68,17 @@ const HOST_CUDA_DEPENDENCIES: &[&str] = &[
 const DEFAULT_LOCK_TIMEOUT_SECONDS: u64 = 30;
 const RUNTIME_ENV_CACHE_MAGIC: &str = "robo-nix-runtime-env-cache-v1";
 const RUNTIME_ENV_CACHE_FILE: &str = "runtime-env-cache-v1.env0";
+const INHERITED_TERMINAL_ENV_VARS: &[&str] = &[
+    "TERM",
+    "COLORTERM",
+    "TERM_PROGRAM",
+    "TERM_PROGRAM_VERSION",
+    "TERMINFO",
+    "TERMINFO_DIRS",
+    "TMUX",
+    "TMUX_PANE",
+    "STY",
+];
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub(crate) enum EnvVarVisibility {
@@ -327,11 +338,12 @@ pub(crate) fn runtime_environment(
     workspace: &Path,
     cache_key: &str,
 ) -> Result<Vec<(String, String)>, AppError> {
-    if let Some(envs) = read_runtime_env_cache(workspace, cache_key) {
+    if let Some(mut envs) = read_runtime_env_cache(workspace, cache_key) {
         crate::ui::output_cached_tree(
             config,
             &format!("{phase}: evaluating and realizing dev shell"),
         );
+        inherit_terminal_environment(&mut envs);
         return Ok(envs);
     }
 
@@ -355,7 +367,9 @@ pub(crate) fn runtime_environment(
     })?;
 
     if output.status.success() {
-        return parse_env_zero(&output.stdout).map_err(AppError::project);
+        let mut envs = parse_env_zero(&output.stdout).map_err(AppError::project)?;
+        inherit_terminal_environment(&mut envs);
+        return Ok(envs);
     }
 
     crate::write_command_output(&output)?;
@@ -371,7 +385,8 @@ pub(crate) fn cache_runtime_environment(
     cache_key: &str,
     envs: &[(String, String)],
 ) {
-    let _ = write_runtime_env_cache(workspace, cache_key, envs);
+    let cache_envs = cacheable_runtime_env(envs);
+    let _ = write_runtime_env_cache(workspace, cache_key, &cache_envs);
 }
 
 pub(crate) fn parse_env_zero(bytes: &[u8]) -> Result<Vec<(String, String)>, String> {
@@ -459,6 +474,29 @@ fn split_once_byte(bytes: &[u8], needle: u8) -> Option<(&[u8], &[u8])> {
 
 fn store_roots_exist(envs: &[(String, String)]) -> bool {
     missing_store_roots(envs).is_empty()
+}
+
+pub(crate) fn inherit_terminal_environment(envs: &mut Vec<(String, String)>) {
+    inherit_terminal_environment_from(envs, |name| env::var(name).ok());
+}
+
+fn inherit_terminal_environment_from(
+    envs: &mut Vec<(String, String)>,
+    mut get_env: impl FnMut(&str) -> Option<String>,
+) {
+    for name in INHERITED_TERMINAL_ENV_VARS {
+        envs.retain(|(candidate, _)| candidate != name);
+        if let Some(value) = get_env(name).filter(|value| !value.is_empty()) {
+            envs.push(((*name).to_string(), value));
+        }
+    }
+}
+
+fn cacheable_runtime_env(envs: &[(String, String)]) -> Vec<(String, String)> {
+    envs.iter()
+        .filter(|(name, _)| !INHERITED_TERMINAL_ENV_VARS.contains(&name.as_str()))
+        .cloned()
+        .collect()
 }
 
 pub(crate) fn missing_store_roots(envs: &[(String, String)]) -> Vec<PathBuf> {
@@ -1577,6 +1615,47 @@ mod tests {
         assert_eq!(read_runtime_env_cache(&root, "other-key"), None);
 
         cleanup(root);
+    }
+
+    #[test]
+    fn terminal_identity_overrides_captured_runtime_environment() {
+        let mut envs = vec![
+            ("PATH".to_string(), "/bin".to_string()),
+            ("TERM".to_string(), "dumb".to_string()),
+        ];
+
+        inherit_terminal_environment_from(&mut envs, |name| match name {
+            "TERM" => Some("tmux-256color".to_string()),
+            "COLORTERM" => Some("truecolor".to_string()),
+            _ => None,
+        });
+
+        assert_eq!(
+            shell_env_value(&envs, "TERM").map(String::as_str),
+            Some("tmux-256color")
+        );
+        assert_eq!(
+            shell_env_value(&envs, "COLORTERM").map(String::as_str),
+            Some("truecolor")
+        );
+    }
+
+    #[test]
+    fn runtime_cache_excludes_terminal_identity() {
+        let envs = vec![
+            ("PATH".to_string(), "/bin".to_string()),
+            ("TERM".to_string(), "tmux-256color".to_string()),
+            ("TMUX".to_string(), "/tmp/tmux-1000/default,1,0".to_string()),
+        ];
+
+        let cache_envs = cacheable_runtime_env(&envs);
+
+        assert_eq!(
+            shell_env_value(&cache_envs, "PATH").map(String::as_str),
+            Some("/bin")
+        );
+        assert!(shell_env_value(&cache_envs, "TERM").is_none());
+        assert!(shell_env_value(&cache_envs, "TMUX").is_none());
     }
 
     #[test]

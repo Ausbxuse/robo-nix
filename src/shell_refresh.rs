@@ -10,7 +10,8 @@ use std::process::{Command, ExitCode, Output};
 
 use crate::nix_env::{
     add_env_capture_args, append_host_cuda_driver_bridge, append_host_nvidia_graphics_provider,
-    is_robo_managed_env, missing_store_roots, parse_env_zero, runtime_key_env_names,
+    inherit_terminal_environment, is_robo_managed_env, missing_store_roots, parse_env_zero,
+    runtime_key_env_names,
 };
 use crate::ui::{error, hint, output_with_tree, row_err, status, Config};
 
@@ -112,7 +113,7 @@ fn try_run(args: Vec<OsString>, config: Config) -> Result<(), RefreshError> {
     let mut envs = refreshed_shell_env(&workspace, config)?;
     let _ = append_host_nvidia_graphics_provider(&mut envs, &workspace);
     let _ = append_host_cuda_driver_bridge(&mut envs, &workspace);
-    append_active_shell_env(&mut envs, &workspace, &current);
+    append_refreshed_active_shell_env(&mut envs, &workspace);
     print_shell_delta(shell, &envs);
     Ok(())
 }
@@ -158,7 +159,9 @@ fn refreshed_shell_env(
     })?;
 
     if output.status.success() {
-        return parse_env_zero(&output.stdout).map_err(RefreshError::new);
+        let mut envs = parse_env_zero(&output.stdout).map_err(RefreshError::new)?;
+        inherit_terminal_environment(&mut envs);
+        return Ok(envs);
     }
 
     write_command_output_to_stderr(&output)?;
@@ -268,6 +271,11 @@ fn append_active_shell_env(
         "ROBO_NIX_MANAGED_ENV_VARS",
         managed_env_var_names(envs),
     );
+}
+
+fn append_refreshed_active_shell_env(envs: &mut Vec<(String, String)>, workspace: &Path) {
+    let state = runtime_input_state_for_env(workspace, envs);
+    append_active_shell_env(envs, workspace, &state);
 }
 
 fn set_env_value(envs: &mut Vec<(String, String)>, name: &str, value: String) {
@@ -542,6 +550,32 @@ mod tests {
         assert!(env_value(&envs, "ROBO_NIX_MANAGED_ENV_VARS")
             .unwrap()
             .contains("ROBO_NIX_RUNTIME_INPUT_KEY"));
+    }
+
+    #[test]
+    fn refreshed_env_records_final_runtime_env_inputs() {
+        let root = temp_project("refreshed-final-env");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(
+            root.join("robo.nix"),
+            "{ components = [ \"python-uv\" ]; }\n",
+        )
+        .unwrap();
+        let mut envs = vec![(
+            "LD_LIBRARY_PATH".to_string(),
+            "/nix/store/final-runtime/lib".to_string(),
+        )];
+
+        append_refreshed_active_shell_env(&mut envs, &root);
+
+        let files = env_value(&envs, "ROBO_NIX_RUNTIME_INPUT_FILES").unwrap();
+        assert!(files.contains("env:LD_LIBRARY_PATH=/nix/store/final-runtime/lib"));
+        assert_eq!(
+            env_value(&envs, "ROBO_NIX_RUNTIME_INPUT_KEY"),
+            Some(runtime_input_state_for_env(&root, &envs).key.as_str())
+        );
+
+        cleanup(root);
     }
 
     #[test]

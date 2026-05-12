@@ -169,6 +169,8 @@
           pkgs.dbus
           pkgs.fontconfig
           pkgs.glib
+          pkgs.libdrm
+          pkgs.libgbm
           pkgs.libGL
           pkgs.libGLU
           pkgs.libglvnd
@@ -179,6 +181,7 @@
           pkgs.libsm
           pkgs.libx11
           pkgs.libxau
+          pkgs.libxcb
           pkgs.libxcomposite
           pkgs.libxcursor
           pkgs.libxdamage
