@@ -80,7 +80,7 @@ Concrete source patterns used:
 - No Python resolver, dependency synchronizer, or package installer behavior.
 - No global robot-learning package registry.
 - No automatic mutation of existing `robo.nix`.
-- No broad host graphics-driver bridge beyond the reviewed `libcuda` boundary.
+- No broad host graphics wrapping beyond the reviewed `libcuda` boundary.
 - No new root Node tooling.
 - No CI wiring to legacy deleted tests.
 

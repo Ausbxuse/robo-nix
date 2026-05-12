@@ -96,19 +96,20 @@ environment manager.
 - Generated project `flake.nix` should stay minimal and delegate runtime
   complexity to `robo-nix.lib.mkProjectFlakeFromManifest ./robo.nix`.
 - Do not rewrite an existing `robo.nix` from `robo shell`.
-- Keep Nix-managed desktop graphics separate from host CUDA driver policy.
-- Host graphics provider selection is generated-shell policy. `hostGraphics =
-  "auto"` is the default, uses `/run/opengl-driver` on NixOS hosts, and uses the
-  generic robo-provided nixGL wrapper on other Linux hosts. Keep `null` as an
-  explicit opt-out.
+- Keep Nix-managed desktop graphics client libraries separate from host CUDA
+  driver policy and host graphics wrapper policy.
+- `robo-nix` may select a host graphics wrapper, but it must not become one.
+  `hostGraphics = "auto"` is the default, uses `/run/opengl-driver` on NixOS
+  hosts, and uses the generic robo-provided nixGL wrapper on other Linux hosts.
+  Keep `null` as an explicit opt-out.
 - `hostGraphics = "nixgl-nvidia"` must require the NVIDIA nixGL wrapper and may
   use `ROBO_NIX_NVIDIA_VERSION` when host driver version detection is
   unavailable. `hostGraphics = "nvidia"` is a compatibility alias for that
   policy.
-- Let nixGL wrappers own graphics-provider variables. Do not add robo-owned
+- Let nixGL wrappers own graphics wrapper variables. Do not add robo-owned
   PRIME render-offload defaults on top of nixGL output.
-- Do not maintain a second Rust-owned GLX/EGL/GBM provider bridge now that
-  host graphics is delegated to nixGL or `/run/opengl-driver`.
+- Do not maintain Rust-owned GLX/EGL/GBM host graphics wrapping now that host
+  graphics is delegated to nixGL or `/run/opengl-driver`.
 - Do not add generated-shell scans over host CUDA, WSL, or distro driver
   directories. Host CUDA driver bridging is Rust-owned and may
   use the reviewed probe path: explicit `ROBO_NIX_LIBCUDA_PATH`,

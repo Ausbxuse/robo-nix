@@ -79,8 +79,8 @@ conditionals. Current known components are:
   `libstdc++`, zlib, and legacy `libcrypt`.
 - `linux-headers`: Linux kernel headers for native input packages such as
   `evdev`.
-- `desktop-gl`: desktop graphics, Vulkan loader, GLFW windowing, GLU, and
-  legacy X libraries used by simulator stacks.
+- `desktop-gl`: desktop graphics client libraries, Vulkan loader, GLFW
+  windowing, GLU, and legacy X libraries used by simulator stacks.
 - `qt6`: Qt6 base and Core5Compat build/runtime support for Qt CMake projects,
   services, and viewers.
 - `cuda-toolkit`: Nix-owned CUDA compiler, headers, and CUDA runtime build
@@ -139,14 +139,14 @@ wheels that need the host driver. The bridge honors `ROBO_NIX_LIBCUDA_PATH`,
 supports `ROBO_NIX_DISABLE_HOST_CUDA_AUTO=1`, and does not add host EGL/Vulkan
 graphics policy.
 
-Host graphics provider policy is Nix-owned. The generated shell defaults to
+Host graphics wrapper policy is Nix-owned. The generated shell defaults to
 `hostGraphics = "auto";`, uses `/run/opengl-driver` on NixOS hosts, and uses
 the generic robo-provided nixGL wrapper on other Linux hosts. `hostGraphics =
 "nixgl-nvidia";` requires the NVIDIA nixGL wrapper and may use
 `ROBO_NIX_NVIDIA_VERSION` when host driver version detection is unavailable.
 Robo imports graphics variables from nixGL without adding its own PRIME
-render-offload defaults. Rust must not maintain a second host GLX/EGL/GBM
-provider bridge.
+render-offload defaults. Rust must not maintain host GLX/EGL/GBM graphics
+wrapping.
 
 ## Search
 

@@ -22,7 +22,7 @@ boundary.
   `hostGraphics = "nixgl-nvidia"`.
 - Build nixGLNvidia with an explicit host driver version detected at shell
   setup time, avoiding nixGL's failing null auto-detection path.
-- Remove the Rust-side NVIDIA graphics provider bridge.
+- Remove the Rust-side NVIDIA graphics wrapping.
 
 ## Verification
 

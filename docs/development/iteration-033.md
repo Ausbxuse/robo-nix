@@ -31,8 +31,8 @@ shell: runtime inputs changed
   ! changed ./env:LD_LIBRARY_PATH
 ```
 
-The first refresh had exported the host graphics bridge variables, but the
-stored runtime key was computed before those final values were applied.
+The first refresh had exported host graphics variables, but the stored runtime
+key was computed before those final values were applied.
 
 The runtime cache also preserved `TERM=dumb` from environment capture. Launching
 an interactive shell from tmux then produced:
@@ -76,8 +76,8 @@ Visual Class: TrueColor
 
 The same application reportedly rendered when launched through `nixGL`, but a
 first smoke comparison only tested `nixGL robo run ...`, where `robo` rebuilt
-the runtime environment and put its own host graphics bridge before the nixGL
-library additions.
+the runtime environment and put its own host graphics variables before the
+nixGL library additions.
 
 A focused presentation smoke test then showed that GLFW created an NVIDIA GLX
 context and GL readback returned the expected rendered pixel, but the X client

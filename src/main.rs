@@ -221,7 +221,7 @@ fn run_nix_develop(command_args: Vec<OsString>, config: Config) -> Result<ExitCo
             .map(str::to_string)
             .collect();
     }
-    if let Some(warning) = host_graphics_warning(&run_report.dependencies, &runtime_env) {
+    if let Some(warning) = graphics_wrapper_warning(&run_report.dependencies, &runtime_env) {
         section(config, "attention");
         attention(config, warning.summary);
         detail(config, warning.detail);
@@ -443,21 +443,21 @@ fn runtime_env_value<'a>(envs: &'a [(String, String)], name: &str) -> Option<&'a
 }
 
 #[derive(Debug, Clone, Copy)]
-struct HostGraphicsWarning {
+struct GraphicsWrapperWarning {
     summary: &'static str,
     detail: &'static str,
 }
 
-impl HostGraphicsWarning {
+impl GraphicsWrapperWarning {
     fn fact(&self) -> String {
         format!("{}; detail={}", self.summary, self.detail)
     }
 }
 
-fn host_graphics_warning(
+fn graphics_wrapper_warning(
     dependency_facts: &[String],
     envs: &[(String, String)],
-) -> Option<HostGraphicsWarning> {
+) -> Option<GraphicsWrapperWarning> {
     if !dependency_facts.iter().any(|fact| {
         fact.split_whitespace()
             .next()
@@ -489,8 +489,8 @@ fn host_graphics_warning(
         return None;
     }
 
-    Some(HostGraphicsWarning {
-        summary: "Isaac Sim can see host CUDA, but no NVIDIA host graphics provider is selected",
+    Some(GraphicsWrapperWarning {
+        summary: "Isaac Sim can see host CUDA, but no NVIDIA graphics wrapper is selected",
         detail: "use `hostGraphics = \"nixgl-nvidia\";` on non-NixOS Linux hosts that need NVIDIA Vulkan/EGL rendering.",
     })
 }
@@ -644,7 +644,7 @@ mod tests {
     }
 
     #[test]
-    fn host_graphics_warning_points_isaac_users_at_manifest_knob() {
+    fn graphics_wrapper_warning_points_isaac_users_at_manifest_knob() {
         let dependencies = vec!["isaacsim from project.dependencies".to_string()];
         let env = vec![
             (
@@ -658,13 +658,13 @@ mod tests {
             ("ROBO_NIX_HOST_GRAPHICS".to_string(), "none".to_string()),
         ];
 
-        let warning = host_graphics_warning(&dependencies, &env).unwrap();
+        let warning = graphics_wrapper_warning(&dependencies, &env).unwrap();
 
         assert!(warning.detail.contains("hostGraphics = \"nixgl-nvidia\""));
     }
 
     #[test]
-    fn host_graphics_warning_stays_quiet_when_nvidia_policy_is_selected() {
+    fn graphics_wrapper_warning_stays_quiet_when_nvidia_policy_is_selected() {
         let dependencies = vec!["isaacsim from project.dependencies".to_string()];
         let env = vec![
             (
@@ -677,6 +677,6 @@ mod tests {
             ),
         ];
 
-        assert!(host_graphics_warning(&dependencies, &env).is_none());
+        assert!(graphics_wrapper_warning(&dependencies, &env).is_none());
     }
 }

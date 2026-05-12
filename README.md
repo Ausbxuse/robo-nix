@@ -124,6 +124,9 @@ shell/run workflow.
   and lockfiles.
 - Nix owns CPython, native tools, runtime libraries, CUDA/graphics/toolchain
   pieces, and the shell environment.
+- nixGL owns non-NixOS desktop graphics driver wrapping.
+- The host owns kernel drivers, display-server state, NVIDIA driver
+  installation, and CUDA driver libraries.
 - `robo` owns the user-facing workflow, generated runtime files, command
   wrapping, and diagnostics.
 
@@ -138,7 +141,7 @@ Common components include:
 | --------------- | ---------------------------------------------------------------- |
 | `python-uv`     | CPython and uv integration for uv-managed projects.              |
 | `native-build`  | Compiler/build tools plus C++, zlib, and legacy crypt runtime libraries. |
-| `desktop-gl`    | OpenGL/EGL/Vulkan/X11/Wayland libraries for MuJoCo and desktop viewers. |
+| `desktop-gl`    | OpenGL/EGL/Vulkan/X11/Wayland client libraries for desktop viewers. |
 | `linux-headers` | Kernel headers for Linux input packages such as `evdev`.         |
 | `qt6`           | Qt6 CMake packages, tools, plugins, and runtime libraries.       |
 | `cuda-toolkit`  | Nix-managed CUDA toolkit for native builds and CUDA packages.    |
@@ -149,13 +152,13 @@ visible driver library automatically. Set `ROBO_NIX_LIBCUDA_PATH` to override
 the detected library, or `ROBO_NIX_DISABLE_HOST_CUDA_AUTO=1` to disable the
 automatic bridge.
 
-Host graphics provider selection is project policy. The generated default is
+Host graphics wrapper selection is project policy. `robo-nix` may select a
+wrapper, but it must not become one. The generated default is
 `hostGraphics = "auto";`, which uses `/run/opengl-driver` on NixOS hosts and
 the generic robo-provided nixGL wrapper on other Linux hosts. Use
 `hostGraphics = "nixgl-nvidia";` only when a project must use the NVIDIA nixGL
-wrapper. Leave
-`hostGraphics = null;` when the project should not select a host graphics
-provider.
+wrapper. Leave `hostGraphics = null;` when the project should not import a host
+graphics wrapper.
 
 ## Diagnostics
 
@@ -220,7 +223,7 @@ Reviewed manually. Verified with `cargo test` and `nix flake check`.
 | [Nix](https://nixos.org/)                                  | Reproducible interpreter, native runtime dependencies, and shell environments.  |
 | [uv](https://github.com/astral-sh/uv)                      | Python version requests, packages, virtual environments, and lockfiles.         |
 | [nixpkgs-python](https://github.com/cachix/nixpkgs-python) | Cached CPython interpreter coverage for uv-managed projects.                    |
-| [nixGL](https://github.com/nix-community/nixGL)            | Reference point for host graphics driver bridging.                              |
+| [nixGL](https://github.com/nix-community/nixGL)            | Non-NixOS desktop graphics wrapper used by `hostGraphics`.                      |
 | [uv2nix](https://github.com/pyproject-nix/uv2nix)          | Nix-native Python packaging for projects that want Nix to own Python packages.  |
 
 ## License

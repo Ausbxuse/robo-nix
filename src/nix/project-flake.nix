@@ -341,7 +341,7 @@
 
                   robo_nix_runtime_ld_library_path="''${LD_LIBRARY_PATH:-}"
                   unset LIBGL_DRIVERS_PATH LIBVA_DRIVERS_PATH GBM_BACKENDS_PATH
-                  unset __EGL_VENDOR_LIBRARY_FILENAMES __GLX_VENDOR_LIBRARY_NAME
+                  unset __EGL_EXTERNAL_PLATFORM_CONFIG_DIRS __EGL_VENDOR_LIBRARY_FILENAMES __GLX_VENDOR_LIBRARY_NAME
                   unset __NV_PRIME_RENDER_OFFLOAD __VK_LAYER_NV_optimus
                   unset VK_ICD_FILENAMES VK_DRIVER_FILES VK_LAYER_PATH
 
@@ -355,7 +355,7 @@
                           export LD_LIBRARY_PATH="$robo_nix_nixgl_ld_library_path"
                         fi
                         ;;
-                      LIBGL_DRIVERS_PATH=*|LIBVA_DRIVERS_PATH=*|GBM_BACKENDS_PATH=*|__EGL_VENDOR_LIBRARY_FILENAMES=*|__GLX_VENDOR_LIBRARY_NAME=*|__NV_PRIME_RENDER_OFFLOAD=*|__VK_LAYER_NV_optimus=*|VK_ICD_FILENAMES=*|VK_DRIVER_FILES=*|VK_LAYER_PATH=*)
+                      LIBGL_DRIVERS_PATH=*|LIBVA_DRIVERS_PATH=*|GBM_BACKENDS_PATH=*|__EGL_EXTERNAL_PLATFORM_CONFIG_DIRS=*|__EGL_VENDOR_LIBRARY_FILENAMES=*|__GLX_VENDOR_LIBRARY_NAME=*|__NV_PRIME_RENDER_OFFLOAD=*|__VK_LAYER_NV_optimus=*|VK_ICD_FILENAMES=*|VK_DRIVER_FILES=*|VK_LAYER_PATH=*)
                         export "$robo_nix_nixgl_entry"
                         ;;
                     esac
@@ -364,6 +364,7 @@
                     -u LIBGL_DRIVERS_PATH \
                     -u LIBVA_DRIVERS_PATH \
                     -u GBM_BACKENDS_PATH \
+                    -u __EGL_EXTERNAL_PLATFORM_CONFIG_DIRS \
                     -u __EGL_VENDOR_LIBRARY_FILENAMES \
                     -u __GLX_VENDOR_LIBRARY_NAME \
                     -u __NV_PRIME_RENDER_OFFLOAD \

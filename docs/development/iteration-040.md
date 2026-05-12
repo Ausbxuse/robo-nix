@@ -8,7 +8,7 @@ wrapper path.
 ## Conflict Check
 
 - Keep Nix-managed desktop graphics separate from host NVIDIA driver policy.
-- Do not maintain a second Rust-owned GLX/EGL/GBM provider bridge.
+- Do not maintain Rust-owned GLX/EGL/GBM graphics wrapping.
 - `hostGraphics = "nvidia"` remains a compatibility alias for
   `hostGraphics = "nixgl-nvidia"`.
 - Runtime shell setup should be standalone and should not require users to

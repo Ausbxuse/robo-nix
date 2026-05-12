@@ -21,7 +21,7 @@ edit when a project needs more native tools or runtime libraries inside
   </div>
   <div>
     <h3>desktop-gl</h3>
-    <p>OpenGL, EGL, GLVND, Vulkan loader, Wayland, X11, GLFW windowing, GLU, and legacy Xt support.</p>
+    <p>OpenGL, EGL, GLVND, Vulkan loader, Wayland, X11, GLFW windowing, GLU, and legacy Xt client libraries.</p>
   </div>
   <div>
     <h3>qt6</h3>
@@ -73,8 +73,9 @@ headers:
 ```
 
 `desktop-gl` covers the common GLFW Linux windowing path, including Wayland,
-X11, Vulkan loader, GLVND, EGL, `libxkbcommon`, GLU, and legacy Xt libraries
-used by larger simulator stacks.
+X11, Vulkan loader, GLVND, EGL, `libxkbcommon`, GLU, and legacy Xt client
+libraries used by larger simulator stacks. It is application/runtime support,
+not a GPU driver selector.
 
 ## Example: Qt service or viewer
 
@@ -92,10 +93,10 @@ as `Qt6::Core`, `Qt6::Network`, or `Qt6::Core5Compat`:
 }
 ```
 
-Host GPU provider selection is separate from `desktop-gl`. By default,
-`hostGraphics = "auto";` uses `/run/opengl-driver` on NixOS hosts and
-the generic robo-provided nixGL wrapper on other Linux hosts. If a simulator
-such as Isaac Sim or MuJoCo must use the NVIDIA nixGL wrapper, set:
+Host graphics wrapper selection is separate from `desktop-gl`. By default,
+`hostGraphics = "auto";` uses `/run/opengl-driver` on NixOS hosts and the
+generic robo-provided nixGL wrapper on other Linux hosts. If a simulator must
+use the NVIDIA nixGL wrapper, set:
 
 ```nix
 {
@@ -110,12 +111,12 @@ such as Isaac Sim or MuJoCo must use the NVIDIA nixGL wrapper, set:
 }
 ```
 
-Leave `hostGraphics = null;` when the project should not select a host graphics
-provider. With `desktop-gl`, that means the Nix-managed component defaults still
-apply; it is not a NVIDIA provider bridge.
+Leave `hostGraphics = null;` when the project should not import a host graphics
+wrapper. With `desktop-gl`, the Nix-managed client libraries still apply; they
+do not select a GPU driver.
 
-If a project already works correctly under a nixGL wrapper, set
-`hostGraphics = "nixgl";` instead. In that mode, `robo` keeps using the
+If a project already works correctly under a generic nixGL wrapper, set
+`hostGraphics = "nixgl";` explicitly. In that mode, `robo` keeps using the
 Nix-managed Python and runtime libraries from the project shell, then imports
 only graphics-related variables from the selected nixGL wrapper. `robo-nix`
 provides nixGL through its own flake inputs, so users do not need to install

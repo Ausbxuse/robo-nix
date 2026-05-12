@@ -7,7 +7,7 @@ hosts without asking users to maintain shell hooks.
 
 ## Conflict Check
 
-- `desktop-gl` still must not silently force NVIDIA provider selection.
+- `desktop-gl` still must not silently force NVIDIA wrapper selection.
 - The previous "no automatic host GPU scan" rule remains valid for implicit
   behavior.
 - `hostGraphics = "nvidia"` is already explicit host-driver policy, so it may
@@ -32,8 +32,7 @@ Those files did not exist. The actual host manifests were:
 ## Scope
 
 - Keep `hostGraphics = "nvidia"` explicit.
-- Prefer explicit `ROBO_NIX_NVIDIA_VK_ICD` and
-  `ROBO_NIX_NVIDIA_EGL_VENDOR` overrides when set.
+- Prefer explicit host graphics manifest overrides when set.
 - Otherwise select the first existing NVIDIA manifest from the reviewed NixOS
   and FHS distro candidate paths.
 - Keep a deterministic fallback path when no candidate exists so diagnostics
@@ -53,7 +52,7 @@ Those files did not exist. The actual host manifests were:
 - [x] `nix-instantiate --parse flake.nix`
 - [x] render a temporary project with `hostGraphics = "nvidia"` and inspect the
   selected manifest variables
-- [x] render a temporary project with `ROBO_NIX_NVIDIA_VK_ICD` and
-  `ROBO_NIX_NVIDIA_EGL_VENDOR` set to Ubuntu-style `/usr/share` paths
+- [x] render a temporary project with explicit Ubuntu-style `/usr/share`
+  manifest paths
 - [x] `npm --prefix docs run build`
 - [x] `nix flake check`

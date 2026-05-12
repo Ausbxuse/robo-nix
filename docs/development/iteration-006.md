@@ -35,7 +35,7 @@ Observed result:
 
 - No app-specific downstream workaround.
 - No broader host graphics detection.
-- No change to `host-nvidia-gl` or CUDA driver policy.
+- No change to host NVIDIA graphics or CUDA driver policy.
 
 ## Verification
 

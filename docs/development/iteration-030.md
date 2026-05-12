@@ -1,4 +1,4 @@
-# Iteration 030 - Complete NVIDIA Host Graphics Provider
+# Iteration 030 - Historical NVIDIA Host Graphics Wrapping
 
 ## Goal
 
@@ -10,7 +10,7 @@ symlink directories, or `LD_LIBRARY_PATH` snippets.
 
 - `desktop-gl` still owns Nix-managed generic graphics and windowing libraries.
 - Host NVIDIA graphics remains explicit policy through `hostGraphics = "nvidia"`;
-  this iteration does not infer or silently force NVIDIA provider selection.
+  this iteration does not infer or silently force NVIDIA wrapper selection.
 - Existing `hostGraphics = "nvidia"` manifest selection is not enough on Ubuntu
   when the host ICD references `libGLX_nvidia.so.0` by soname.
 - GLVND should stay Nix-owned for generic dispatch libraries. The host-owned
@@ -20,7 +20,8 @@ symlink directories, or `LD_LIBRARY_PATH` snippets.
   directory into the runtime; that can leak host glibc into the Nix runtime.
 - Keep uncommon host layouts overrideable, but do not make users maintain
   project shell snippets for reviewed Ubuntu/NixOS layouts.
-- Keep nixGL as a reference point, not a runtime dependency.
+- Compare against nixGL behavior without making it a runtime dependency in this
+  iteration.
 
 ## Failure Observed
 
@@ -53,7 +54,7 @@ workflow.
 ## Scope
 
 - Keep `hostGraphics = "nvidia"` as the single user-facing policy.
-- After Nix environment capture, resolve reviewed host NVIDIA provider inputs
+- After Nix environment capture, resolve reviewed host NVIDIA graphics inputs
   from an explicit override, `ldconfig`, and known NixOS/FHS distro paths.
 - Populate `.robo-nix/host-graphics/lib` only with reviewed NVIDIA driver
   library filename families, and require `libEGL_nvidia.so.0` plus
@@ -97,4 +98,4 @@ and docs must not claim full nixGL equivalence.
 - [x] `cargo test`
 - [x] `nix-instantiate --parse flake.nix`
 - [x] render a temporary project and parse generated `flake.nix` and `robo.nix`
-- [x] unit-test the NVIDIA host graphics bridge without exposing host glibc
+- [x] unit-test the NVIDIA host graphics wrapping without exposing host glibc

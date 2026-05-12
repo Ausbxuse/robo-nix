@@ -38,8 +38,8 @@ adding package-specific shell hacks. For example:
 
 - `native-build` owns compiler runtime libraries.
 - `linux-headers` owns Linux input headers.
-- `desktop-gl` owns desktop graphics, GLU/X11 compatibility, and GLFW
-  windowing libraries.
+- `desktop-gl` owns desktop graphics client libraries, GLU/X11 compatibility,
+  and GLFW windowing libraries.
 
 When `native-build` is selected, `robo shell` also exports
 `ROBO_NIX_LIBC_DEV` for scripts that need to inspect the active compiler's libc
@@ -126,12 +126,12 @@ For verbose decision lines during setup:
 ROBO_NIX_DEBUG=1 robo shell
 ```
 
-## NVIDIA graphics provider not selected
+## NVIDIA graphics wrapper not selected
 
 If a simulator can see CUDA but logs that Vulkan/EGL selected Mesa, Intel, or no
-suitable RTX device, the host graphics provider may be wrong. Keep
-`desktop-gl` for Nix-managed graphics libraries and choose the host NVIDIA
-provider explicitly:
+suitable RTX device, the selected host graphics wrapper may be wrong. Keep
+`desktop-gl` for Nix-managed client libraries and choose the NVIDIA nixGL
+wrapper explicitly:
 
 ```nix
 {

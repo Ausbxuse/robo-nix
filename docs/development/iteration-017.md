@@ -50,7 +50,7 @@ Existing review-ledger concerns remain valid:
 
 - No `robo init`, `robo check`, or `robo diagnose` restoration.
 - No CUDA wheel/driver compatibility solver.
-- No host NVIDIA EGL/Vulkan graphics bridge.
+- No robo-owned host NVIDIA EGL/Vulkan graphics wrapping.
 - No new root Node tooling.
 - No automatic `uv sync`.
 

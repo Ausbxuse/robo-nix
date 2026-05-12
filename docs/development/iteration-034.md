@@ -1,4 +1,4 @@
-# Iteration 034 - Explicit nixGL Host Graphics Provider
+# Iteration 034 - Explicit nixGL Host Graphics Wrapper
 
 ## Goal
 
@@ -7,7 +7,7 @@ sessions where nixGL already supplies the correct host OpenGL environment.
 
 ## Conflict Check
 
-- Host graphics provider selection must stay explicit manifest policy.
+- Host graphics wrapper selection must stay explicit manifest policy.
 - Keep Nix-managed desktop graphics separate from host NVIDIA driver policy.
 - Do not turn `desktop-gl` into a broad host driver scanner.
 - Existing `hostGraphics = "nvidia"` remains a curated robo-owned provider.
@@ -37,7 +37,7 @@ selected.
   `nixGLMesa` executable on `PATH`.
 - Import only graphics-related variables from `nixGL env -0`.
 - Query nixGL with inherited graphics variables scrubbed so active shell refresh
-  cannot feed stale Mesa or NVIDIA provider state back into the wrapper.
+  cannot feed stale Mesa or NVIDIA wrapper state back into the wrapper.
 - Track nixGL-controlled graphics variables in active-shell refresh state.
 - Update the generated `robo.nix` comments.
 
