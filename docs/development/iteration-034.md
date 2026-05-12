@@ -34,6 +34,8 @@ selected.
 - During shell setup, find `ROBO_NIX_NIXGL` or a `nixGLNvidia`/`nixGL`/
   `nixGLMesa` executable on `PATH`.
 - Import only graphics-related variables from `nixGL env -0`.
+- Query nixGL with inherited graphics variables scrubbed so active shell refresh
+  cannot feed stale Mesa or NVIDIA provider state back into the wrapper.
 - Track nixGL-controlled graphics variables in active-shell refresh state.
 - Update the generated `robo.nix` comments.
 

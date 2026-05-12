@@ -325,15 +325,42 @@
                   return 1 2>/dev/null || exit 1
                 fi
 
+                robo_nix_runtime_ld_library_path="''${LD_LIBRARY_PATH:-}"
+                unset LIBGL_DRIVERS_PATH LIBVA_DRIVERS_PATH GBM_BACKENDS_PATH
+                unset __EGL_VENDOR_LIBRARY_FILENAMES __GLX_VENDOR_LIBRARY_NAME
+                unset __NV_PRIME_RENDER_OFFLOAD __VK_LAYER_NV_optimus
+                unset VK_ICD_FILENAMES VK_DRIVER_FILES VK_LAYER_PATH
+
                 while IFS= read -r -d "" robo_nix_nixgl_entry; do
                   case "$robo_nix_nixgl_entry" in
-                    LD_LIBRARY_PATH=*|LIBGL_DRIVERS_PATH=*|LIBVA_DRIVERS_PATH=*|GBM_BACKENDS_PATH=*|__EGL_VENDOR_LIBRARY_FILENAMES=*|__GLX_VENDOR_LIBRARY_NAME=*|__NV_PRIME_RENDER_OFFLOAD=*|__VK_LAYER_NV_optimus=*|VK_ICD_FILENAMES=*|VK_DRIVER_FILES=*|VK_LAYER_PATH=*)
+                    LD_LIBRARY_PATH=*)
+                      robo_nix_nixgl_ld_library_path="''${robo_nix_nixgl_entry#LD_LIBRARY_PATH=}"
+                      if [ -n "$robo_nix_nixgl_ld_library_path" ] && [ -n "$robo_nix_runtime_ld_library_path" ]; then
+                        export LD_LIBRARY_PATH="$robo_nix_nixgl_ld_library_path:$robo_nix_runtime_ld_library_path"
+                      elif [ -n "$robo_nix_nixgl_ld_library_path" ]; then
+                        export LD_LIBRARY_PATH="$robo_nix_nixgl_ld_library_path"
+                      fi
+                      ;;
+                    LIBGL_DRIVERS_PATH=*|LIBVA_DRIVERS_PATH=*|GBM_BACKENDS_PATH=*|__EGL_VENDOR_LIBRARY_FILENAMES=*|__GLX_VENDOR_LIBRARY_NAME=*|__NV_PRIME_RENDER_OFFLOAD=*|__VK_LAYER_NV_optimus=*|VK_ICD_FILENAMES=*|VK_DRIVER_FILES=*|VK_LAYER_PATH=*)
                       export "$robo_nix_nixgl_entry"
                       ;;
                   esac
-                done < <("$robo_nix_nixgl" env -0)
+                done < <(env \
+                  -u LD_LIBRARY_PATH \
+                  -u LIBGL_DRIVERS_PATH \
+                  -u LIBVA_DRIVERS_PATH \
+                  -u GBM_BACKENDS_PATH \
+                  -u __EGL_VENDOR_LIBRARY_FILENAMES \
+                  -u __GLX_VENDOR_LIBRARY_NAME \
+                  -u __NV_PRIME_RENDER_OFFLOAD \
+                  -u __VK_LAYER_NV_optimus \
+                  -u VK_ICD_FILENAMES \
+                  -u VK_DRIVER_FILES \
+                  -u VK_LAYER_PATH \
+                  "$robo_nix_nixgl" env -0)
 
                 unset robo_nix_nixgl robo_nix_nixgl_candidate robo_nix_nixgl_entry
+                unset robo_nix_nixgl_ld_library_path robo_nix_runtime_ld_library_path
               ''
               + lib.optionalString (hasComponent "linux-headers") ''
 
