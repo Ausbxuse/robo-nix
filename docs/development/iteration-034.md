@@ -31,7 +31,7 @@ selected.
 ## Scope
 
 - Accept `hostGraphics = "nixgl"` in project manifests.
-- During shell setup, find `ROBO_NIX_NIXGL` or a `nixGL`/`nixGLNvidia`/
+- During shell setup, find `ROBO_NIX_NIXGL` or a `nixGLNvidia`/`nixGL`/
   `nixGLMesa` executable on `PATH`.
 - Import only graphics-related variables from `nixGL env -0`.
 - Track nixGL-controlled graphics variables in active-shell refresh state.

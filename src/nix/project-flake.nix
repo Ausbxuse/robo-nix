@@ -311,7 +311,7 @@
 
                 robo_nix_nixgl="''${ROBO_NIX_NIXGL:-}"
                 if [ -z "$robo_nix_nixgl" ]; then
-                  for robo_nix_nixgl_candidate in nixGL nixGLNvidia nixGLMesa; do
+                  for robo_nix_nixgl_candidate in nixGLNvidia nixGL nixGLMesa; do
                     if command -v "$robo_nix_nixgl_candidate" >/dev/null 2>&1; then
                       robo_nix_nixgl="$(command -v "$robo_nix_nixgl_candidate")"
                       break
