@@ -151,8 +151,9 @@ automatic bridge.
 
 Host graphics provider selection is project policy. The generated default is
 `hostGraphics = "auto";`, which uses `/run/opengl-driver` on NixOS hosts and
-robo-provided nixGL wrappers on other Linux hosts. Use `hostGraphics =
-"nixgl-nvidia";` when a project must use the NVIDIA nixGL wrapper. Leave
+the generic robo-provided nixGL wrapper on other Linux hosts. Use
+`hostGraphics = "nixgl-nvidia";` only when a project must use the NVIDIA nixGL
+wrapper. Leave
 `hostGraphics = null;` when the project should not select a host graphics
 provider.
 

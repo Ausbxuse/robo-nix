@@ -147,7 +147,7 @@ provider explicitly:
 ```
 
 `hostGraphics = "auto";` is the default and selects `/run/opengl-driver` on
-NixOS hosts or robo-provided nixGL wrappers on other Linux hosts. Use
+NixOS hosts or the generic robo-provided nixGL wrapper on other Linux hosts. Use
 `hostGraphics = "nixgl-nvidia";` when the project must fail instead of falling
 back to Mesa. Set `ROBO_NIX_NVIDIA_VERSION` only when `nvidia-smi` and
 `/proc/driver/nvidia/version` are unavailable.

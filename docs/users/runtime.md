@@ -94,8 +94,8 @@ as `Qt6::Core`, `Qt6::Network`, or `Qt6::Core5Compat`:
 
 Host GPU provider selection is separate from `desktop-gl`. By default,
 `hostGraphics = "auto";` uses `/run/opengl-driver` on NixOS hosts and
-robo-provided nixGL wrappers on other Linux hosts. If a simulator such as Isaac
-Sim or MuJoCo must use the NVIDIA nixGL wrapper, set:
+the generic robo-provided nixGL wrapper on other Linux hosts. If a simulator
+such as Isaac Sim or MuJoCo must use the NVIDIA nixGL wrapper, set:
 
 ```nix
 {
@@ -120,7 +120,7 @@ Nix-managed Python and runtime libraries from the project shell, then imports
 only graphics-related variables from `nixGLNvidia`, `nixGL`, `nixGLMesa`, or the
 wrapper path named by `ROBO_NIX_NIXGL`. `robo-nix` provides the nixGL wrappers
 through its own flake inputs, so users do not need to install nixGL in their
-profile for normal use. Use `hostGraphics = "nixgl-nvidia";` when the project
+profile for normal use. Use `hostGraphics = "nixgl-nvidia";` only when the project
 must use the NVIDIA nixGL wrapper and should fail rather than falling back to a
 Mesa wrapper. `robo` detects the host NVIDIA driver version with `nvidia-smi` or
 `/proc/driver/nvidia/version`; set `ROBO_NIX_NVIDIA_VERSION` only when those

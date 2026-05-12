@@ -99,8 +99,8 @@ environment manager.
 - Keep Nix-managed desktop graphics separate from host CUDA driver policy.
 - Host graphics provider selection is generated-shell policy. `hostGraphics =
   "auto"` is the default, uses `/run/opengl-driver` on NixOS hosts, and uses the
-  robo-provided nixGL input on other Linux hosts. Keep `null` as an explicit
-  opt-out.
+  generic robo-provided nixGL wrapper on other Linux hosts. Keep `null` as an
+  explicit opt-out.
 - `hostGraphics = "nixgl-nvidia"` must require the NVIDIA nixGL wrapper and may
   use `ROBO_NIX_NVIDIA_VERSION` when host driver version detection is
   unavailable. `hostGraphics = "nvidia"` is a compatibility alias for that
@@ -113,9 +113,8 @@ environment manager.
   inherited `LD_LIBRARY_PATH`, `ldconfig`, and known host driver locations when
   the project appears to need `libcuda.so.1`. Keep `ROBO_NIX_LIBCUDA_PATH` as an
   override and honor `ROBO_NIX_DISABLE_HOST_CUDA_AUTO`. Host NVIDIA graphics
-  version probing is allowed only for `hostGraphics = "auto"` and
-  `hostGraphics = "nixgl-nvidia"` so nixGL can be built with the matching
-  driver version.
+  version probing is allowed only for `hostGraphics = "nixgl-nvidia"` so nixGL
+  can be built with the matching driver version.
 - Linux input packages such as `evdev` are handled through the `linux-headers`
   component. Keep this as a generic native-header contract, not a
   package-specific workaround.

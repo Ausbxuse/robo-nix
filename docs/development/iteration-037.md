@@ -15,9 +15,8 @@ boundary.
 ## Decision
 
 - Make `hostGraphics = "auto"` the generated manifest default.
-- Resolve `auto` in the generated shell: `/run/opengl-driver` on NixOS,
-  `nixgl-nvidia` when an NVIDIA driver is visible on other Linux hosts, and
-  `nixgl` otherwise.
+- Resolve `auto` in the generated shell: `/run/opengl-driver` on NixOS and the
+  generic nixGL wrapper on other Linux hosts.
 - Keep `hostGraphics = null` as the explicit opt-out.
 - Treat `hostGraphics = "nvidia"` as a compatibility alias for
   `hostGraphics = "nixgl-nvidia"`.

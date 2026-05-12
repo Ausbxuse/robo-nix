@@ -141,7 +141,7 @@ graphics policy.
 
 Host graphics provider policy is Nix-owned. The generated shell defaults to
 `hostGraphics = "auto";`, uses `/run/opengl-driver` on NixOS hosts, and uses
-the robo-provided nixGL input on other Linux hosts. `hostGraphics =
+the generic robo-provided nixGL wrapper on other Linux hosts. `hostGraphics =
 "nixgl-nvidia";` requires the NVIDIA nixGL wrapper and may use
 `ROBO_NIX_NVIDIA_VERSION` when host driver version detection is unavailable.
 Rust must not maintain a second host GLX/EGL/GBM provider bridge.

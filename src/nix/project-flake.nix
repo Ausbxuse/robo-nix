@@ -261,8 +261,6 @@
                 if [ "$robo_nix_host_graphics_policy" = "auto" ]; then
                   if [ -d /run/opengl-driver/lib ]; then
                     robo_nix_host_graphics_policy=nixos
-                  elif command -v nvidia-smi >/dev/null 2>&1 || [ -x /usr/bin/nvidia-smi ] || [ -x /run/current-system/sw/bin/nvidia-smi ] || [ -r /proc/driver/nvidia/version ]; then
-                    robo_nix_host_graphics_policy=nixgl-nvidia
                   else
                     robo_nix_host_graphics_policy=nixgl
                   fi
