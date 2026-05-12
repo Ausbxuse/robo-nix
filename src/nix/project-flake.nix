@@ -220,7 +220,7 @@
       };
 
       unknownComponents = lib.filter (component: !(builtins.hasAttr component componentPackages)) selectedComponents;
-      validHostGraphics = [null "nvidia" "nixgl"];
+      validHostGraphics = [null "nvidia" "nixgl" "nixgl-nvidia"];
       hasComponent = component: builtins.elem component selectedComponents;
       componentPackageLists = map (component: builtins.getAttr component componentPackages) selectedComponents;
       componentRuntimeLibraryLists = map (component: builtins.getAttr component componentRuntimeLibraries) selectedComponents;
@@ -231,7 +231,7 @@
         if unknownComponents != []
         then throw "robo-nix: unknown components in robo.nix: ${lib.concatStringsSep ", " unknownComponents}"
         else if !(builtins.elem hostGraphics validHostGraphics)
-        then throw "robo-nix: hostGraphics in robo.nix must be null, \"nvidia\", or \"nixgl\""
+        then throw "robo-nix: hostGraphics in robo.nix must be null, \"nvidia\", \"nixgl\", or \"nixgl-nvidia\""
         else
           pkgs.mkShell {
             packages = (builtins.concatLists componentPackageLists) ++ extraPackages pkgs;
@@ -307,11 +307,11 @@
                 unset -f robo_nix_select_host_manifest
                 unset robo_nix_nvidia_vk_icd robo_nix_nvidia_egl_vendor
               ''
-              + lib.optionalString (hostGraphics == "nixgl") ''
+              + lib.optionalString (hostGraphics == "nixgl" || hostGraphics == "nixgl-nvidia") ''
 
                 robo_nix_nixgl="''${ROBO_NIX_NIXGL:-}"
                 if [ -z "$robo_nix_nixgl" ]; then
-                  for robo_nix_nixgl_candidate in nixGLNvidia nixGL nixGLMesa; do
+                  for robo_nix_nixgl_candidate in ${if hostGraphics == "nixgl-nvidia" then "nixGLNvidia" else "nixGLNvidia nixGL nixGLMesa"}; do
                     if command -v "$robo_nix_nixgl_candidate" >/dev/null 2>&1; then
                       robo_nix_nixgl="$(command -v "$robo_nix_nixgl_candidate")"
                       break
@@ -320,7 +320,7 @@
                 fi
 
                 if [ -z "$robo_nix_nixgl" ] || [ ! -x "$robo_nix_nixgl" ]; then
-                  printf '%s\n' "robo-nix: hostGraphics = \"nixgl\" requires nixGL, nixGLNvidia, or nixGLMesa on PATH." >&2
+                  printf '%s\n' "robo-nix: hostGraphics = \"${hostGraphics}\" requires ${if hostGraphics == "nixgl-nvidia" then "nixGLNvidia" else "nixGL, nixGLNvidia, or nixGLMesa"} on PATH." >&2
                   printf '%s\n' "robo-nix: set ROBO_NIX_NIXGL to the nixGL wrapper path for uncommon layouts." >&2
                   return 1 2>/dev/null || exit 1
                 fi

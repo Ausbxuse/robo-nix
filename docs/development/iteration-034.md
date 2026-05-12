@@ -31,6 +31,8 @@ selected.
 ## Scope
 
 - Accept `hostGraphics = "nixgl"` in project manifests.
+- Accept `hostGraphics = "nixgl-nvidia"` for projects that require the NVIDIA
+  nixGL wrapper and should fail instead of falling back to Mesa.
 - During shell setup, find `ROBO_NIX_NIXGL` or a `nixGLNvidia`/`nixGL`/
   `nixGLMesa` executable on `PATH`.
 - Import only graphics-related variables from `nixGL env -0`.

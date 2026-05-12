@@ -19,5 +19,6 @@
   #              ROBO_NIX_NVIDIA_DRIVER_LIB_DIR for uncommon host layouts.
   #   "nixgl"  - import graphics variables from a nixGL wrapper found on PATH;
   #              set ROBO_NIX_NIXGL for uncommon wrapper names or locations.
+  #   "nixgl-nvidia" - import graphics variables from nixGLNvidia only.
   hostGraphics = null;
 }

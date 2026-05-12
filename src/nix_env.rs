@@ -233,7 +233,7 @@ pub(crate) const ENV_VARS: &[EnvVarSpec] = &[
         name: "ROBO_NIX_NIXGL",
         visibility: EnvVarVisibility::Public,
         affects_runtime_key: true,
-        description: "Override the nixGL wrapper path selected by hostGraphics = \"nixgl\".",
+        description: "Override the nixGL wrapper path selected by hostGraphics = \"nixgl\" or \"nixgl-nvidia\".",
     },
     EnvVarSpec {
         name: "ROBO_NIX_HOST_GRAPHICS",
