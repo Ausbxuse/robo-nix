@@ -193,7 +193,7 @@
           pkgs.libxkbcommon
           pkgs.libxrandr
           pkgs.libxrender
-          pkgs.xorg.libxshmfence
+          pkgs.libxshmfence
           pkgs.libXt
           pkgs.libxtst
         ];
@@ -227,12 +227,36 @@
       componentRuntimeLibraryLists = map (component: builtins.getAttr component componentRuntimeLibraries) selectedComponents;
       runtimeLibraries = (builtins.concatLists componentRuntimeLibraryLists) ++ extraRuntimeLibraries pkgs;
       runtimeLibraryPath = lib.makeLibraryPath runtimeLibraries;
-      nixglPackages = if nixgl == null then {} else nixgl.packages.${system};
-      nixglSource = if nixgl == null then "" else nixgl.outPath;
+      nixglPackages =
+        if nixgl == null
+        then {}
+        else nixgl.packages.${system};
+      nixglSource =
+        if nixgl == null
+        then ""
+        else nixgl.outPath;
       bundledNixglWrapper =
         if (hostGraphics == "auto" || hostGraphics == "nixgl") && builtins.hasAttr "nixGLDefault" nixglPackages
         then "${nixglPackages.nixGLDefault}/bin/nixGL"
         else "";
+      graphicsWrapperEnvNames = [
+        "LIBGL_DRIVERS_PATH"
+        "LIBVA_DRIVERS_PATH"
+        "GBM_BACKENDS_PATH"
+        "__EGL_EXTERNAL_PLATFORM_CONFIG_DIRS"
+        "__EGL_VENDOR_LIBRARY_FILENAMES"
+        "__GLX_VENDOR_LIBRARY_NAME"
+        "__NV_PRIME_RENDER_OFFLOAD"
+        "__VK_LAYER_NV_optimus"
+        "VK_ICD_FILENAMES"
+        "VK_DRIVER_FILES"
+        "VK_LAYER_PATH"
+      ];
+      graphicsWrapperCasePattern =
+        lib.concatStringsSep "|" (map (name: "${name}=*") graphicsWrapperEnvNames);
+      graphicsWrapperUnset = lib.concatStringsSep " " graphicsWrapperEnvNames;
+      graphicsWrapperEnvScrubArgs =
+        lib.concatStringsSep " \\\n                    " (map (name: "-u ${name}") (["LD_LIBRARY_PATH"] ++ graphicsWrapperEnvNames));
     in {
       default =
         if unknownComponents != []
@@ -251,7 +275,11 @@
                 export UV_PROJECT_ENVIRONMENT="''${UV_PROJECT_ENVIRONMENT:-$PWD/.venv}"
                 export UV_CACHE_DIR="''${UV_CACHE_DIR:-$PWD/.robo-nix/uv-cache}"
                 export ROBO_NIX_COMPONENTS="${lib.concatStringsSep ":" selectedComponents}"
-                robo_nix_host_graphics_policy="${if hostGraphics == null then "none" else hostGraphics}"
+                robo_nix_host_graphics_policy="${
+                  if hostGraphics == null
+                  then "none"
+                  else hostGraphics
+                }"
                 if [ "$robo_nix_host_graphics_policy" = "auto" ]; then
                   if [ -d /run/opengl-driver/lib ]; then
                     robo_nix_host_graphics_policy=nixos
@@ -340,10 +368,7 @@
                   fi
 
                   robo_nix_runtime_ld_library_path="''${LD_LIBRARY_PATH:-}"
-                  unset LIBGL_DRIVERS_PATH LIBVA_DRIVERS_PATH GBM_BACKENDS_PATH
-                  unset __EGL_EXTERNAL_PLATFORM_CONFIG_DIRS __EGL_VENDOR_LIBRARY_FILENAMES __GLX_VENDOR_LIBRARY_NAME
-                  unset __NV_PRIME_RENDER_OFFLOAD __VK_LAYER_NV_optimus
-                  unset VK_ICD_FILENAMES VK_DRIVER_FILES VK_LAYER_PATH
+                  unset ${graphicsWrapperUnset}
 
                   while IFS= read -r -d "" robo_nix_nixgl_entry; do
                     case "$robo_nix_nixgl_entry" in
@@ -355,23 +380,12 @@
                           export LD_LIBRARY_PATH="$robo_nix_nixgl_ld_library_path"
                         fi
                         ;;
-                      LIBGL_DRIVERS_PATH=*|LIBVA_DRIVERS_PATH=*|GBM_BACKENDS_PATH=*|__EGL_EXTERNAL_PLATFORM_CONFIG_DIRS=*|__EGL_VENDOR_LIBRARY_FILENAMES=*|__GLX_VENDOR_LIBRARY_NAME=*|__NV_PRIME_RENDER_OFFLOAD=*|__VK_LAYER_NV_optimus=*|VK_ICD_FILENAMES=*|VK_DRIVER_FILES=*|VK_LAYER_PATH=*)
+                      ${graphicsWrapperCasePattern})
                         export "$robo_nix_nixgl_entry"
                         ;;
                     esac
                   done < <(env \
-                    -u LD_LIBRARY_PATH \
-                    -u LIBGL_DRIVERS_PATH \
-                    -u LIBVA_DRIVERS_PATH \
-                    -u GBM_BACKENDS_PATH \
-                    -u __EGL_EXTERNAL_PLATFORM_CONFIG_DIRS \
-                    -u __EGL_VENDOR_LIBRARY_FILENAMES \
-                    -u __GLX_VENDOR_LIBRARY_NAME \
-                    -u __NV_PRIME_RENDER_OFFLOAD \
-                    -u __VK_LAYER_NV_optimus \
-                    -u VK_ICD_FILENAMES \
-                    -u VK_DRIVER_FILES \
-                    -u VK_LAYER_PATH \
+                    ${graphicsWrapperEnvScrubArgs} \
                     "$robo_nix_nixgl" env -0)
 
                   unset robo_nix_nixgl robo_nix_nixgl_candidate robo_nix_nixgl_entry
