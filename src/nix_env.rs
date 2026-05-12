@@ -42,6 +42,54 @@ const INHERITED_TERMINAL_ENV_VARS: &[&str] = &[
     "TMUX_PANE",
     "STY",
 ];
+const ROBO_MANAGED_ENV_NAMES: &[&str] = &[
+    "ROBO_NIX_ACTIVE",
+    "ROBO_NIX_ENV_NAME",
+    "ROBO_NIX_PROMPT_PREFIX",
+    "ROBO_NIX_PARENT_ZDOTDIR",
+    "ROBO_NIX_RUNTIME_INPUT_KEY",
+    "ROBO_NIX_RUNTIME_INPUT_FILES",
+    "ROBO_NIX_COMPONENTS",
+    "ROBO_NIX_MANAGED_ENV_VARS",
+    "ROBO_NIX_PYTHON",
+    "ROBO_NIX_HOST_GRAPHICS",
+    "ROBO_NIX_LIBC_DEV",
+    "ROBO_NIX_LINUX_HEADERS",
+    "ROBO_NIX_LIBCUDA_PATH",
+    "ROBO_NIX_HOST_LIBCUDA_AUTO",
+    "ROBO_NIX_HOST_LIBCUDA_BRIDGE",
+    "ROBO_NIX_HOST_LIBCUDA_LD_LIBRARY_PATH_SKIPPED",
+    "UV_PYTHON",
+    "UV_PYTHON_DOWNLOADS",
+    "UV_PROJECT_ENVIRONMENT",
+    "UV_CACHE_DIR",
+    "VIRTUAL_ENV",
+    "TRITON_LIBCUDA_PATH",
+    "CUDA_PATH",
+    "CUDA_HOME",
+    "CUDA_TOOLKIT_ROOT_DIR",
+    "CUDAToolkit_ROOT",
+    "CUDAHOSTCXX",
+    "CC",
+    "CXX",
+    "CPATH",
+    "C_INCLUDE_PATH",
+    "LIBRARY_PATH",
+    "LD_LIBRARY_PATH",
+    "__EGL_EXTERNAL_PLATFORM_CONFIG_DIRS",
+    "GBM_BACKENDS_PATH",
+    "LIBGL_DRIVERS_PATH",
+    "LIBVA_DRIVERS_PATH",
+    "__EGL_VENDOR_LIBRARY_FILENAMES",
+    "VK_ICD_FILENAMES",
+    "VK_DRIVER_FILES",
+    "VK_LAYER_PATH",
+    "__NV_PRIME_RENDER_OFFLOAD",
+    "__GLX_VENDOR_LIBRARY_NAME",
+    "__VK_LAYER_NV_optimus",
+    "NVIDIA_VISIBLE_DEVICES",
+    "WORKSPACE_ROOT",
+];
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub(crate) enum EnvVarVisibility {
@@ -280,55 +328,7 @@ pub(crate) fn runtime_key_env_names() -> impl Iterator<Item = &'static str> {
 }
 
 pub(crate) fn is_robo_managed_env(name: &str) -> bool {
-    matches!(
-        name,
-        "ROBO_NIX_ACTIVE"
-            | "ROBO_NIX_ENV_NAME"
-            | "ROBO_NIX_PROMPT_PREFIX"
-            | "ROBO_NIX_PARENT_ZDOTDIR"
-            | "ROBO_NIX_RUNTIME_INPUT_KEY"
-            | "ROBO_NIX_RUNTIME_INPUT_FILES"
-            | "ROBO_NIX_COMPONENTS"
-            | "ROBO_NIX_MANAGED_ENV_VARS"
-            | "ROBO_NIX_PYTHON"
-            | "ROBO_NIX_HOST_GRAPHICS"
-            | "ROBO_NIX_LIBC_DEV"
-            | "ROBO_NIX_LINUX_HEADERS"
-            | "ROBO_NIX_LIBCUDA_PATH"
-            | "ROBO_NIX_HOST_LIBCUDA_AUTO"
-            | "ROBO_NIX_HOST_LIBCUDA_BRIDGE"
-            | "ROBO_NIX_HOST_LIBCUDA_LD_LIBRARY_PATH_SKIPPED"
-            | "UV_PYTHON"
-            | "UV_PYTHON_DOWNLOADS"
-            | "UV_PROJECT_ENVIRONMENT"
-            | "UV_CACHE_DIR"
-            | "VIRTUAL_ENV"
-            | "TRITON_LIBCUDA_PATH"
-            | "CUDA_PATH"
-            | "CUDA_HOME"
-            | "CUDA_TOOLKIT_ROOT_DIR"
-            | "CUDAToolkit_ROOT"
-            | "CUDAHOSTCXX"
-            | "CC"
-            | "CXX"
-            | "CPATH"
-            | "C_INCLUDE_PATH"
-            | "LIBRARY_PATH"
-            | "LD_LIBRARY_PATH"
-            | "__EGL_EXTERNAL_PLATFORM_CONFIG_DIRS"
-            | "GBM_BACKENDS_PATH"
-            | "LIBGL_DRIVERS_PATH"
-            | "LIBVA_DRIVERS_PATH"
-            | "__EGL_VENDOR_LIBRARY_FILENAMES"
-            | "VK_ICD_FILENAMES"
-            | "VK_DRIVER_FILES"
-            | "VK_LAYER_PATH"
-            | "__NV_PRIME_RENDER_OFFLOAD"
-            | "__GLX_VENDOR_LIBRARY_NAME"
-            | "__VK_LAYER_NV_optimus"
-            | "NVIDIA_VISIBLE_DEVICES"
-            | "WORKSPACE_ROOT"
-    )
+    ROBO_MANAGED_ENV_NAMES.contains(&name)
 }
 
 pub(crate) fn runtime_environment(
@@ -745,6 +745,8 @@ pub(crate) fn append_host_cuda_driver_bridge(
     envs: &mut Vec<(String, String)>,
     workspace: &Path,
 ) -> HostCudaReport {
+    // This is a CUDA driver boundary, not a graphics-driver bridge. Desktop
+    // graphics variables come from the manifest's hostGraphics policy.
     let needed_by = host_cuda_need_reasons(workspace);
     if needed_by.is_empty() {
         return HostCudaReport {
@@ -929,27 +931,34 @@ fn apply_host_cuda_driver_bridge(
     let driver_dir_path = driver_dir.to_path_buf();
     let driver_dir = driver_dir.display().to_string();
 
-    set_shell_env(envs, "ROBO_NIX_LIBCUDA_PATH", libcuda.to_string());
-    result.env_updates.push("ROBO_NIX_LIBCUDA_PATH".to_string());
-    set_shell_env(envs, "ROBO_NIX_HOST_LIBCUDA_AUTO", driver_dir.clone());
-    result
-        .env_updates
-        .push("ROBO_NIX_HOST_LIBCUDA_AUTO".to_string());
+    record_env_update(
+        envs,
+        &mut result,
+        "ROBO_NIX_LIBCUDA_PATH",
+        libcuda.to_string(),
+    );
+    record_env_update(
+        envs,
+        &mut result,
+        "ROBO_NIX_HOST_LIBCUDA_AUTO",
+        driver_dir.clone(),
+    );
 
     if shell_env_value(envs, "TRITON_LIBCUDA_PATH").is_none()
         && env::var_os("TRITON_LIBCUDA_PATH").is_none()
     {
-        set_shell_env(envs, "TRITON_LIBCUDA_PATH", driver_dir.clone());
-        result.env_updates.push("TRITON_LIBCUDA_PATH".to_string());
+        record_env_update(envs, &mut result, "TRITON_LIBCUDA_PATH", driver_dir.clone());
     }
 
     if driver_dir_contains_glibc(&driver_dir_path) {
         match create_libcuda_bridge(workspace, libcuda) {
             Ok(bridge_dir) => {
-                set_shell_env(envs, "ROBO_NIX_HOST_LIBCUDA_BRIDGE", bridge_dir.clone());
-                result
-                    .env_updates
-                    .push("ROBO_NIX_HOST_LIBCUDA_BRIDGE".to_string());
+                record_env_update(
+                    envs,
+                    &mut result,
+                    "ROBO_NIX_HOST_LIBCUDA_BRIDGE",
+                    bridge_dir.clone(),
+                );
                 append_ld_library_path(envs, &bridge_dir);
                 result.env_updates.push("LD_LIBRARY_PATH".to_string());
                 result.bridge = Some(bridge_dir);
@@ -958,14 +967,12 @@ fn apply_host_cuda_driver_bridge(
                 result.bridge_error = Some(err.message().to_string());
             }
         }
-        set_shell_env(
+        record_env_update(
             envs,
+            &mut result,
             "ROBO_NIX_HOST_LIBCUDA_LD_LIBRARY_PATH_SKIPPED",
             driver_dir,
         );
-        result
-            .env_updates
-            .push("ROBO_NIX_HOST_LIBCUDA_LD_LIBRARY_PATH_SKIPPED".to_string());
         return result;
     }
 
@@ -979,6 +986,9 @@ fn driver_dir_contains_glibc(driver_dir: &Path) -> bool {
 }
 
 fn create_libcuda_bridge(workspace: &Path, libcuda: &str) -> Result<String, AppError> {
+    // Some host driver directories also contain host glibc. In that case expose
+    // only libcuda sonames through a robo-owned directory, so the Nix runtime
+    // does not accidentally load the host C library.
     with_project_lock(workspace, "host-libs", || {
         let bridge_dir = workspace.join(".robo-nix").join("host-libs");
         fs::create_dir_all(&bridge_dir).map_err(|err| {
@@ -1008,6 +1018,16 @@ fn replace_file_link(source: &Path, link: &Path) -> std::io::Result<()> {
 #[cfg(not(unix))]
 fn replace_file_link(source: &Path, link: &Path) -> std::io::Result<()> {
     fs::copy(source, link).map(|_| ())
+}
+
+fn record_env_update(
+    envs: &mut Vec<(String, String)>,
+    result: &mut HostCudaBridgeResult,
+    name: &str,
+    value: String,
+) {
+    set_shell_env(envs, name, value);
+    result.env_updates.push(name.to_string());
 }
 
 fn append_ld_library_path(envs: &mut Vec<(String, String)>, path: &str) {

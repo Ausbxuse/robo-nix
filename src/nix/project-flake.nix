@@ -275,6 +275,24 @@
                 export UV_PROJECT_ENVIRONMENT="''${UV_PROJECT_ENVIRONMENT:-$PWD/.venv}"
                 export UV_CACHE_DIR="''${UV_CACHE_DIR:-$PWD/.robo-nix/uv-cache}"
                 export ROBO_NIX_COMPONENTS="${lib.concatStringsSep ":" selectedComponents}"
+                # mkShell runs shellHook under Bash. Keep colon-list updates in
+                # one place so CUDA, graphics, headers, and venv setup have the
+                # same duplicate-prevention behavior.
+                robo_nix_prepend_path() {
+                  local robo_nix_prepend_name="$1"
+                  local robo_nix_prepend_value="$2"
+                  local robo_nix_prepend_current="''${!robo_nix_prepend_name:-}"
+                  case ":$robo_nix_prepend_current:" in
+                    *":$robo_nix_prepend_value:"*) ;;
+                    *)
+                      if [ -n "$robo_nix_prepend_current" ]; then
+                        export "$robo_nix_prepend_name=$robo_nix_prepend_value:$robo_nix_prepend_current"
+                      else
+                        export "$robo_nix_prepend_name=$robo_nix_prepend_value"
+                      fi
+                      ;;
+                  esac
+                }
                 robo_nix_host_graphics_policy="${
                   if hostGraphics == null
                   then "none"
@@ -293,18 +311,12 @@
 
                 if [ -d "$UV_PROJECT_ENVIRONMENT/bin" ]; then
                   export VIRTUAL_ENV="$UV_PROJECT_ENVIRONMENT"
-                  case ":$PATH:" in
-                    *":$UV_PROJECT_ENVIRONMENT/bin:"*) ;;
-                    *) export PATH="$UV_PROJECT_ENVIRONMENT/bin:$PATH" ;;
-                  esac
+                  robo_nix_prepend_path PATH "$UV_PROJECT_ENVIRONMENT/bin"
                 fi
               ''
               + lib.optionalString (runtimeLibraryPath != "") ''
 
-                case ":''${LD_LIBRARY_PATH:-}:" in
-                  *":${runtimeLibraryPath}:"*) ;;
-                  *) export LD_LIBRARY_PATH="${runtimeLibraryPath}''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" ;;
-                esac
+                robo_nix_prepend_path LD_LIBRARY_PATH "${runtimeLibraryPath}"
               ''
               + lib.optionalString (hasComponent "native-build") ''
 
@@ -317,13 +329,13 @@
               + lib.optionalString (hostGraphics != null) ''
 
                 if [ "$robo_nix_host_graphics_policy" = "nixos" ] && [ -d /run/opengl-driver/lib ]; then
-                  case ":''${LD_LIBRARY_PATH:-}:" in
-                    *":/run/opengl-driver/lib:"*) ;;
-                    *) export LD_LIBRARY_PATH="/run/opengl-driver/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" ;;
-                  esac
+                  robo_nix_prepend_path LD_LIBRARY_PATH "/run/opengl-driver/lib"
                 fi
 
                 if [ "$robo_nix_host_graphics_policy" = "nixgl" ] || [ "$robo_nix_host_graphics_policy" = "nixgl-nvidia" ]; then
+                  # robo imports only the runtime variables selected by nixGL.
+                  # The launched command still runs under robo so shell refresh,
+                  # caching, and `robo run` stay on one runtime path.
                   robo_nix_nixgl="''${ROBO_NIX_NIXGL:-}"
                   if [ -z "$robo_nix_nixgl" ] && [ "$robo_nix_host_graphics_policy" != "nixgl-nvidia" ] && [ -n "${bundledNixglWrapper}" ] && [ -x "${bundledNixglWrapper}" ]; then
                     robo_nix_nixgl="${bundledNixglWrapper}"
@@ -396,14 +408,8 @@
               + lib.optionalString (hasComponent "linux-headers") ''
 
                 export ROBO_NIX_LINUX_HEADERS="${pkgs.linuxHeaders}/include"
-                case ":''${CPATH:-}:" in
-                  *":$ROBO_NIX_LINUX_HEADERS:"*) ;;
-                  *) export CPATH="$ROBO_NIX_LINUX_HEADERS''${CPATH:+:$CPATH}" ;;
-                esac
-                case ":''${C_INCLUDE_PATH:-}:" in
-                  *":$ROBO_NIX_LINUX_HEADERS:"*) ;;
-                  *) export C_INCLUDE_PATH="$ROBO_NIX_LINUX_HEADERS''${C_INCLUDE_PATH:+:$C_INCLUDE_PATH}" ;;
-                esac
+                robo_nix_prepend_path CPATH "$ROBO_NIX_LINUX_HEADERS"
+                robo_nix_prepend_path C_INCLUDE_PATH "$ROBO_NIX_LINUX_HEADERS"
               ''
               + lib.optionalString (hasComponent "cuda-toolkit") ''
 
@@ -416,22 +422,10 @@
                 export CXX="${cudaPackages.backendStdenv.cc}/bin/c++"
                 export NVIDIA_VISIBLE_DEVICES="''${NVIDIA_VISIBLE_DEVICES:-all}"
 
-                case ":$PATH:" in
-                  *":$CUDA_PATH/bin:"*) ;;
-                  *) export PATH="$CUDA_PATH/bin:$PATH" ;;
-                esac
-                case ":''${CPATH:-}:" in
-                  *":$CUDA_PATH/include:"*) ;;
-                  *) export CPATH="$CUDA_PATH/include''${CPATH:+:$CPATH}" ;;
-                esac
-                case ":''${LIBRARY_PATH:-}:" in
-                  *":$CUDA_PATH/lib:"*) ;;
-                  *) export LIBRARY_PATH="$CUDA_PATH/lib''${LIBRARY_PATH:+:$LIBRARY_PATH}" ;;
-                esac
-                case ":''${LD_LIBRARY_PATH:-}:" in
-                  *":$CUDA_PATH/lib:"*) ;;
-                  *) export LD_LIBRARY_PATH="$CUDA_PATH/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" ;;
-                esac
+                robo_nix_prepend_path PATH "$CUDA_PATH/bin"
+                robo_nix_prepend_path CPATH "$CUDA_PATH/include"
+                robo_nix_prepend_path LIBRARY_PATH "$CUDA_PATH/lib"
+                robo_nix_prepend_path LD_LIBRARY_PATH "$CUDA_PATH/lib"
               ''
               + ''
 
@@ -447,19 +441,14 @@
                   if [ -n "$robo_nix_cuda_driver_dir" ]; then
                     export TRITON_LIBCUDA_PATH="''${TRITON_LIBCUDA_PATH:-$robo_nix_cuda_driver_dir}"
                     if [ -n "''${ROBO_NIX_HOST_LIBCUDA_BRIDGE:-}" ]; then
-                      case ":''${LD_LIBRARY_PATH:-}:" in
-                        *":$ROBO_NIX_HOST_LIBCUDA_BRIDGE:"*) ;;
-                        *) export LD_LIBRARY_PATH="$ROBO_NIX_HOST_LIBCUDA_BRIDGE''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" ;;
-                      esac
+                      robo_nix_prepend_path LD_LIBRARY_PATH "$ROBO_NIX_HOST_LIBCUDA_BRIDGE"
                     else
-                      case ":''${LD_LIBRARY_PATH:-}:" in
-                        *":$robo_nix_cuda_driver_dir:"*) ;;
-                        *) export LD_LIBRARY_PATH="$robo_nix_cuda_driver_dir''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" ;;
-                      esac
+                      robo_nix_prepend_path LD_LIBRARY_PATH "$robo_nix_cuda_driver_dir"
                     fi
                   fi
                   unset robo_nix_cuda_driver_dir
                 fi
+                unset -f robo_nix_prepend_path
               ''
               + (spec.shellHook or "");
           };
