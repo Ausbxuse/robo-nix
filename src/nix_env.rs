@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 
 use crate::error::AppError;
 use crate::inference::dependency_names_from_pyproject;
-use crate::ui::{output_with_tree, Config};
+use crate::ui::{output_with_tree, status, Config};
 
 const ENV_START_MARKER: &[u8] = b"robo-nix-env-start";
 const ENV_CAPTURE_SCRIPT: &str = "printf '\\000robo-nix-env-start\\000'; env -0";
@@ -410,6 +410,10 @@ pub(crate) fn runtime_environment(
         return Ok(envs);
     }
 
+    if let Some(estimate) = estimate_runtime_disk_size(workspace) {
+        status(config, &estimate.status_line(phase));
+    }
+
     let mut command = Command::new("nix");
     command
         .arg("develop")
@@ -442,6 +446,133 @@ pub(crate) fn runtime_environment(
         output.status
     ))
     .with_hint("review the Nix output above and attach .robo-nix/last-error.log to an issue if this looks like a robo-nix bug."))
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+struct RuntimeDiskEstimate {
+    known_bytes: u64,
+    known_paths: usize,
+    unknown_paths: usize,
+}
+
+impl RuntimeDiskEstimate {
+    fn status_line(&self, phase: &str) -> String {
+        let mut line = format!(
+            "{phase}: approximate runtime closure {} across {} store paths",
+            human_bytes(self.known_bytes),
+            self.known_paths
+        );
+        if self.unknown_paths > 0 {
+            line.push_str(&format!("; {} paths not yet sized", self.unknown_paths));
+        }
+        line
+    }
+}
+
+fn estimate_runtime_disk_size(workspace: &Path) -> Option<RuntimeDiskEstimate> {
+    let current_system = command_stdout(
+        Command::new("nix")
+            .current_dir(workspace)
+            .arg("eval")
+            .arg("--impure")
+            .arg("--raw")
+            .arg("--expr")
+            .arg("builtins.currentSystem"),
+    )?;
+    let current_system = current_system.trim();
+    if current_system.is_empty() {
+        return None;
+    }
+
+    let dev_shell_attr = format!(".#devShells.{current_system}.default");
+    let derivation = command_stdout(
+        Command::new("nix")
+            .current_dir(workspace)
+            .arg("path-info")
+            .arg("--impure")
+            .arg("--accept-flake-config")
+            .arg("--derivation")
+            .arg(dev_shell_attr),
+    )?;
+    let derivation = derivation
+        .lines()
+        .map(str::trim)
+        .find(|line| line.starts_with("/nix/store/") && line.ends_with(".drv"))?;
+
+    let requisites = command_stdout(
+        Command::new("nix-store")
+            .current_dir(workspace)
+            .arg("-q")
+            .arg("--requisites")
+            .arg("--include-outputs")
+            .arg(derivation),
+    )?;
+    let mut paths = requisites
+        .lines()
+        .map(str::trim)
+        .filter(|line| line.starts_with("/nix/store/") && !line.ends_with(".drv"))
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    paths.sort();
+    paths.dedup();
+    if paths.is_empty() {
+        return None;
+    }
+
+    let mut known_bytes = 0;
+    let mut known_paths = 0;
+    for chunk in paths.chunks(200) {
+        let mut command = Command::new("nix");
+        command.arg("path-info").arg("--size");
+        command.args(chunk);
+        let output = command.current_dir(workspace).output().ok()?;
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let (bytes, count) = parse_path_info_size_output(&stdout);
+        known_bytes += bytes;
+        known_paths += count;
+    }
+
+    Some(RuntimeDiskEstimate {
+        known_bytes,
+        known_paths,
+        unknown_paths: paths.len().saturating_sub(known_paths),
+    })
+}
+
+fn command_stdout(command: &mut Command) -> Option<String> {
+    let output = command.output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    Some(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+fn parse_path_info_size_output(output: &str) -> (u64, usize) {
+    output
+        .lines()
+        .filter_map(|line| {
+            let mut parts = line.split_whitespace();
+            let _path = parts.next()?;
+            let bytes = parts.next()?.parse::<u64>().ok()?;
+            Some(bytes)
+        })
+        .fold((0, 0), |(total, count), bytes| (total + bytes, count + 1))
+}
+
+fn human_bytes(bytes: u64) -> String {
+    const KIB: f64 = 1024.0;
+    const MIB: f64 = KIB * 1024.0;
+    const GIB: f64 = MIB * 1024.0;
+    let bytes = bytes as f64;
+    if bytes >= GIB {
+        format!("{:.1} GiB", bytes / GIB)
+    } else if bytes >= MIB {
+        format!("{:.0} MiB", bytes / MIB)
+    } else if bytes >= KIB {
+        format!("{:.0} KiB", bytes / KIB)
+    } else {
+        format!("{bytes:.0} B")
+    }
 }
 
 pub(crate) fn cache_runtime_environment(
@@ -1750,6 +1881,30 @@ mod tests {
         let output = command.output().expect("test shell should run");
         assert!(output.status.success());
         assert_eq!(String::from_utf8_lossy(&output.stdout), "unset:1");
+    }
+
+    #[test]
+    fn parses_path_info_size_output() {
+        assert_eq!(
+            parse_path_info_size_output(
+                "/nix/store/aaa-one        1024\n/nix/store/bbb-two\t2048\nbad\n"
+            ),
+            (3072, 2)
+        );
+    }
+
+    #[test]
+    fn formats_runtime_disk_estimate_status() {
+        let estimate = RuntimeDiskEstimate {
+            known_bytes: 3 * 1024 * 1024 * 1024 + 512 * 1024 * 1024,
+            known_paths: 42,
+            unknown_paths: 2,
+        };
+
+        assert_eq!(
+            estimate.status_line("shell"),
+            "shell: approximate runtime closure 3.5 GiB across 42 store paths; 2 paths not yet sized"
+        );
     }
 
     #[test]
