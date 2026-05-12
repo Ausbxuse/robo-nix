@@ -18,8 +18,8 @@ boundary.
 - Resolve `auto` in the generated shell: `/run/opengl-driver` on NixOS and the
   generic nixGL wrapper on other Linux hosts.
 - Keep `hostGraphics = null` as the explicit opt-out.
-- Treat `hostGraphics = "nvidia"` as a compatibility alias for
-  `hostGraphics = "nixgl-nvidia"`.
+- Treat the old explicit NVIDIA graphics spelling as an alias for
+  `hostGraphics = "nixgl-nvidia"` in this iteration.
 - Build nixGLNvidia with an explicit host driver version detected at shell
   setup time, avoiding nixGL's failing null auto-detection path.
 - Remove the Rust-side NVIDIA graphics wrapping.

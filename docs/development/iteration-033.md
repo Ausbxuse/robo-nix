@@ -11,8 +11,8 @@ than by the captured Nix environment or runtime cache.
 
 - Active shell fingerprints should describe the final launched or refreshed
   environment, not the parent process before runtime preparation.
-- Host NVIDIA graphics remains explicit policy through `hostGraphics =
-  "nvidia"`; do not silently force or remove that policy.
+- Host NVIDIA graphics remains explicit policy; do not silently force or remove
+  that policy.
 - Keep GLVND/OpenGL dispatch Nix-owned and avoid exposing broad host library
   directories such as `/lib/x86_64-linux-gnu`.
 
@@ -65,9 +65,10 @@ plugins loaded. The target GLFW viewer still needed its project-specific
 `PYGLFW_LIBRARY_VARIANT=x11` policy because the Wayland PyGLFW path continued to
 fail EGL display creation, while the X11 PyGLFW path rendered on the RTX 5090.
 
-On another user account on the same host, `hostGraphics = "nvidia"` produced a
-valid NVIDIA GLX context and MuJoCo offscreen readback, but the interactive
-MuJoCo window was transparent. The visible GLFW probe used a 32-bit X visual:
+On another user account on the same host, explicit NVIDIA graphics policy
+produced a valid NVIDIA GLX context and MuJoCo offscreen readback, but the
+interactive MuJoCo window was transparent. The visible GLFW probe used a 32-bit
+X visual:
 
 ```text
 Depth: 32
@@ -100,7 +101,7 @@ libraries without the shared-memory fence library used by DRI3/Present.
 
 ## Non-Goals
 
-- Do not auto-switch `hostGraphics = "nvidia"` to Mesa.
+- Do not auto-switch explicit NVIDIA graphics policy to Mesa.
 - Do not add broad host graphics library directories to `LD_LIBRARY_PATH`.
 - Do not mutate an existing project `robo.nix` from `robo shell`.
 

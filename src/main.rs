@@ -468,7 +468,7 @@ fn graphics_wrapper_warning(
 
     if matches!(
         runtime_env_value(envs, "ROBO_NIX_HOST_GRAPHICS"),
-        Some("nvidia" | "nixgl-nvidia")
+        Some("nixgl-nvidia")
     ) {
         return None;
     }

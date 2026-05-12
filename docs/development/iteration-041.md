@@ -12,7 +12,7 @@ Make the release-facing docs and code language match the nixGL boundary.
   non-NixOS Linux.
 - `desktop-gl` is application/runtime client-library support, not a host driver
   selector.
-- Keep `hostGraphics = "nvidia"` as a compatibility alias for
+- The old explicit NVIDIA graphics spelling was still an alias for
   `hostGraphics = "nixgl-nvidia"` in this pass.
 
 No active review-ledger conflict blocks this release cleanup.
@@ -41,7 +41,7 @@ point users at the current boundary.
 ## Non-Goals
 
 - Do not delete historical iteration notes.
-- Do not remove the compatibility `hostGraphics = "nvidia"` spelling.
+- Do not remove the old explicit NVIDIA graphics spelling.
 - Do not add a new diagnose command.
 
 ## Verification

@@ -2,16 +2,16 @@
 
 ## Goal
 
-Make explicit `hostGraphics = "nvidia"` prepare a usable NVIDIA Vulkan/EGL/GLX
-provider on common non-NixOS hosts without asking users to maintain shell hooks,
+Make explicit NVIDIA host graphics policy prepare a usable NVIDIA Vulkan/EGL/GLX
+view on common non-NixOS hosts without asking users to maintain shell hooks,
 symlink directories, or `LD_LIBRARY_PATH` snippets.
 
 ## Conflict Check
 
 - `desktop-gl` still owns Nix-managed generic graphics and windowing libraries.
-- Host NVIDIA graphics remains explicit policy through `hostGraphics = "nvidia"`;
+- Host NVIDIA graphics remains explicit policy;
   this iteration does not infer or silently force NVIDIA wrapper selection.
-- Existing `hostGraphics = "nvidia"` manifest selection is not enough on Ubuntu
+- Existing NVIDIA manifest selection is not enough on Ubuntu
   when the host ICD references `libGLX_nvidia.so.0` by soname.
 - GLVND should stay Nix-owned for generic dispatch libraries. The host-owned
   side is the NVIDIA vendor provider: NVIDIA GLX/EGL libraries, Vulkan/EGL
@@ -25,7 +25,7 @@ symlink directories, or `LD_LIBRARY_PATH` snippets.
 
 ## Failure Observed
 
-On a remote Ubuntu host, `hostGraphics = "nvidia"` selected the correct host
+On a remote Ubuntu host, the explicit NVIDIA graphics policy selected the correct host
 manifests:
 
 ```text
@@ -53,7 +53,8 @@ workflow.
 
 ## Scope
 
-- Keep `hostGraphics = "nvidia"` as the single user-facing policy.
+- Keep explicit NVIDIA graphics as the single user-facing policy for this
+  historical implementation.
 - After Nix environment capture, resolve reviewed host NVIDIA graphics inputs
   from an explicit override, `ldconfig`, and known NixOS/FHS distro paths.
 - Populate `.robo-nix/host-graphics/lib` only with reviewed NVIDIA driver

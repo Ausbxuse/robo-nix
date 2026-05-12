@@ -221,7 +221,7 @@
       };
 
       unknownComponents = lib.filter (component: !(builtins.hasAttr component componentPackages)) selectedComponents;
-      validHostGraphics = [null "auto" "nvidia" "nixgl" "nixgl-nvidia"];
+      validHostGraphics = [null "auto" "nixgl" "nixgl-nvidia"];
       hasComponent = component: builtins.elem component selectedComponents;
       componentPackageLists = map (component: builtins.getAttr component componentPackages) selectedComponents;
       componentRuntimeLibraryLists = map (component: builtins.getAttr component componentRuntimeLibraries) selectedComponents;
@@ -262,7 +262,7 @@
         if unknownComponents != []
         then throw "robo-nix: unknown components in robo.nix: ${lib.concatStringsSep ", " unknownComponents}"
         else if !(builtins.elem hostGraphics validHostGraphics)
-        then throw "robo-nix: hostGraphics in robo.nix must be null, \"auto\", \"nvidia\", \"nixgl\", or \"nixgl-nvidia\""
+        then throw "robo-nix: hostGraphics in robo.nix must be null, \"auto\", \"nixgl\", or \"nixgl-nvidia\""
         else
           pkgs.mkShell {
             packages = (builtins.concatLists componentPackageLists) ++ extraPackages pkgs;
@@ -286,8 +286,6 @@
                   else
                     robo_nix_host_graphics_policy=nixgl
                   fi
-                elif [ "$robo_nix_host_graphics_policy" = "nvidia" ]; then
-                  robo_nix_host_graphics_policy=nixgl-nvidia
                 fi
                 export ROBO_NIX_HOST_GRAPHICS="$robo_nix_host_graphics_policy"
                 unset PYTHONHOME

@@ -21,15 +21,15 @@ environment variables made Isaac enumerate the NVIDIA GPU.
 
 ## Scope
 
-- Add `hostGraphics = null | "nvidia"` to `robo.nix`.
-- Expand `hostGraphics = "nvidia"` into the host NVIDIA Vulkan/EGL/GLX
+- Add an explicit NVIDIA host graphics policy to `robo.nix`.
+- Expand that policy into the host NVIDIA Vulkan/EGL/GLX
   environment variables.
 - Include generated comments explaining the options.
 - Warn Isaac Sim users when host CUDA is visible but no NVIDIA host graphics
   policy appears selected.
 
-Iteration 029 later extends the explicit `"nvidia"` policy from NixOS-only
-manifest paths to a reviewed NixOS/FHS distro candidate list.
+Iteration 029 later extends the explicit NVIDIA policy from NixOS-only manifest
+paths to a reviewed NixOS/FHS distro candidate list.
 
 ## Non-Goals
 
@@ -43,6 +43,6 @@ manifest paths to a reviewed NixOS/FHS distro candidate list.
 - [x] `nix-instantiate --parse src/nix/project-flake.nix`
 - [x] render a temporary project and parse its generated `flake.nix` and
   `robo.nix`
-- [x] parse generated `robo.nix` after setting `hostGraphics = "nvidia";`
+- [x] parse generated `robo.nix` after setting explicit NVIDIA graphics policy
 
 `cargo fmt --check` and `rustfmt --check` were not available on this host.

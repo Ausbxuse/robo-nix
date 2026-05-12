@@ -104,8 +104,7 @@ environment manager.
   Keep `null` as an explicit opt-out.
 - `hostGraphics = "nixgl-nvidia"` must require the NVIDIA nixGL wrapper and may
   use `ROBO_NIX_NVIDIA_VERSION` when host driver version detection is
-  unavailable. `hostGraphics = "nvidia"` is a compatibility alias for that
-  policy.
+  unavailable. Do not keep legacy aliases for host graphics policies.
 - Let nixGL wrappers own graphics wrapper variables. Do not add robo-owned
   PRIME render-offload defaults on top of nixGL output.
 - Do not maintain Rust-owned GLX/EGL/GBM host graphics wrapping now that host

@@ -9,8 +9,8 @@ wrapper path.
 
 - Keep Nix-managed desktop graphics separate from host NVIDIA driver policy.
 - Do not maintain Rust-owned GLX/EGL/GBM graphics wrapping.
-- `hostGraphics = "nvidia"` remains a compatibility alias for
-  `hostGraphics = "nixgl-nvidia"`.
+- The old explicit NVIDIA graphics spelling was an alias for
+  `hostGraphics = "nixgl-nvidia"` in this iteration.
 - Runtime shell setup should be standalone and should not require users to
   install nixGL wrappers into their profile.
 
@@ -37,8 +37,7 @@ could push presentation through the wrong path.
 
 - Do not add a new diagnose command.
 - Do not scan host graphics driver directories from Rust.
-- Do not remove the compatibility `hostGraphics = "nvidia"` spelling in this
-  pass.
+- Do not remove the old explicit NVIDIA graphics spelling in this pass.
 
 ## Verification
 

@@ -23,7 +23,8 @@ No active review-ledger conflict blocks this cleanup.
   imported from nixGL.
 - Keep the `nixgl-nvidia` version detection path explicit and narrow.
 - Replace deprecated Nixpkgs graphics package references.
-- Keep `hostGraphics = "nvidia"` as a compatibility alias.
+- Keep the old explicit NVIDIA graphics spelling during this simplification
+  pass.
 
 ## Non-Goals
 

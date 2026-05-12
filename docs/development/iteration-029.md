@@ -10,12 +10,13 @@ hosts without asking users to maintain shell hooks.
 - `desktop-gl` still must not silently force NVIDIA wrapper selection.
 - The previous "no automatic host GPU scan" rule remains valid for implicit
   behavior.
-- `hostGraphics = "nvidia"` is already explicit host-driver policy, so it may
+- The explicit NVIDIA host-driver policy may
   select from a short reviewed list of known NVIDIA manifest locations.
 
 ## Failure Observed
 
-On an Ubuntu host, `hostGraphics = "nvidia"` exported NixOS-only manifest paths:
+On an Ubuntu host, the explicit NVIDIA graphics policy exported NixOS-only
+manifest paths:
 
 ```text
 VK_ICD_FILENAMES=/run/opengl-driver/share/vulkan/icd.d/nvidia_icd.json
@@ -31,7 +32,7 @@ Those files did not exist. The actual host manifests were:
 
 ## Scope
 
-- Keep `hostGraphics = "nvidia"` explicit.
+- Keep NVIDIA graphics policy explicit.
 - Prefer explicit host graphics manifest overrides when set.
 - Otherwise select the first existing NVIDIA manifest from the reviewed NixOS
   and FHS distro candidate paths.
@@ -50,8 +51,8 @@ Those files did not exist. The actual host manifests were:
 - [x] `nix develop -c cargo fmt -- --check`
 - [x] `nix develop -c cargo test`
 - [x] `nix-instantiate --parse flake.nix`
-- [x] render a temporary project with `hostGraphics = "nvidia"` and inspect the
-  selected manifest variables
+- [x] render a temporary project with explicit NVIDIA graphics policy and
+  inspect the selected manifest variables
 - [x] render a temporary project with explicit Ubuntu-style `/usr/share`
   manifest paths
 - [x] `npm --prefix docs run build`
