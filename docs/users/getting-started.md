@@ -13,17 +13,19 @@ dependency groups, lockfiles, and virtualenv sync.
   command without keeping a shell open.
 - `robo search <library>` helps find Nix package candidates for missing shared
   libraries, such as `libassimp.so`. It only prints suggestions.
-- Active `robo shell` sessions refresh at the next prompt when `flake.nix`,
-  `flake.lock`, `.python-version`, `pyproject.toml`, `uv.lock`, `robo.nix`, or
-  the default `.venv/bin/python` changes.
+- Active `robo shell` sessions refresh at the next prompt when runtime inputs
+  change. This includes `flake.nix`, `flake.lock`, `.python-version`,
+  `pyproject.toml`, `uv.lock`, `robo.nix`, the default `.venv/bin/python`, and
+  local `.nix` files imported by `robo.nix` or the project flake.
 - Refreshing exports a re-evaluated shell environment. It does not run
   `uv sync` and does not rewrite `robo.nix`.
 - First-bootstrap inference reads direct dependencies, optional dependencies,
   dependency groups, local `[tool.uv.sources]` path dependencies, and package
   names from an existing `uv.lock` when available.
 - Every runtime attempt writes `.robo-nix/last-run.json` with redacted runtime
-  facts. When setup fails, `robo` also writes `.robo-nix/last-error.log` with
-  context you can paste into an issue.
+  facts, including typed host CUDA and graphics probe summaries. When setup
+  fails, `robo` also writes `.robo-nix/last-error.log` with context you can
+  paste into an issue.
 
 ## 1. Install robo
 

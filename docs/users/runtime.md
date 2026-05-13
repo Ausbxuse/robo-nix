@@ -244,7 +244,12 @@ inspect it.
 
 Values that affect runtime construction, such as CUDA driver/toolkit paths, are
 part of the active shell freshness key. Existing `robo shell` sessions refresh
-at the next prompt when those inputs change.
+at the next prompt when those inputs change. The key also follows common local
+`.nix` imports from `robo.nix` and the project flake, so splitting runtime
+libraries or component lists into helper Nix files keeps refresh behavior
+truthful. When Nix reports evaluated local Nix files during a successful setup,
+`robo` records those safe relative paths under `.robo-nix/` and folds them into
+later refresh/cache keys.
 
 After a successful setup, `robo` caches the captured runtime shell environment by
 that same key. Later `robo shell` and `robo run` attempts can reuse it instantly

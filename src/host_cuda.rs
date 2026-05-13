@@ -111,14 +111,16 @@ pub(crate) fn append_host_cuda_driver_bridge(
             ..HostCudaReport::default()
         };
     }
-    if shell_env_value(envs, "ROBO_NIX_LIBCUDA_PATH").is_some()
-        || env::var_os("ROBO_NIX_LIBCUDA_PATH").is_some()
+    if let Some(libcuda) = shell_env_value(envs, "ROBO_NIX_LIBCUDA_PATH")
+        .cloned()
+        .or_else(|| env::var("ROBO_NIX_LIBCUDA_PATH").ok())
     {
         return HostCudaReport {
             status: "explicit".to_string(),
             needed_by,
             checked: vec!["ROBO_NIX_LIBCUDA_PATH".to_string()],
             source: Some("ROBO_NIX_LIBCUDA_PATH".to_string()),
+            libcuda: Some(libcuda),
             driver_version,
             ..HostCudaReport::default()
         };

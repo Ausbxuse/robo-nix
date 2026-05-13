@@ -20,7 +20,7 @@ mod ui;
 
 use bootstrap::{prepare_project, print_bootstrap_report};
 use error::{print_error, write_debug_log, AppError};
-use host_cuda::append_host_cuda_driver_bridge;
+use host_cuda::{append_host_cuda_driver_bridge, HostCudaReport};
 use inference::dependency_evidence_from_pyproject;
 use nix_env::{apply_env, cache_runtime_environment, runtime_environment};
 use shell_launch::interactive_shell_launch;
@@ -199,6 +199,9 @@ fn run_nix_develop(command_args: Vec<OsString>, config: Config) -> Result<ExitCo
     };
     let post_nix_state = runtime_input_state(&workspace);
     let cuda_report = append_host_cuda_driver_bridge(&mut runtime_env, &workspace);
+    run_report
+        .host_probes
+        .push(host_cuda_probe_report(&cuda_report));
     run_report.decisions.extend(cuda_report.decision_lines());
     if cuda_report.status == "needed-missing" {
         run_report
@@ -229,6 +232,9 @@ fn run_nix_develop(command_args: Vec<OsString>, config: Config) -> Result<ExitCo
         detail(config, warning.detail);
         run_report.warnings.push(warning.fact());
     }
+    run_report
+        .host_probes
+        .push(host_graphics_probe_report(&runtime_env));
     run_report.env_names = env_names(&runtime_env);
     write_last_run_report(config, &workspace, &run_report);
 
@@ -330,6 +336,7 @@ struct LastRunReport {
     dependencies: Vec<String>,
     components: Vec<String>,
     decisions: Vec<String>,
+    host_probes: Vec<HostProbeReport>,
     env_names: Vec<String>,
     warnings: Vec<String>,
     errors: Vec<String>,
@@ -350,7 +357,7 @@ impl LastRunReport {
             )
         };
         Self {
-            schema_version: 1,
+            schema_version: 2,
             timestamp_unix: SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .map(|duration| duration.as_secs())
@@ -361,6 +368,7 @@ impl LastRunReport {
             dependencies: Vec::new(),
             components: Vec::new(),
             decisions: Vec::new(),
+            host_probes: Vec::new(),
             env_names: Vec::new(),
             warnings: Vec::new(),
             errors: Vec::new(),
@@ -394,6 +402,10 @@ impl LastRunReport {
             json_string_array(&self.decisions)
         ));
         text.push_str(&format!(
+            "  \"host_probes\": {},\n",
+            json_host_probe_array(&self.host_probes)
+        ));
+        text.push_str(&format!(
             "  \"env_names\": {},\n",
             json_string_array(&self.env_names)
         ));
@@ -408,6 +420,20 @@ impl LastRunReport {
         text.push_str("}\n");
         text
     }
+}
+
+#[derive(Debug, Clone, Default)]
+struct HostProbeReport {
+    name: String,
+    status: String,
+    source: Option<String>,
+    checked: Vec<String>,
+    reasons: Vec<String>,
+    path: Option<String>,
+    version: Option<String>,
+    bridge: Option<String>,
+    env_updates: Vec<String>,
+    error: Option<String>,
 }
 
 fn dependency_facts(workspace: &Path) -> Vec<String> {
@@ -442,6 +468,89 @@ fn env_names(envs: &[(String, String)]) -> Vec<String> {
 fn runtime_env_value<'a>(envs: &'a [(String, String)], name: &str) -> Option<&'a str> {
     envs.iter()
         .find_map(|(candidate, value)| (candidate == name).then_some(value.as_str()))
+}
+
+fn host_cuda_probe_report(report: &HostCudaReport) -> HostProbeReport {
+    HostProbeReport {
+        name: "host-cuda".to_string(),
+        status: report.status.clone(),
+        source: report.source.clone(),
+        checked: report.checked.clone(),
+        reasons: report.needed_by.clone(),
+        path: report.libcuda.clone(),
+        version: report.driver_version.clone(),
+        bridge: report.bridge.clone(),
+        env_updates: report.env_updates.clone(),
+        error: report.bridge_error.clone(),
+    }
+}
+
+fn host_graphics_probe_report(envs: &[(String, String)]) -> HostProbeReport {
+    let status = runtime_env_value(envs, "ROBO_NIX_HOST_GRAPHICS")
+        .unwrap_or("unknown")
+        .to_string();
+    let mut checked = vec!["ROBO_NIX_HOST_GRAPHICS".to_string()];
+    match status.as_str() {
+        "nixos" => checked.push("/run/opengl-driver/lib".to_string()),
+        "nixgl" => checked.extend(["ROBO_NIX_NIXGL", "bundled nixGL"].map(str::to_string)),
+        "nixgl-nvidia" => checked.extend(
+            [
+                "ROBO_NIX_NIXGL",
+                "ROBO_NIX_NVIDIA_VERSION",
+                "nvidia-smi",
+                "/proc/driver/nvidia/version",
+                "nixGLNvidia",
+            ]
+            .map(str::to_string),
+        ),
+        "none" => {}
+        _ => checked.push("hostGraphics auto".to_string()),
+    }
+
+    let mut env_updates = present_env_names(envs, HOST_GRAPHICS_ENV_NAMES);
+    if matches!(status.as_str(), "nixos" | "nixgl" | "nixgl-nvidia")
+        && runtime_env_value(envs, "LD_LIBRARY_PATH").is_some()
+    {
+        env_updates.push("LD_LIBRARY_PATH".to_string());
+    }
+    env_updates.sort();
+    env_updates.dedup();
+
+    HostProbeReport {
+        name: "host-graphics".to_string(),
+        status,
+        source: Some("robo.nix hostGraphics".to_string()),
+        checked,
+        reasons: Vec::new(),
+        path: runtime_env_value(envs, "ROBO_NIX_NIXGL").map(str::to_string),
+        version: runtime_env_value(envs, "ROBO_NIX_NVIDIA_VERSION").map(str::to_string),
+        bridge: None,
+        env_updates,
+        error: None,
+    }
+}
+
+const HOST_GRAPHICS_ENV_NAMES: &[&str] = &[
+    "ROBO_NIX_HOST_GRAPHICS",
+    "LIBGL_DRIVERS_PATH",
+    "LIBVA_DRIVERS_PATH",
+    "GBM_BACKENDS_PATH",
+    "__EGL_EXTERNAL_PLATFORM_CONFIG_DIRS",
+    "__EGL_VENDOR_LIBRARY_FILENAMES",
+    "__GLX_VENDOR_LIBRARY_NAME",
+    "__NV_PRIME_RENDER_OFFLOAD",
+    "__VK_LAYER_NV_optimus",
+    "VK_ICD_FILENAMES",
+    "VK_DRIVER_FILES",
+    "VK_LAYER_PATH",
+];
+
+fn present_env_names(envs: &[(String, String)], names: &[&str]) -> Vec<String> {
+    names
+        .iter()
+        .filter(|name| runtime_env_value(envs, name).is_some())
+        .map(|name| (*name).to_string())
+        .collect()
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -553,6 +662,31 @@ fn json_string_array(values: &[String]) -> String {
     format!("[{body}]")
 }
 
+fn json_host_probe_array(values: &[HostProbeReport]) -> String {
+    let body = values
+        .iter()
+        .map(json_host_probe)
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("[{body}]")
+}
+
+fn json_host_probe(report: &HostProbeReport) -> String {
+    format!(
+        "{{\"name\": {}, \"status\": {}, \"source\": {}, \"checked\": {}, \"reasons\": {}, \"path\": {}, \"version\": {}, \"bridge\": {}, \"env_updates\": {}, \"error\": {}}}",
+        json_string(&report.name),
+        json_string(&report.status),
+        json_optional_string(report.source.as_deref()),
+        json_string_array(&report.checked),
+        json_string_array(&report.reasons),
+        json_optional_string(report.path.as_deref()),
+        json_optional_string(report.version.as_deref()),
+        json_optional_string(report.bridge.as_deref()),
+        json_string_array(&report.env_updates),
+        json_optional_string(report.error.as_deref()),
+    )
+}
+
 fn json_string(value: &str) -> String {
     let mut text = String::from("\"");
     for character in value.chars() {
@@ -609,13 +743,19 @@ mod tests {
             .push("torch from project.dependencies".to_string());
         report.components.push("native-build".to_string());
         report.decisions.push("host_cuda=not-needed".to_string());
+        report.host_probes.push(HostProbeReport {
+            name: "host-cuda".to_string(),
+            status: "not-needed".to_string(),
+            ..HostProbeReport::default()
+        });
         report.env_names.push("PATH".to_string());
 
         let path = write_last_run_report_inner(&workspace, &report).unwrap();
         let json = fs::read_to_string(path).unwrap();
 
-        assert!(json.contains("\"schema_version\": 1"));
+        assert!(json.contains("\"schema_version\": 2"));
         assert!(json.contains("\"command\": \"run python\""));
+        assert!(json.contains("\"host_probes\": [{\"name\": \"host-cuda\""));
         assert!(json.contains("\"env_names\": [\"PATH\"]"));
         assert!(!json.contains("LD_LIBRARY_PATH="));
 
@@ -643,6 +783,49 @@ mod tests {
             json_string("quote\" slash\\ line\n"),
             "\"quote\\\" slash\\\\ line\\n\""
         );
+    }
+
+    #[test]
+    fn host_probe_reports_are_typed_json() {
+        let cuda = HostCudaReport {
+            status: "auto-found".to_string(),
+            needed_by: vec!["uv.lock:nvidia-cuda-runtime-cu12".to_string()],
+            checked: vec!["ldconfig -p".to_string()],
+            source: Some("ldconfig -p".to_string()),
+            libcuda: Some("/run/opengl-driver/lib/libcuda.so.1".to_string()),
+            driver_version: Some("580.65.06".to_string()),
+            bridge: Some(".robo-nix/host-libs".to_string()),
+            bridge_error: None,
+            env_updates: vec!["ROBO_NIX_LIBCUDA_PATH".to_string()],
+        };
+        let graphics_env = vec![
+            (
+                "ROBO_NIX_HOST_GRAPHICS".to_string(),
+                "nixgl-nvidia".to_string(),
+            ),
+            (
+                "__EGL_VENDOR_LIBRARY_FILENAMES".to_string(),
+                "/nix/store/vendor.json".to_string(),
+            ),
+            (
+                "VK_ICD_FILENAMES".to_string(),
+                "/nix/store/icd.json".to_string(),
+            ),
+            ("LD_LIBRARY_PATH".to_string(), "/nix/store/lib".to_string()),
+        ];
+        let probes = vec![
+            host_cuda_probe_report(&cuda),
+            host_graphics_probe_report(&graphics_env),
+        ];
+        let json = json_host_probe_array(&probes);
+
+        assert!(json.contains("\"name\": \"host-cuda\""));
+        assert!(json.contains("\"reasons\": [\"uv.lock:nvidia-cuda-runtime-cu12\"]"));
+        assert!(json.contains("\"path\": \"/run/opengl-driver/lib/libcuda.so.1\""));
+        assert!(json.contains("\"name\": \"host-graphics\""));
+        assert!(json.contains("\"status\": \"nixgl-nvidia\""));
+        assert!(json.contains("\"env_updates\": [\"LD_LIBRARY_PATH\""));
+        assert!(json.contains("\"VK_ICD_FILENAMES\""));
     }
 
     #[test]

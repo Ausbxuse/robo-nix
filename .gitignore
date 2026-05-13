@@ -3,3 +3,9 @@
 /docs/.vitepress/cache/
 /docs/.vitepress/dist/
 /docs/node_modules/
+playgrounds/
+/.codex
+/.codex/
+/.failure-modes/
+/result
+/result-*

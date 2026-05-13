@@ -189,13 +189,47 @@ pub(crate) fn output_with_tree(
     root: &str,
     message: &str,
 ) -> Result<Output, std::io::Error> {
+    output_with_tree_steps(config, command, root, message, Vec::new())
+}
+
+pub(crate) struct ProgressStep {
+    pub(crate) message: String,
+    pub(crate) suffix: Option<String>,
+    pub(crate) duration: Duration,
+}
+
+impl ProgressStep {
+    pub(crate) fn instant(message: impl Into<String>, suffix: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            suffix: Some(suffix.into()),
+            duration: Duration::from_millis(0),
+        }
+    }
+}
+
+pub(crate) fn output_with_tree_steps(
+    config: Config,
+    command: &mut Command,
+    root: &str,
+    message: &str,
+    completed_steps: Vec<ProgressStep>,
+) -> Result<Output, std::io::Error> {
     if should_use_plain_progress(config) {
+        for step in &completed_steps {
+            let suffix = step
+                .suffix
+                .as_deref()
+                .map(|suffix| format!(" {suffix}"))
+                .unwrap_or_default();
+            status(config, &format!("{}{}", step.message, suffix));
+        }
         status(config, message);
         return command.output();
     }
 
     command.stdout(Stdio::piped()).stderr(Stdio::piped());
-    let tree = ProgressTree::new(config, root, message);
+    let tree = ProgressTree::new(config, root, message, completed_steps);
     let started_at = Instant::now();
 
     let mut child = match command.spawn() {
@@ -383,11 +417,22 @@ impl ProgressTreeDetailSink {
 }
 
 impl ProgressTree {
-    fn new(config: Config, root: &str, message: &str) -> Self {
+    fn new(config: Config, root: &str, message: &str, completed_steps: Vec<ProgressStep>) -> Self {
         let bar = tree_bar();
         let state = Arc::new(Mutex::new(ProgressTreeState {
             root: root.to_string(),
-            completed: Vec::new(),
+            completed: completed_steps
+                .into_iter()
+                .map(|step| {
+                    completed_tree_line(
+                        config,
+                        &step.message,
+                        step.suffix.as_deref(),
+                        0,
+                        step.duration,
+                    )
+                })
+                .collect(),
             active_message: message.to_string(),
             active_started_at: Instant::now(),
             evaluated_packages: HashSet::new(),
@@ -606,7 +651,10 @@ fn tree_metadata(
     suffix: Option<&str>,
     evaluated_packages: usize,
 ) -> Option<TreeMetadata> {
-    if evaluated_packages > 0 && message.ends_with(": evaluating and realizing dev shell") {
+    if evaluated_packages > 0
+        && (message.ends_with(": evaluating and realizing dev shell")
+            || message.ends_with(": evaluating runtime shell"))
+    {
         return Some(TreeMetadata {
             text: format!("{evaluated_packages} packages"),
             kind: LabelKind::Status,

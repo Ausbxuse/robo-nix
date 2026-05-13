@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crate::error::AppError;
-use crate::ui::{output_with_tree, status, Config};
+use crate::ui::{output_cached_tree, output_with_tree_steps, status, Config, ProgressStep};
 
 const ENV_START_MARKER: &[u8] = b"robo-nix-env-start";
 const ENV_CAPTURE_SCRIPT: &str = "printf '\\000robo-nix-env-start\\000'; env -0";
@@ -28,51 +28,61 @@ pub(crate) fn runtime_environment(
     workspace: &Path,
     cache_key: &str,
 ) -> Result<Vec<(String, String)>, AppError> {
-    if let Some(mut envs) = read_runtime_env_cache(workspace, cache_key) {
-        crate::ui::output_cached_tree(
-            config,
-            &format!("{phase}: evaluating and realizing dev shell"),
-        );
-        inherit_terminal_environment(&mut envs);
-        return Ok(envs);
+    let cache = read_runtime_env_cache(workspace, cache_key);
+    match cache {
+        RuntimeEnvCache::Hit(mut envs) => {
+            output_cached_tree(config, &format!("{phase}: runtime cache"));
+            inherit_terminal_environment(&mut envs);
+            return Ok(envs);
+        }
+        RuntimeEnvCache::Miss(reason) => {
+            if config.debug {
+                crate::ui::debug(config, &format!("runtime cache {}", reason.detail()));
+            }
+            if let Some(estimate) = estimate_runtime_disk_size(workspace) {
+                status(config, &estimate.status_line(phase));
+            }
+
+            let mut command = Command::new("nix");
+            command
+                .arg("develop")
+                .arg("--impure")
+                .arg("--accept-flake-config")
+                .arg("--command")
+                .arg("sh")
+                .arg("-c")
+                .arg(ENV_CAPTURE_SCRIPT);
+            let output = output_with_tree_steps(
+                config,
+                &mut command,
+                &format!("robo {phase}"),
+                &format!("{phase}: evaluating runtime shell"),
+                vec![ProgressStep::instant(
+                    format!("{phase}: runtime cache"),
+                    reason.label(),
+                )],
+            )
+            .map_err(|err| {
+                AppError::project(format!("failed to start nix: {err}"))
+                    .with_hint("install Nix with flakes enabled, then rerun `robo shell`.")
+            })?;
+
+            if output.status.success() {
+                let _ =
+                    crate::shell_refresh::record_observed_runtime_inputs(workspace, &output.stderr);
+                let mut envs = parse_env_zero(&output.stdout).map_err(AppError::project)?;
+                inherit_terminal_environment(&mut envs);
+                return Ok(envs);
+            }
+
+            crate::write_command_output(&output)?;
+            Err(AppError::project(format!(
+                "nix develop exited with {}",
+                output.status
+            ))
+            .with_hint("review the Nix output above and attach .robo-nix/last-error.log to an issue if this looks like a robo-nix bug."))
+        }
     }
-
-    if let Some(estimate) = estimate_runtime_disk_size(workspace) {
-        status(config, &estimate.status_line(phase));
-    }
-
-    let mut command = Command::new("nix");
-    command
-        .arg("develop")
-        .arg("--impure")
-        .arg("--accept-flake-config")
-        .arg("--command")
-        .arg("sh")
-        .arg("-c")
-        .arg(ENV_CAPTURE_SCRIPT);
-    let output = output_with_tree(
-        config,
-        &mut command,
-        &format!("robo {phase}"),
-        &format!("{phase}: evaluating and realizing dev shell"),
-    )
-    .map_err(|err| {
-        AppError::project(format!("failed to start nix: {err}"))
-            .with_hint("install Nix with flakes enabled, then rerun `robo shell`.")
-    })?;
-
-    if output.status.success() {
-        let mut envs = parse_env_zero(&output.stdout).map_err(AppError::project)?;
-        inherit_terminal_environment(&mut envs);
-        return Ok(envs);
-    }
-
-    crate::write_command_output(&output)?;
-    Err(AppError::project(format!(
-        "nix develop exited with {}",
-        output.status
-    ))
-    .with_hint("review the Nix output above and attach .robo-nix/last-error.log to an issue if this looks like a robo-nix bug."))
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -238,18 +248,69 @@ pub(crate) fn parse_env_zero(bytes: &[u8]) -> Result<Vec<(String, String)>, Stri
     Ok(envs)
 }
 
-fn read_runtime_env_cache(workspace: &Path, cache_key: &str) -> Option<Vec<(String, String)>> {
-    let bytes = fs::read(runtime_env_cache_path(workspace)).ok()?;
-    let (magic, rest) = split_once_byte(&bytes, b'\n')?;
+#[derive(Debug, Eq, PartialEq)]
+enum RuntimeEnvCache {
+    Hit(Vec<(String, String)>),
+    Miss(RuntimeCacheMiss),
+}
+
+#[derive(Debug, Eq, PartialEq)]
+enum RuntimeCacheMiss {
+    Missing,
+    FormatChanged,
+    StaleInputs,
+    InvalidEnvironment,
+    MissingStorePaths(Vec<PathBuf>),
+}
+
+impl RuntimeCacheMiss {
+    fn label(&self) -> &'static str {
+        match self {
+            Self::Missing => "missing",
+            Self::FormatChanged => "invalid",
+            Self::StaleInputs => "stale",
+            Self::InvalidEnvironment => "invalid",
+            Self::MissingStorePaths(_) => "store paths",
+        }
+    }
+
+    fn detail(&self) -> String {
+        match self {
+            Self::Missing => "missing".to_string(),
+            Self::FormatChanged => "format changed".to_string(),
+            Self::StaleInputs => "stale runtime inputs".to_string(),
+            Self::InvalidEnvironment => "invalid environment payload".to_string(),
+            Self::MissingStorePaths(paths) => {
+                format!("missing {} referenced store paths", paths.len())
+            }
+        }
+    }
+}
+
+fn read_runtime_env_cache(workspace: &Path, cache_key: &str) -> RuntimeEnvCache {
+    let Ok(bytes) = fs::read(runtime_env_cache_path(workspace)) else {
+        return RuntimeEnvCache::Miss(RuntimeCacheMiss::Missing);
+    };
+    let Some((magic, rest)) = split_once_byte(&bytes, b'\n') else {
+        return RuntimeEnvCache::Miss(RuntimeCacheMiss::FormatChanged);
+    };
     if magic != RUNTIME_ENV_CACHE_MAGIC.as_bytes() {
-        return None;
+        return RuntimeEnvCache::Miss(RuntimeCacheMiss::FormatChanged);
     }
-    let (key, env_bytes) = split_once_byte(rest, b'\n')?;
+    let Some((key, env_bytes)) = split_once_byte(rest, b'\n') else {
+        return RuntimeEnvCache::Miss(RuntimeCacheMiss::FormatChanged);
+    };
     if key != cache_key.as_bytes() {
-        return None;
+        return RuntimeEnvCache::Miss(RuntimeCacheMiss::StaleInputs);
     }
-    let envs = parse_env_zero(env_bytes).ok()?;
-    store_roots_exist(&envs).then_some(envs)
+    let Ok(envs) = parse_env_zero(env_bytes) else {
+        return RuntimeEnvCache::Miss(RuntimeCacheMiss::InvalidEnvironment);
+    };
+    let missing_store_paths = missing_store_roots(&envs);
+    if !missing_store_paths.is_empty() {
+        return RuntimeEnvCache::Miss(RuntimeCacheMiss::MissingStorePaths(missing_store_paths));
+    }
+    RuntimeEnvCache::Hit(envs)
 }
 
 fn write_runtime_env_cache(
@@ -292,10 +353,6 @@ fn runtime_env_cache_path(workspace: &Path) -> PathBuf {
 fn split_once_byte(bytes: &[u8], needle: u8) -> Option<(&[u8], &[u8])> {
     let index = bytes.iter().position(|byte| *byte == needle)?;
     Some((&bytes[..index], &bytes[index + 1..]))
-}
-
-fn store_roots_exist(envs: &[(String, String)]) -> bool {
-    missing_store_roots(envs).is_empty()
 }
 
 pub(crate) fn inherit_terminal_environment(envs: &mut Vec<(String, String)>) {
@@ -403,8 +460,34 @@ mod tests {
 
         write_runtime_env_cache(&root, "cache-key", &envs).unwrap();
 
-        assert_eq!(read_runtime_env_cache(&root, "cache-key"), Some(envs));
-        assert_eq!(read_runtime_env_cache(&root, "other-key"), None);
+        assert_eq!(
+            read_runtime_env_cache(&root, "cache-key"),
+            RuntimeEnvCache::Hit(envs)
+        );
+        assert_eq!(
+            read_runtime_env_cache(&root, "other-key"),
+            RuntimeEnvCache::Miss(RuntimeCacheMiss::StaleInputs)
+        );
+
+        cleanup(root);
+    }
+
+    #[test]
+    fn runtime_env_cache_reports_miss_reasons() {
+        let root = temp_project("runtime-env-cache-reasons");
+
+        assert_eq!(
+            read_runtime_env_cache(&root, "cache-key"),
+            RuntimeEnvCache::Miss(RuntimeCacheMiss::Missing)
+        );
+
+        fs::create_dir_all(root.join(".robo-nix")).unwrap();
+        fs::write(runtime_env_cache_path(&root), "bad-cache").unwrap();
+
+        assert_eq!(
+            read_runtime_env_cache(&root, "cache-key"),
+            RuntimeEnvCache::Miss(RuntimeCacheMiss::FormatChanged)
+        );
 
         cleanup(root);
     }

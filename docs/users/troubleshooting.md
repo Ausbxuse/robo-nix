@@ -2,8 +2,8 @@
 
 The primary diagnostics surface is `robo shell` or `robo run <command>`. Every
 runtime attempt writes `.robo-nix/last-run.json` with redacted facts such as
-dependency evidence, selected components, decision lines, and environment
-variable names. When project setup fails, `robo` also writes
+dependency evidence, selected components, decision lines, host probe summaries,
+and environment variable names. When project setup fails, `robo` also writes
 `.robo-nix/last-error.log` with pasteable context for an issue.
 
 ## Missing .python-version
@@ -162,8 +162,9 @@ directly when a project needs another component.
 
 Active `robo shell` sessions check runtime input files at the next prompt. When
 `flake.nix`, `flake.lock`, `.python-version`, `pyproject.toml`, `uv.lock`,
-`robo.nix`, or the default `.venv/bin/python` changes, `robo` re-evaluates the
-shell and exports refreshed environment variables into the current shell.
+`robo.nix`, the default `.venv/bin/python`, or a local `.nix` file imported by
+`robo.nix` or the project flake changes, `robo` re-evaluates the shell and
+exports refreshed environment variables into the current shell.
 
 This refresh does not run `uv sync` and does not rewrite `robo.nix`.
 
