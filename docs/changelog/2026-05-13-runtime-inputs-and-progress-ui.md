@@ -53,8 +53,20 @@ status inside the existing runtime shell flow.
   comparing the current input set.
 - Runtime cache handling now distinguishes missing, stale, invalid, and
   missing-store-path cache states.
+- Runtime cache progress labels now use neutral user-facing states, so a first
+  launch says `new` instead of `missing` while debug output keeps the detailed
+  cache reason.
 - The nested progress tree now starts with a compact `runtime cache` phase and
   uses `evaluating runtime shell` as the Nix evaluation phase label.
+- Runtime closure size estimation is debug-only, so first-run `robo shell`
+  starts visible runtime progress instead of running silent Nix preflight
+  commands before the timer appears.
+- Nix runtime evaluation now asks for raw log output and turns common activity
+  lines into concise live progress details such as planned fetches, builds,
+  store copies, and cache fetches. Successful Nix logs stay hidden; failures
+  still replay the captured Nix output.
+- `robo --version` and `robo -V` now report the installed CLI version as
+  standard global utility flags.
 - Failed active-shell refresh attempts leave the old freshness key in place, so
   the next prompt retries refresh instead of treating the shell as updated.
 - `.robo-nix/last-run.json` now has schema version 2 and includes typed host

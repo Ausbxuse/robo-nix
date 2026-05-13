@@ -684,33 +684,205 @@ fn pad_display(value: String, width: usize) -> String {
 }
 
 fn progress_detail(bytes: &[u8]) -> Option<String> {
-    let text = String::from_utf8_lossy(bytes);
-    let text = text.rsplit('\r').next().unwrap_or(&text);
-    let detail = text
-        .trim()
-        .chars()
-        .filter(|ch| !ch.is_control())
-        .collect::<String>();
+    let detail = clean_progress_text(&nix_log_text(bytes)?);
     if detail.is_empty() {
         return None;
     }
-    if detail.starts_with("warning: Git tree '") {
+    if ignored_progress_detail(&detail) {
         return None;
     }
-    if detail.starts_with("linking ") || detail.starts_with("evaluating file '") {
-        return None;
-    }
-    Some(truncate_progress_detail(&detail))
+    Some(truncate_progress_detail(&nix_activity_detail(&detail)))
 }
 
 fn nix_evaluated_package_path(bytes: &[u8]) -> Option<String> {
-    let text = String::from_utf8_lossy(bytes);
-    let text = text.rsplit('\r').next().unwrap_or(&text);
-    let path = text
-        .trim()
+    let detail = clean_progress_text(&nix_log_text(bytes)?);
+    let path = detail
         .strip_prefix("evaluating file '")?
         .strip_suffix("'")?;
     path.ends_with("/package.nix").then(|| path.to_string())
+}
+
+fn nix_log_text(bytes: &[u8]) -> Option<String> {
+    let text = String::from_utf8_lossy(bytes);
+    let text = text.rsplit('\r').next().unwrap_or(&text).trim();
+    if text.is_empty() {
+        return None;
+    }
+    if let Some(json) = text.strip_prefix("@nix ") {
+        return json_string_field(json, "text").or_else(|| json_string_field(json, "msg"));
+    }
+    Some(text.to_string())
+}
+
+fn ignored_progress_detail(detail: &str) -> bool {
+    detail.starts_with("warning: Git tree '")
+        || detail.starts_with("linking ")
+        || detail.starts_with("evaluating file '")
+}
+
+fn nix_activity_detail(detail: &str) -> String {
+    if let Some(path) = single_quoted_after(detail, "evaluating derivation ") {
+        return format!("evaluating {}", installable_or_store_name(path));
+    }
+    if let Some(path) = single_quoted_after(detail, "building ") {
+        return format!("building {}", installable_or_store_name(path));
+    }
+    if let Some(path) = single_quoted_after(detail, "copying ") {
+        if detail.ends_with(" to the store") {
+            return format!("copying {} to the store", display_copy_source(path));
+        }
+    }
+    if let Some(path) = single_quoted_after(detail, "copying path ") {
+        let name = installable_or_store_name(path);
+        if let Some(source) = single_quoted_after_marker(detail, " from ") {
+            return format!("fetching {name} from {}", display_store_source(source));
+        }
+        return format!("copying {name}");
+    }
+    if let Some(path) = single_quoted_after(detail, "querying info about ") {
+        return format!("querying {}", installable_or_store_name(path));
+    }
+    if let Some(count) = these_count(detail, " derivations will be built:") {
+        return format!("planning {count} builds");
+    }
+    if let Some(count) = these_count(detail, " paths will be fetched") {
+        return format!("planning {count} fetches");
+    }
+    if let Some(count) = these_count(detail, " paths will be copied") {
+        return format!("planning {count} store copies");
+    }
+    match detail {
+        "this derivation will be built:" => "planning 1 build".to_string(),
+        "this path will be fetched:" => "planning 1 fetch".to_string(),
+        "this path will be copied:" => "planning 1 store copy".to_string(),
+        _ => detail.to_string(),
+    }
+}
+
+fn single_quoted_after<'a>(text: &'a str, prefix: &str) -> Option<&'a str> {
+    let rest = text.strip_prefix(prefix)?;
+    let rest = rest.strip_prefix('\'')?;
+    rest.split_once('\'').map(|(quoted, _)| quoted)
+}
+
+fn single_quoted_after_marker<'a>(text: &'a str, marker: &str) -> Option<&'a str> {
+    let rest = text.split_once(marker)?.1;
+    let rest = rest.strip_prefix('\'')?;
+    rest.split_once('\'').map(|(quoted, _)| quoted)
+}
+
+fn these_count(text: &str, suffix: &str) -> Option<String> {
+    let rest = text.strip_prefix("these ")?;
+    let (count, _) = rest.split_once(suffix)?;
+    (!count.is_empty() && count.chars().all(|ch| ch.is_ascii_digit())).then(|| count.to_string())
+}
+
+fn installable_or_store_name(path: &str) -> String {
+    if let Some(name) = store_path_name(path) {
+        return name.to_string();
+    }
+    path.strip_prefix("git+file://")
+        .and_then(|path| path.rsplit('/').next())
+        .filter(|name| !name.is_empty())
+        .unwrap_or(path)
+        .to_string()
+}
+
+fn display_copy_source(path: &str) -> String {
+    if path == "/" {
+        return "source".to_string();
+    }
+    if let Some(name) = store_path_name(path) {
+        return name.to_string();
+    }
+    if path.ends_with('/') {
+        return "workspace".to_string();
+    }
+    path.rsplit('/')
+        .find(|part| !part.is_empty())
+        .unwrap_or(path)
+        .to_string()
+}
+
+fn display_store_source(source: &str) -> String {
+    source
+        .strip_prefix("https://")
+        .or_else(|| source.strip_prefix("http://"))
+        .and_then(|source| source.split('/').next())
+        .filter(|host| !host.is_empty())
+        .unwrap_or(source)
+        .to_string()
+}
+
+fn store_path_name(path: &str) -> Option<&str> {
+    let rest = path.strip_prefix("/nix/store/")?;
+    let (_, name) = rest.split_once('-')?;
+    (!name.is_empty()).then_some(name)
+}
+
+fn clean_progress_text(text: &str) -> String {
+    strip_ansi(text)
+        .trim()
+        .chars()
+        .filter(|ch| !ch.is_control())
+        .collect()
+}
+
+fn strip_ansi(text: &str) -> String {
+    let mut out = String::new();
+    let mut chars = text.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if ch != '\u{1b}' {
+            out.push(ch);
+            continue;
+        }
+        if chars.next_if_eq(&'[').is_some() {
+            for ch in chars.by_ref() {
+                if ('@'..='~').contains(&ch) {
+                    break;
+                }
+            }
+        }
+    }
+    out
+}
+
+fn json_string_field(text: &str, field: &str) -> Option<String> {
+    let needle = format!("\"{field}\":");
+    let after = text.split_once(&needle)?.1.trim_start();
+    let after = after.strip_prefix('"')?;
+    decode_json_string(after)
+}
+
+fn decode_json_string(text: &str) -> Option<String> {
+    let mut out = String::new();
+    let mut chars = text.chars();
+    while let Some(ch) = chars.next() {
+        match ch {
+            '"' => return Some(out),
+            '\\' => match chars.next()? {
+                '"' => out.push('"'),
+                '\\' => out.push('\\'),
+                '/' => out.push('/'),
+                'b' => out.push('\u{0008}'),
+                'f' => out.push('\u{000c}'),
+                'n' => out.push('\n'),
+                'r' => out.push('\r'),
+                't' => out.push('\t'),
+                'u' => {
+                    let mut code = String::new();
+                    for _ in 0..4 {
+                        code.push(chars.next()?);
+                    }
+                    let code = u32::from_str_radix(&code, 16).ok()?;
+                    out.push(char::from_u32(code)?);
+                }
+                other => out.push(other),
+            },
+            other => out.push(other),
+        }
+    }
+    None
 }
 
 fn truncate_progress_detail(detail: &str) -> String {
@@ -825,8 +997,36 @@ mod tests {
             None
         );
         assert_eq!(
+            progress_detail(b"\x1b[35;1mwarning:\x1b[0m Git tree '/workspace/project' is dirty\n"),
+            None
+        );
+        assert_eq!(
             progress_detail(b"\rcopying '/workspace/' to the store\n"),
-            Some("copying '/workspace/' to the store".to_string())
+            Some("copying workspace to the store".to_string())
+        );
+        assert_eq!(
+            progress_detail(
+                b"building '/nix/store/abc12345678901234567890123456789012-glibc-2.40.drv'...\n"
+            ),
+            Some("building glibc-2.40.drv".to_string())
+        );
+        assert_eq!(
+            progress_detail(b"copying path '/nix/store/abc12345678901234567890123456789012-python3-3.11.13' from 'https://cache.nixos.org'\n"),
+            Some("fetching python3-3.11.13 from cache.nixos.org".to_string())
+        );
+        assert_eq!(
+            progress_detail(
+                b"these 27 paths will be fetched (123 MiB download, 456 MiB unpacked):\n"
+            ),
+            Some("planning 27 fetches".to_string())
+        );
+        assert_eq!(
+            progress_detail(br#"@nix {"action":"start","id":1,"level":4,"parent":0,"text":"copying '/nix/store/abc12345678901234567890123456789012-source' to the store","type":0}"#),
+            Some("copying source to the store".to_string())
+        );
+        assert_eq!(
+            nix_evaluated_package_path(br#"@nix {"action":"msg","level":4,"msg":"evaluating file '/nix/store/src/pkgs/by-name/gl/glfw/package.nix'"}"#),
+            Some("/nix/store/src/pkgs/by-name/gl/glfw/package.nix".to_string())
         );
     }
 

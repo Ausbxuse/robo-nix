@@ -144,6 +144,8 @@ fn refreshed_shell_env(
     let mut command = Command::new("nix");
     command
         .current_dir(workspace)
+        .arg("--log-format")
+        .arg("raw")
         .arg("develop")
         .arg("--impure")
         .arg("--accept-flake-config")

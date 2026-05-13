@@ -15,6 +15,8 @@ Current command surface:
   `robo shell` sessions.
 
 The public command surface is intentionally limited to the commands above.
+Global utility flags such as `robo --help`, `robo --version`, and `robo -V` do
+not add runtime workflows.
 
 Read next:
 

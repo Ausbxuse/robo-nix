@@ -112,6 +112,14 @@ robo search <library>
 Searches Nix package metadata for packages that may provide a missing shared
 library, such as `libassimp.so` or `libz.so`.
 
+Global utility flags:
+
+```bash
+robo --help
+robo --version
+robo -V
+```
+
 The public command surface is intentionally limited to runtime shell, runtime
 command execution, and shared-library lookup. Setup diagnostics are part of the
 shell/run workflow.

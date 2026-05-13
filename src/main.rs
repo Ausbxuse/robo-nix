@@ -56,6 +56,14 @@ fn ui_config() -> Config {
     Config { color, debug }
 }
 
+fn version_text() -> String {
+    format!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"))
+}
+
+fn print_version() {
+    println!("{}", version_text());
+}
+
 fn run(args: Vec<OsString>, config: Config) -> Result<ExitCode, AppError> {
     let mut args = args.into_iter();
     let Some(command) = args.next() else {
@@ -73,6 +81,10 @@ fn run(args: Vec<OsString>, config: Config) -> Result<ExitCode, AppError> {
         "__shell-refresh" => Ok(shell_refresh::run(args.collect(), config)),
         "-h" | "--help" | "help" => {
             print_usage(config);
+            Ok(ExitCode::SUCCESS)
+        }
+        "-V" | "--version" => {
+            print_version();
             Ok(ExitCode::SUCCESS)
         }
         "init" => Err(AppError::user("`robo init` is not a robo command").with_hint(
@@ -100,6 +112,11 @@ fn print_usage(config: Config) {
         "robo search <library>",
         "find a Nix runtime library package",
     );
+
+    println!();
+    section(config, "utilities");
+    help_row(config, "robo --help, -h", "show help");
+    help_row(config, "robo --version, -V", "show version");
 
     println!();
     section(config, "project setup");
@@ -715,6 +732,14 @@ mod tests {
         let error = nested_shell_error();
 
         assert!(error.message().contains("already inside a robo shell"));
+    }
+
+    #[test]
+    fn version_text_uses_package_metadata() {
+        assert_eq!(
+            version_text(),
+            format!("robo {}", env!("CARGO_PKG_VERSION"))
+        );
     }
 
     #[test]

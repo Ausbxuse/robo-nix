@@ -13,6 +13,8 @@ dependency groups, lockfiles, and virtualenv sync.
   command without keeping a shell open.
 - `robo search <library>` helps find Nix package candidates for missing shared
   libraries, such as `libassimp.so`. It only prints suggestions.
+- `robo --help`, `robo --version`, and `robo -V` are available as standard CLI
+  utilities.
 - Active `robo shell` sessions refresh at the next prompt when runtime inputs
   change. This includes `flake.nix`, `flake.lock`, `.python-version`,
   `pyproject.toml`, `uv.lock`, `robo.nix`, the default `.venv/bin/python`, and

@@ -39,12 +39,18 @@ pub(crate) fn runtime_environment(
             if config.debug {
                 crate::ui::debug(config, &format!("runtime cache {}", reason.detail()));
             }
-            if let Some(estimate) = estimate_runtime_disk_size(workspace) {
-                status(config, &estimate.status_line(phase));
+            // NOTE: closure size estimation evaluates Nix before the progress tree exists.
+            // Keep it out of the normal path so first-run setup does not look stuck.
+            if config.debug {
+                if let Some(estimate) = estimate_runtime_disk_size(workspace) {
+                    status(config, &estimate.status_line(phase));
+                }
             }
 
             let mut command = Command::new("nix");
             command
+                .arg("--log-format")
+                .arg("raw")
                 .arg("develop")
                 .arg("--impure")
                 .arg("--accept-flake-config")
@@ -266,17 +272,17 @@ enum RuntimeCacheMiss {
 impl RuntimeCacheMiss {
     fn label(&self) -> &'static str {
         match self {
-            Self::Missing => "missing",
-            Self::FormatChanged => "invalid",
-            Self::StaleInputs => "stale",
-            Self::InvalidEnvironment => "invalid",
-            Self::MissingStorePaths(_) => "store paths",
+            Self::Missing => "new",
+            Self::FormatChanged => "refresh",
+            Self::StaleInputs => "refresh",
+            Self::InvalidEnvironment => "refresh",
+            Self::MissingStorePaths(_) => "refresh",
         }
     }
 
     fn detail(&self) -> String {
         match self {
-            Self::Missing => "missing".to_string(),
+            Self::Missing => "not yet created".to_string(),
             Self::FormatChanged => "format changed".to_string(),
             Self::StaleInputs => "stale runtime inputs".to_string(),
             Self::InvalidEnvironment => "invalid environment payload".to_string(),
@@ -490,6 +496,18 @@ mod tests {
         );
 
         cleanup(root);
+    }
+
+    #[test]
+    fn runtime_cache_progress_labels_are_user_facing() {
+        assert_eq!(RuntimeCacheMiss::Missing.label(), "new");
+        assert_eq!(RuntimeCacheMiss::StaleInputs.label(), "refresh");
+        assert_eq!(RuntimeCacheMiss::FormatChanged.label(), "refresh");
+        assert_eq!(RuntimeCacheMiss::InvalidEnvironment.label(), "refresh");
+        assert_eq!(
+            RuntimeCacheMiss::MissingStorePaths(vec![PathBuf::from("/nix/store/example")]).label(),
+            "refresh"
+        );
     }
 
     #[test]
