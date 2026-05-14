@@ -7,4 +7,5 @@ license = "GPL-3.0-only"
 [dependencies]
 console = "0.15"
 indicatif = "0.17"
+libc = "0.2"
 toml = "0.8"

@@ -13,6 +13,8 @@ dependency groups, lockfiles, and virtualenv sync.
   command without keeping a shell open.
 - `robo search <library>` helps find Nix package candidates for missing shared
   libraries, such as `libassimp.so`. It only prints suggestions.
+- `robo refresh` clears robo-owned runtime state under `.robo-nix/`. In an
+  active runtime shell, the shell updates at the next prompt.
 - `robo --help`, `robo --version`, and `robo -V` are available as standard CLI
   utilities.
 - Active `robo shell` sessions refresh at the next prompt when runtime inputs
@@ -140,6 +142,13 @@ Use one command inside the runtime without staying in an interactive shell:
 
 ```bash
 robo run <command> [args...]
+```
+
+Clear local robo runtime state and rebuild the active shell environment at the
+next prompt:
+
+```bash
+robo refresh
 ```
 
 ## What robo does not do

@@ -11,6 +11,10 @@ environment manager.
   `robo shell`.
 - `robo search <library>` is a lookup-only helper for missing native shared
   libraries.
+- `robo refresh` clears robo-owned runtime state under `.robo-nix/`. Inside an
+  active `robo shell`, it requests prompt-time environment refresh through the
+  existing shell hook; outside a shell, it makes the next `robo shell` or
+  `robo run` rebuild runtime cache state.
 - There is no `robo init`, `robo check`, or `robo diagnose` in the current
   product surface.
 - `robo shell` may create missing runtime files during first bootstrap, then
@@ -144,9 +148,10 @@ environment manager.
   `indicatif` braille spinners, and a `[robo]` prompt prefix in interactive
   shells.
 - Long `robo shell` and `robo run` setup should use the original-style nested
-  progress tree: parent command line, active child phase, optional dim Nix
+  progress tree: parent command line, active child status, optional dim Nix
   detail rows, and a completed `robo ready` tree in terminals. Keep
-  non-interactive output as plain `phase: detail` status lines.
+  non-interactive output as plain direct status lines, adding phase labels only
+  when needed to disambiguate otherwise similar work.
 - Hide successful Nix CLI output, including dirty Git tree warnings. Capture and
   replay Nix stdout/stderr only when Nix setup fails; after setup succeeds,
   launch the user's shell or command directly with the resolved environment.

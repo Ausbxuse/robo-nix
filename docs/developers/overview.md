@@ -13,7 +13,7 @@ or Python package resolver.
 3. Create `flake.nix` only when missing. Existing non-robo flakes are not
    overwritten.
 4. Create `robo.nix` only when missing.
-5. Evaluate the dev shell with
+5. Evaluate the Nix runtime shell with
    `nix develop --accept-flake-config --command sh -c 'printf ...; env -0'`.
 6. Hide successful Nix stdout/stderr, parse the NUL-separated environment,
    clear the inherited host environment, and apply the captured environment to
@@ -181,6 +181,10 @@ the shell process, or rewrite `robo.nix`.
 verifying referenced `/nix/store` paths still exist. Active shell fingerprints
 are computed from the final launched environment so prompt refresh does not
 immediately re-run after host CUDA or library path preparation.
+
+`robo refresh` removes robo-owned `.robo-nix/` state. In an active runtime
+shell, it writes a manual refresh request that is part of the runtime input key;
+the prompt hook consumes that request after a successful environment refresh.
 
 ## Changelog
 

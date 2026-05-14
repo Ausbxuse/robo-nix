@@ -13,6 +13,7 @@ mod host_cuda;
 mod inference;
 mod nix_env;
 mod project_lock;
+mod refresh;
 mod search;
 mod shell_launch;
 mod shell_refresh;
@@ -78,6 +79,7 @@ fn run(args: Vec<OsString>, config: Config) -> Result<ExitCode, AppError> {
         "shell" => shell_command(args.collect(), config),
         "run" => run_command(args.collect(), config),
         "search" => Ok(search::run(args.collect(), config)),
+        "refresh" => refresh::run(args.collect(), config),
         "__shell-refresh" => Ok(shell_refresh::run(args.collect(), config)),
         "-h" | "--help" | "help" => {
             print_usage(config);
@@ -112,6 +114,11 @@ fn print_usage(config: Config) {
         "robo search <library>",
         "find a Nix runtime library package",
     );
+    help_row(
+        config,
+        "robo refresh",
+        "clear runtime state and refresh the active shell",
+    );
 
     println!();
     section(config, "utilities");
@@ -124,7 +131,7 @@ fn print_usage(config: Config) {
     list_item(config, "pyproject.toml is managed by uv/project policy.");
     list_item(
         config,
-        "robo shell creates missing robo runtime files on first use.",
+        "robo shell creates robo runtime files on first use.",
     );
 
     println!();
@@ -290,7 +297,7 @@ fn shell_launch_command(
         AppError::project("could not determine an interactive shell to launch")
             .with_hint("set ROBO_NIX_SHELL to the shell you want robo to launch.")
     })?;
-    status(config, &format!("shell: launching {}", launch.name));
+    status(config, &format!("launching {}", launch.name));
 
     let mut command = Command::new(&launch.program);
     command.args(&launch.args);

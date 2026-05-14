@@ -11,6 +11,8 @@ use std::sync::{
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
+const HIDE_CURSOR: &[u8] = b"\x1b[?25l";
+const SHOW_CURSOR: &[u8] = b"\x1b[?25h";
 const TREE_SPINNER_FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 const TREE_STEP_WIDTH: usize = 34;
 const TREE_META_WIDTH: usize = 12;
@@ -345,32 +347,123 @@ fn spinner_bar(config: Config, message: &str) -> ProgressBar {
 
 struct HiddenCursor {
     hidden: bool,
+    signal_guard: CursorSignalGuard,
 }
 
 impl HiddenCursor {
     fn new() -> Self {
-        eprint!("\x1b[?25l");
+        let signal_guard = CursorSignalGuard::install();
+        write_stderr(HIDE_CURSOR);
         let _ = std::io::stderr().flush();
-        Self { hidden: true }
+        Self {
+            hidden: true,
+            signal_guard,
+        }
     }
 
     fn show(&mut self) {
         if self.hidden {
-            eprint!("\x1b[?25h");
+            write_stderr(SHOW_CURSOR);
             let _ = std::io::stderr().flush();
             self.hidden = false;
         }
+        self.signal_guard.restore();
     }
 }
 
 impl Drop for HiddenCursor {
     fn drop(&mut self) {
         if self.hidden {
-            eprint!("\x1b[?25h");
+            write_stderr(SHOW_CURSOR);
             let _ = std::io::stderr().flush();
             self.hidden = false;
         }
+        self.signal_guard.restore();
     }
+}
+
+fn write_stderr(bytes: &[u8]) {
+    let _ = std::io::stderr().write_all(bytes);
+}
+
+#[cfg(unix)]
+const CURSOR_RESTORE_SIGNALS: [libc::c_int; 3] = [libc::SIGINT, libc::SIGTERM, libc::SIGHUP];
+
+#[cfg(unix)]
+struct CursorSignalGuard {
+    previous: [(libc::c_int, Option<libc::sighandler_t>); 3],
+    restored: bool,
+}
+
+#[cfg(unix)]
+impl CursorSignalGuard {
+    fn install() -> Self {
+        let mut guard = Self {
+            previous: CURSOR_RESTORE_SIGNALS.map(|signal| (signal, None)),
+            restored: false,
+        };
+        for (signal, previous) in &mut guard.previous {
+            let installed = unsafe {
+                libc::signal(
+                    *signal,
+                    restore_cursor_and_exit as *const () as libc::sighandler_t,
+                )
+            };
+            if installed != libc::SIG_ERR {
+                *previous = Some(installed);
+            }
+        }
+        guard
+    }
+
+    fn restore(&mut self) {
+        if self.restored {
+            return;
+        }
+        for (signal, previous) in self.previous {
+            if let Some(previous) = previous {
+                unsafe {
+                    libc::signal(signal, previous);
+                }
+            }
+        }
+        self.restored = true;
+    }
+}
+
+#[cfg(unix)]
+impl Drop for CursorSignalGuard {
+    fn drop(&mut self) {
+        self.restore();
+    }
+}
+
+#[cfg(unix)]
+unsafe extern "C" fn restore_cursor_and_exit(signal: libc::c_int) {
+    // NOTE: this runs in a signal handler; keep it to async-signal-safe calls.
+    let _ = libc::write(
+        libc::STDERR_FILENO,
+        SHOW_CURSOR.as_ptr().cast(),
+        SHOW_CURSOR.len(),
+    );
+    libc::_exit(signal_exit_code(signal));
+}
+
+#[cfg(unix)]
+fn signal_exit_code(signal: libc::c_int) -> libc::c_int {
+    128 + signal
+}
+
+#[cfg(not(unix))]
+struct CursorSignalGuard;
+
+#[cfg(not(unix))]
+impl CursorSignalGuard {
+    fn install() -> Self {
+        Self
+    }
+
+    fn restore(&mut self) {}
 }
 
 struct ProgressTree {
@@ -652,8 +745,8 @@ fn tree_metadata(
     evaluated_packages: usize,
 ) -> Option<TreeMetadata> {
     if evaluated_packages > 0
-        && (message.ends_with(": evaluating and realizing dev shell")
-            || message.ends_with(": evaluating runtime shell"))
+        && (message.ends_with(": evaluating runtime shell")
+            || message == "evaluating runtime shell")
     {
         return Some(TreeMetadata {
             text: format!("{evaluated_packages} packages"),
@@ -951,7 +1044,7 @@ mod tests {
                 0,
                 Duration::from_millis(79),
             )],
-            active_message: "shell: evaluating and realizing dev shell".to_string(),
+            active_message: "evaluating runtime shell".to_string(),
             active_started_at: started,
             evaluated_packages: HashSet::from([
                 "/nix/store/source/pkgs/by-name/li/libmng/package.nix".to_string(),
@@ -962,7 +1055,7 @@ mod tests {
 
         assert_eq!(
             render_live_tree(config, &state, started + Duration::from_millis(812)),
-            "robo shell\n  └ ✓ preparing runtime files                           79ms\n  └ ⠋ evaluating and realizing dev shell 2 packages    812ms\n    copying '/workspace/' to the store"
+            "robo shell\n  └ ✓ preparing runtime files                           79ms\n  └ ⠋ evaluating runtime shell           2 packages    812ms\n    copying '/workspace/' to the store"
         );
     }
 
@@ -974,7 +1067,7 @@ mod tests {
         };
         let completed = vec![completed_tree_line(
             config,
-            "shell: evaluating and realizing dev shell",
+            "evaluating runtime shell",
             Some("cached"),
             0,
             Duration::from_millis(13),
@@ -982,7 +1075,7 @@ mod tests {
 
         assert_eq!(
             render_finished_tree(config, &completed, Duration::from_millis(14)),
-            "✓ robo ready                                            14ms\n  └ ✓ evaluating and realizing dev shell cached         13ms"
+            "✓ robo ready                                            14ms\n  └ ✓ evaluating runtime shell           cached         13ms"
         );
     }
 

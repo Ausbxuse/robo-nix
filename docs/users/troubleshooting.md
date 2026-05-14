@@ -168,6 +168,11 @@ exports refreshed environment variables into the current shell.
 
 This refresh does not run `uv sync` and does not rewrite `robo.nix`.
 
+Run `robo refresh` to clear robo-owned local runtime state under `.robo-nix/`
+and request a prompt-time refresh in the active shell. Because child processes
+cannot rewrite their parent shell after exit, the active shell updates at the
+next prompt.
+
 If two `robo` processes prepare the same project at once, robo-owned writes
 under `.robo-nix/` use lock files. Set `ROBO_NIX_LOCK_TIMEOUT=<seconds>` to
 change how long a process waits before reporting the held lock.

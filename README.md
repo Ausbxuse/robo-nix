@@ -112,6 +112,15 @@ robo search <library>
 Searches Nix package metadata for packages that may provide a missing shared
 library, such as `libassimp.so` or `libz.so`.
 
+```bash
+robo refresh
+```
+
+Clears robo-owned runtime state under `.robo-nix/`. Inside an active
+`robo shell`, the shell updates at the next prompt through the normal refresh
+hook. Outside a shell, the next `robo shell` or `robo run` rebuilds the runtime
+cache.
+
 Global utility flags:
 
 ```bash
@@ -121,8 +130,8 @@ robo -V
 ```
 
 The public command surface is intentionally limited to runtime shell, runtime
-command execution, and shared-library lookup. Setup diagnostics are part of the
-shell/run workflow.
+command execution, shared-library lookup, and runtime state refresh. Setup
+diagnostics are part of the shell/run workflow.
 
 ## Runtime Model
 

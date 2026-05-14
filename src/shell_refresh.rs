@@ -7,6 +7,7 @@ use std::hash::{Hash, Hasher};
 use std::io::{self, Write};
 use std::path::{Component, Path, PathBuf};
 use std::process::{Command, ExitCode, Output};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::env_vars::{is_robo_managed_env, runtime_key_env_names};
 use crate::host_cuda::append_host_cuda_driver_bridge;
@@ -16,6 +17,8 @@ use crate::nix_env::{
 use crate::ui::{error, hint, output_with_tree, row_err, status, Config};
 
 const OBSERVED_RUNTIME_INPUTS_FILE: &str = "runtime-inputs-v1";
+const MANUAL_REFRESH_REQUEST_FILE: &str = "refresh-requested-v1";
+const MANUAL_REFRESH_REQUEST_INPUT: &str = ".robo-nix/refresh-requested-v1";
 
 #[derive(Debug)]
 pub(crate) struct RuntimeInputState {
@@ -114,6 +117,7 @@ fn try_run(args: Vec<OsString>, config: Config) -> Result<(), RefreshError> {
     print_runtime_refresh_notice(config, &workspace, &changed, &missing_store_paths);
     let mut envs = refreshed_shell_env(&workspace, config)?;
     let _ = append_host_cuda_driver_bridge(&mut envs, &workspace);
+    let _ = clear_manual_runtime_refresh_request(&workspace);
     append_refreshed_active_shell_env(&mut envs, &workspace);
     print_shell_delta(shell, &envs);
     Ok(())
@@ -155,7 +159,7 @@ fn refreshed_shell_env(
         config,
         &mut command,
         "robo shell",
-        "shell: evaluating and realizing dev shell",
+        "evaluating runtime shell",
     )
     .map_err(|err| {
         RefreshError::new(format!("failed to refresh shell environment: {err}"))
@@ -189,6 +193,7 @@ where
         "uv.lock",
         "robo.nix",
         ".venv/bin/python",
+        MANUAL_REFRESH_REQUEST_INPUT,
     ]
     .into_iter()
     .map(str::to_string)
@@ -218,6 +223,39 @@ pub(crate) fn record_observed_runtime_inputs(root: &Path, nix_stderr: &[u8]) -> 
         return Ok(());
     }
     write_observed_runtime_inputs(root, &inputs)
+}
+
+pub(crate) fn request_manual_runtime_refresh(root: &Path) -> io::Result<PathBuf> {
+    let state_dir = root.join(".robo-nix");
+    fs::create_dir_all(&state_dir)?;
+    let path = manual_runtime_refresh_request_path(root);
+    let tmp_path = state_dir.join(format!(
+        "{MANUAL_REFRESH_REQUEST_FILE}.tmp-{}",
+        std::process::id()
+    ));
+    fs::write(&tmp_path, manual_runtime_refresh_request_contents())?;
+    fs::rename(tmp_path, &path)?;
+    Ok(path)
+}
+
+fn clear_manual_runtime_refresh_request(root: &Path) -> io::Result<()> {
+    match fs::remove_file(manual_runtime_refresh_request_path(root)) {
+        Ok(()) => Ok(()),
+        Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(err) => Err(err),
+    }
+}
+
+fn manual_runtime_refresh_request_path(root: &Path) -> PathBuf {
+    root.join(".robo-nix").join(MANUAL_REFRESH_REQUEST_FILE)
+}
+
+fn manual_runtime_refresh_request_contents() -> String {
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or_default();
+    format!("pid={}\ntime_unix_nanos={timestamp}\n", std::process::id())
 }
 
 fn read_observed_runtime_inputs(root: &Path) -> BTreeSet<String> {
@@ -600,24 +638,39 @@ fn print_runtime_refresh_notice(
     changed: &[String],
     missing_store_paths: &[PathBuf],
 ) {
-    let reason = if changed.is_empty() {
+    let manual_refresh_requested = changed
+        .iter()
+        .any(|path| path == MANUAL_REFRESH_REQUEST_INPUT);
+    let changed_inputs = changed
+        .iter()
+        .filter(|path| path.as_str() != MANUAL_REFRESH_REQUEST_INPUT)
+        .collect::<Vec<_>>();
+    let reason = if manual_refresh_requested
+        && changed_inputs.is_empty()
+        && missing_store_paths.is_empty()
+    {
+        "runtime refresh requested"
+    } else if manual_refresh_requested && changed_inputs.is_empty() {
+        "runtime refresh requested and store paths disappeared"
+    } else if changed_inputs.is_empty() {
         "runtime store paths disappeared"
     } else if missing_store_paths.is_empty() {
         "runtime inputs changed"
     } else {
         "runtime inputs changed and store paths disappeared"
     };
-    status(
-        config,
-        &format!("shell: {reason} in {}", workspace.display()),
-    );
+    status(config, &format!("{reason} in {}", workspace.display()));
     for path in changed {
-        row_err(
-            config,
-            "!",
-            "changed",
-            &display_runtime_input_name(workspace, path),
-        );
+        if path == MANUAL_REFRESH_REQUEST_INPUT {
+            row_err(config, "✓", "refresh", "requested manually");
+        } else {
+            row_err(
+                config,
+                "!",
+                "changed",
+                &display_runtime_input_name(workspace, path),
+            );
+        }
     }
     for path in missing_store_paths {
         row_err(config, "!", "missing", &path.display().to_string());
@@ -625,6 +678,9 @@ fn print_runtime_refresh_notice(
 }
 
 fn display_runtime_input_name(workspace: &Path, name: &str) -> String {
+    if name == MANUAL_REFRESH_REQUEST_INPUT {
+        return "manual refresh request".to_string();
+    }
     if name.starts_with("env:") {
         return name.to_string();
     }
@@ -870,6 +926,29 @@ in
             .iter()
             .any(|(path, _)| path == "nix/runtime-libs.nix"));
 
+        cleanup(root);
+    }
+
+    #[test]
+    fn runtime_input_key_tracks_manual_refresh_requests() {
+        let root = temp_project("runtime-key-manual-refresh");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("robo.nix"), "{}").unwrap();
+        let before = runtime_input_state(&root);
+
+        request_manual_runtime_refresh(&root).unwrap();
+        let requested = runtime_input_state(&root);
+
+        assert_ne!(before.key, requested.key);
+        assert!(requested
+            .files
+            .iter()
+            .any(|(path, hash)| path == MANUAL_REFRESH_REQUEST_INPUT && hash != "missing"));
+
+        clear_manual_runtime_refresh_request(&root).unwrap();
+        let after = runtime_input_state(&root);
+
+        assert_eq!(before.key, after.key);
         cleanup(root);
     }
 

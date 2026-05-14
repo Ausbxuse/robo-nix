@@ -11,6 +11,8 @@ Current command surface:
   then run one command with the resolved runtime environment.
 - `robo search <library>`: look up Nix package candidates for missing shared
   libraries. It does not edit project files.
+- `robo refresh`: clear robo-owned runtime state under `.robo-nix/` and request
+  prompt-time environment refresh inside an active runtime shell.
 - `robo __shell-refresh <shell>`: hidden prompt-hook helper used by active
   `robo shell` sessions.
 

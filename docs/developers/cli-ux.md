@@ -21,7 +21,7 @@ inferred
 
 Color only the scanning anchors in terminals:
 
-- section headings and `phase:` status labels: cyan and bold
+- section headings and active status labels: cyan and bold
 - success marker `✓`: green and bold
 - attention marker `!`: yellow and bold
 - field or action words such as `wrote`: dim
@@ -31,11 +31,12 @@ Captured output must stay plain text with no escape codes.
 
 ## Status
 
-Use `phase: detail` for active work:
+Use direct status text for active work. Add a phase only when it disambiguates
+otherwise similar concurrent work:
 
 ```text
-shell: evaluating and realizing dev shell
-shell: launching zsh
+evaluating runtime shell
+launching zsh
 ```
 
 In terminals, long silent work uses the original nested progress tree. The
@@ -45,7 +46,7 @@ progress:
 
 ```text
 ⠋ robo shell
-  └ ⠋ evaluating and realizing dev shell 2 packages    812ms
+  └ ⠋ evaluating runtime shell          2 packages    812ms
     copying '/workspace/' to the store
 ```
 
@@ -53,12 +54,12 @@ Leave a completed tree behind when the bounded setup phase succeeds:
 
 ```text
 ✓ robo ready                                            42ms
-  └ ✓ evaluating and realizing dev shell cached         13ms
+  └ ✓ evaluating runtime shell          cached         13ms
 ```
 
 Do not animate while a child process is producing useful output. For `robo
-shell`, capture the dev shell environment with the tree first, then launch the
-interactive shell directly without an active tree.
+shell`, capture the runtime shell environment with the tree first, then launch
+the interactive shell directly without an active tree.
 
 Disable animated output when stderr is not a terminal, when `NO_COLOR` is set,
 when `ROBO_NIX_DEBUG=1` is set, or when `ROBO_NIX_NO_SPINNER=1` is set.
@@ -81,7 +82,7 @@ to the user's existing prompt. `robo` does not invent a project-name prompt.
 The same startup files run a prompt-time freshness check. If `flake.nix`,
 `flake.lock`, `.python-version`, `pyproject.toml`, `uv.lock`, `robo.nix`, or
 the default `.venv/bin/python` changes while the shell is active, `robo`
-reports the changed inputs, re-evaluates the dev shell, and exports the
+reports the changed inputs, re-evaluates the runtime shell, and exports the
 refreshed environment into the current shell. This refresh does not rewrite
 `robo.nix` and does not run `uv sync`.
 

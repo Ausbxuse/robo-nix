@@ -71,7 +71,7 @@ enum SearchAttempt {
 
 fn search_nix_index(config: Config, query: &str) -> SearchAttempt {
     let mut command = nix_locate_command("nix-locate", query);
-    match output_with_spinner(config, &mut command, "search: checking local nix-index") {
+    match output_with_spinner(config, &mut command, "checking local nix-index") {
         Ok(output) if output.status.success() => SearchAttempt::Found {
             source: "local nix-index",
             output,
@@ -87,7 +87,7 @@ fn search_nix_index(config: Config, query: &str) -> SearchAttempt {
 
 fn search_prebuilt_index(config: Config, query: &str) -> SearchAttempt {
     let mut command = prebuilt_nix_locate_command(query);
-    match output_with_spinner(config, &mut command, "search: checking prebuilt nix-index") {
+    match output_with_spinner(config, &mut command, "checking prebuilt nix-index") {
         Ok(output) if output.status.success() => SearchAttempt::Found {
             source: "prebuilt nix-index",
             output,

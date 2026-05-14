@@ -37,7 +37,7 @@ features:
 <span class="label-note">inferred</span>
   <span class="label-ok">✓</span> native-build   pyproject.toml dependency `evdev`
   <span class="label-ok">✓</span> linux-headers  pyproject.toml dependency `evdev`
-shell: launching zsh
+launching zsh
 <span class="robo-prompt">[robo]</span> <span class="prompt">$</span> <span class="terminal-cursor"></span></code></pre>
 </div>
 

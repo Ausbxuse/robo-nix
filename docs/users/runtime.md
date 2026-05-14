@@ -254,3 +254,8 @@ later refresh/cache keys.
 After a successful setup, `robo` caches the captured runtime shell environment by
 that same key. Later `robo shell` and `robo run` attempts can reuse it instantly
 as long as the referenced Nix store paths still exist.
+
+Run `robo refresh` when you want to clear robo-owned local runtime state under
+`.robo-nix/`. Inside an active `robo shell`, this requests a refresh through the
+prompt hook; the shell updates at the next prompt. Outside a shell, the next
+`robo shell` or `robo run` rebuilds the runtime cache.

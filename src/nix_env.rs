@@ -31,7 +31,7 @@ pub(crate) fn runtime_environment(
     let cache = read_runtime_env_cache(workspace, cache_key);
     match cache {
         RuntimeEnvCache::Hit(mut envs) => {
-            output_cached_tree(config, &format!("{phase}: runtime cache"));
+            output_cached_tree(config, "runtime cache");
             inherit_terminal_environment(&mut envs);
             return Ok(envs);
         }
@@ -62,11 +62,8 @@ pub(crate) fn runtime_environment(
                 config,
                 &mut command,
                 &format!("robo {phase}"),
-                &format!("{phase}: evaluating runtime shell"),
-                vec![ProgressStep::instant(
-                    format!("{phase}: runtime cache"),
-                    reason.label(),
-                )],
+                "evaluating runtime shell",
+                vec![ProgressStep::instant("runtime cache", reason.label())],
             )
             .map_err(|err| {
                 AppError::project(format!("failed to start nix: {err}"))
@@ -99,9 +96,9 @@ struct RuntimeDiskEstimate {
 }
 
 impl RuntimeDiskEstimate {
-    fn status_line(&self, phase: &str) -> String {
+    fn status_line(&self, _phase: &str) -> String {
         let mut line = format!(
-            "{phase}: approximate runtime closure {} across {} store paths",
+            "approximate runtime closure {} across {} store paths",
             human_bytes(self.known_bytes),
             self.known_paths
         );
@@ -601,7 +598,7 @@ mod tests {
 
         assert_eq!(
             estimate.status_line("shell"),
-            "shell: approximate runtime closure 3.5 GiB across 42 store paths; 2 paths not yet sized"
+            "approximate runtime closure 3.5 GiB across 42 store paths; 2 paths not yet sized"
         );
     }
 
