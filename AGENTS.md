@@ -7,8 +7,10 @@ environment manager.
 ## Current Product Shape
 
 - `robo shell` is the canonical user command.
-- `robo run <command> [args...]` uses the same runtime preparation path as
-  `robo shell`.
+- `robo run [--] <command> [args...]` uses the same runtime preparation path as
+  `robo shell`. It accepts one optional leading `--` after `run` as the standard
+  end-of-options separator for commands that begin with `-`, and preserves later
+  `--` arguments for the child command.
 - `robo search <library>` is a lookup-only helper for missing native shared
   libraries.
 - `robo refresh` clears robo-owned runtime state under `.robo-nix/`. Inside an

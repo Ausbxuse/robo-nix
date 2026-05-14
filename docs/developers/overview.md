@@ -6,7 +6,7 @@ or Python package resolver.
 
 ## Runtime Flow
 
-`robo shell` and `robo run <command>` share the same preparation path:
+`robo shell` and `robo run [--] <command>` share the same preparation path:
 
 1. Read `.python-version`. Missing or empty files are hard errors.
 2. Create `.robo-nix/` if needed.
@@ -20,8 +20,8 @@ or Python package resolver.
    the final process.
 7. For `robo shell`, launch the selected interactive shell directly with the
    resolved environment.
-8. For `robo run`, launch the requested command directly with the resolved
-   environment.
+8. For `robo run`, strip one optional leading `--` after `run`, then launch the
+   requested command directly with the resolved environment.
 9. Propagate the final shell or command exit status. A nonzero user command is
    not treated as a robo setup failure.
 

@@ -99,11 +99,13 @@ Prepares the runtime and launches your default interactive shell with a
 `[robo]` prompt prefix.
 
 ```bash
-robo run <command> [args...]
+robo run [--] <command> [args...]
 ```
 
 Runs one command inside the prepared runtime without opening an interactive
-shell.
+shell. The optional `--` is accepted as a standard command separator; it is
+useful when the command name starts with `-`. Separators after `<command>` are
+passed through unchanged to the child command.
 
 ```bash
 robo search <library>

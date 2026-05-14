@@ -1,5 +1,5 @@
 use std::env;
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use std::fs;
 use std::io::{self, IsTerminal, Write};
 use std::path::{Path, PathBuf};
@@ -106,7 +106,7 @@ fn print_usage(config: Config) {
     help_row(config, "robo shell", "open an interactive runtime shell");
     help_row(
         config,
-        "robo run <command>",
+        "robo run [--] <command>",
         "run a command inside the prepared runtime",
     );
     help_row(
@@ -161,10 +161,22 @@ fn nested_shell_error() -> AppError {
 }
 
 fn run_command(args: Vec<OsString>, config: Config) -> Result<ExitCode, AppError> {
-    if args.is_empty() {
-        return Err(AppError::user("run requires a command"));
+    run_nix_develop(normalize_run_args(args)?, config)
+}
+
+fn normalize_run_args(mut args: Vec<OsString>) -> Result<Vec<OsString>, AppError> {
+    if args
+        .first()
+        .is_some_and(|arg| arg.as_os_str() == OsStr::new("--"))
+    {
+        args.remove(0);
     }
-    run_nix_develop(args, config)
+    if args.is_empty() {
+        return Err(AppError::user("run requires a command").with_hint(
+            "use `robo run -- <command> [args...]` when the command name begins with `-`.",
+        ));
+    }
+    Ok(args)
 }
 
 fn run_nix_develop(command_args: Vec<OsString>, config: Config) -> Result<ExitCode, AppError> {
@@ -742,6 +754,29 @@ mod tests {
     }
 
     #[test]
+    fn run_args_accept_one_leading_separator() {
+        assert_eq!(
+            normalize_run_args(os_args(&["--", "pytest", "-q"])).unwrap(),
+            os_args(&["pytest", "-q"])
+        );
+    }
+
+    #[test]
+    fn run_args_preserve_child_separator_after_command() {
+        assert_eq!(
+            normalize_run_args(os_args(&["pytest", "--", "-k", "smoke"])).unwrap(),
+            os_args(&["pytest", "--", "-k", "smoke"])
+        );
+    }
+
+    #[test]
+    fn run_args_require_command_after_separator() {
+        let error = normalize_run_args(os_args(&["--"])).unwrap_err();
+
+        assert_eq!(error.message(), "run requires a command");
+    }
+
+    #[test]
     fn version_text_uses_package_metadata() {
         assert_eq!(
             version_text(),
@@ -895,5 +930,9 @@ mod tests {
         ];
 
         assert!(graphics_wrapper_warning(&dependencies, &env).is_none());
+    }
+
+    fn os_args(args: &[&str]) -> Vec<OsString> {
+        args.iter().map(OsString::from).collect()
     }
 }

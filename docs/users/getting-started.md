@@ -9,8 +9,8 @@ dependency groups, lockfiles, and virtualenv sync.
   normal interactive shell with a `[robo]` prompt prefix.
 - On first use, `robo shell` may create `flake.nix`, `robo.nix`, and
   `.robo-nix/`. After that, `robo.nix` is yours to edit.
-- `robo run <command> [args...]` uses the same runtime preparation path for one
-  command without keeping a shell open.
+- `robo run [--] <command> [args...]` uses the same runtime preparation path
+  for one command without keeping a shell open.
 - `robo search <library>` helps find Nix package candidates for missing shared
   libraries, such as `libassimp.so`. It only prints suggestions.
 - `robo refresh` clears robo-owned runtime state under `.robo-nix/`. In an
@@ -141,8 +141,11 @@ robo search libassimp.so
 Use one command inside the runtime without staying in an interactive shell:
 
 ```bash
-robo run <command> [args...]
+robo run [--] <command> [args...]
 ```
+
+Use the optional `--` when the command name starts with `-`. Any later `--`
+belongs to the command being run.
 
 Clear local robo runtime state and rebuild the active shell environment at the
 next prompt:

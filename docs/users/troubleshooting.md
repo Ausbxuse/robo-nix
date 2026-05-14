@@ -1,10 +1,10 @@
 # Troubleshooting
 
-The primary diagnostics surface is `robo shell` or `robo run <command>`. Every
-runtime attempt writes `.robo-nix/last-run.json` with redacted facts such as
-dependency evidence, selected components, decision lines, host probe summaries,
-and environment variable names. When project setup fails, `robo` also writes
-`.robo-nix/last-error.log` with pasteable context for an issue.
+The primary diagnostics surface is `robo shell` or `robo run [--] <command>`.
+Every runtime attempt writes `.robo-nix/last-run.json` with redacted facts such
+as dependency evidence, selected components, decision lines, host probe
+summaries, and environment variable names. When project setup fails, `robo` also
+writes `.robo-nix/last-error.log` with pasteable context for an issue.
 
 ## Missing .python-version
 

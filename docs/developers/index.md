@@ -7,8 +7,10 @@ Current command surface:
 
 - `robo shell`: bootstrap missing runtime files, evaluate the Nix dev-shell
   environment, then launch the user's interactive shell with that environment.
-- `robo run <command> [args...]`: use the same bootstrap and environment path,
-  then run one command with the resolved runtime environment.
+- `robo run [--] <command> [args...]`: use the same bootstrap and environment
+  path, then run one command with the resolved runtime environment. A single
+  leading `--` after `run` is stripped as the wrapper separator; later
+  separators remain part of the child argv.
 - `robo search <library>`: look up Nix package candidates for missing shared
   libraries. It does not edit project files.
 - `robo refresh`: clear robo-owned runtime state under `.robo-nix/` and request
