@@ -11,6 +11,7 @@ const ENV_START_MARKER: &[u8] = b"robo-nix-env-start";
 const ENV_CAPTURE_SCRIPT: &str = "printf '\\000robo-nix-env-start\\000'; env -0";
 const RUNTIME_ENV_CACHE_MAGIC: &str = "robo-nix-runtime-env-cache-v1";
 const RUNTIME_ENV_CACHE_FILE: &str = "runtime-env-cache-v1.env0";
+const GIT_TRACKED_RUNTIME_INPUTS: &[&str] = &[".python-version", "flake.nix", "robo.nix"];
 const INHERITED_TERMINAL_ENV_VARS: &[&str] = &[
     "TERM",
     "COLORTERM",
@@ -47,11 +48,14 @@ pub(crate) fn runtime_environment(
                 }
             }
 
+            let flake_ref = workspace_flake_ref(workspace);
             let mut command = Command::new("nix");
             command
+                .current_dir(workspace)
                 .arg("--log-format")
                 .arg("raw")
                 .arg("develop")
+                .arg(&flake_ref)
                 .arg("--impure")
                 .arg("--accept-flake-config")
                 .arg("--command")
@@ -110,6 +114,7 @@ impl RuntimeDiskEstimate {
 }
 
 fn estimate_runtime_disk_size(workspace: &Path) -> Option<RuntimeDiskEstimate> {
+    let flake_ref = workspace_flake_ref(workspace);
     let current_system = command_stdout(
         Command::new("nix")
             .current_dir(workspace)
@@ -124,7 +129,7 @@ fn estimate_runtime_disk_size(workspace: &Path) -> Option<RuntimeDiskEstimate> {
         return None;
     }
 
-    let dev_shell_attr = format!(".#devShells.{current_system}.default");
+    let dev_shell_attr = format!("{flake_ref}#devShells.{current_system}.default");
     let derivation = command_stdout(
         Command::new("nix")
             .current_dir(workspace)
@@ -177,6 +182,47 @@ fn estimate_runtime_disk_size(workspace: &Path) -> Option<RuntimeDiskEstimate> {
         known_paths,
         unknown_paths: paths.len().saturating_sub(known_paths),
     })
+}
+
+fn workspace_flake_ref(workspace: &Path) -> String {
+    workspace_flake_ref_for_git_state(workspace, has_untracked_git_runtime_inputs(workspace))
+}
+
+fn workspace_flake_ref_for_git_state(
+    workspace: &Path,
+    has_untracked_runtime_inputs: bool,
+) -> String {
+    if has_untracked_runtime_inputs {
+        format!("path:{}", workspace.display())
+    } else {
+        ".".to_string()
+    }
+}
+
+fn has_untracked_git_runtime_inputs(workspace: &Path) -> bool {
+    let Ok(output) = Command::new("git")
+        .current_dir(workspace)
+        .arg("rev-parse")
+        .arg("--is-inside-work-tree")
+        .output()
+    else {
+        return false;
+    };
+    if !output.status.success() {
+        return false;
+    }
+
+    let Ok(output) = Command::new("git")
+        .current_dir(workspace)
+        .arg("ls-files")
+        .arg("--error-unmatch")
+        .arg("--")
+        .args(GIT_TRACKED_RUNTIME_INPUTS)
+        .output()
+    else {
+        return true;
+    };
+    !output.status.success()
 }
 
 fn command_stdout(command: &mut Command) -> Option<String> {
@@ -576,6 +622,58 @@ mod tests {
         let output = command.output().expect("test shell should run");
         assert!(output.status.success());
         assert_eq!(String::from_utf8_lossy(&output.stdout), "unset:1");
+    }
+
+    #[test]
+    fn untracked_git_runtime_inputs_use_path_flake_ref() {
+        assert_eq!(
+            workspace_flake_ref_for_git_state(Path::new("/tmp/project"), true),
+            "path:/tmp/project"
+        );
+        assert_eq!(
+            workspace_flake_ref_for_git_state(Path::new("/tmp/project"), false),
+            "."
+        );
+    }
+
+    #[test]
+    fn detects_untracked_git_runtime_inputs() {
+        let root = temp_project("untracked-runtime-inputs");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join(".python-version"), "3.12\n").unwrap();
+        fs::write(root.join("flake.nix"), "{ outputs = _: {}; }\n").unwrap();
+        fs::write(root.join("robo.nix"), "{}\n").unwrap();
+
+        let init = Command::new("git").current_dir(&root).arg("init").output();
+        let Ok(init) = init else {
+            cleanup(root);
+            return;
+        };
+        if !init.status.success() {
+            cleanup(root);
+            return;
+        }
+
+        let add = Command::new("git")
+            .current_dir(&root)
+            .arg("add")
+            .arg(".python-version")
+            .arg("flake.nix")
+            .output()
+            .unwrap();
+        assert!(add.status.success());
+        assert!(has_untracked_git_runtime_inputs(&root));
+
+        let add = Command::new("git")
+            .current_dir(&root)
+            .arg("add")
+            .arg("robo.nix")
+            .output()
+            .unwrap();
+        assert!(add.status.success());
+        assert!(!has_untracked_git_runtime_inputs(&root));
+
+        cleanup(root);
     }
 
     #[test]
