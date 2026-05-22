@@ -2,9 +2,11 @@
   nixConfig = {
     substituters = ["https://cache.nixos.org"];
     extra-substituters = [
+      "https://cache.zhenyuzhao.com/zhenyu-public"
       "https://nixpkgs-python.cachix.org"
     ];
     extra-trusted-public-keys = [
+      "zhenyu-public:HJAdTzf9fcFLcjDfAE39xyQv20Ev4M8kTFzXx3ssGho="
       "nixpkgs-python.cachix.org-1:hxjI7pFxTyuTHn2NkvWCrAUcNZLNS3ZAvfYNuYifcEU="
     ];
   };
