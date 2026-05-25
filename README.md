@@ -87,6 +87,8 @@ uv sync
 For a Python repository without robo runtime files, `robo shell` creates the
 missing runtime files on first use. If `pyproject.toml` already exists, the
 initial `robo.nix` is inferred from `src/metadata/runtime-inference.tsv`.
+In Git worktrees, first bootstrap also ensures `.robo-nix/` is listed in the
+workspace `.gitignore`.
 
 After first creation, `robo.nix` is user-managed. `robo shell` does not rewrite
 it.

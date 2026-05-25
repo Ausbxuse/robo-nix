@@ -93,6 +93,7 @@ On first bootstrap, `robo shell` may create:
 
 - `flake.nix`: minimal Nix plumbing that delegates to robo-nix.
 - `robo.nix`: the project runtime manifest.
+- `.gitignore`: in Git worktrees, an entry for `.robo-nix/` when missing.
 
 It then enters your default interactive shell with a `[robo]` prompt prefix.
 Set `ROBO_NIX_SHELL` only when you need to override shell selection.

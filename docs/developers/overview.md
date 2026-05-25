@@ -13,16 +13,18 @@ or Python package resolver.
 3. Create `flake.nix` only when missing. Existing non-robo flakes are not
    overwritten.
 4. Create `robo.nix` only when missing.
-5. Evaluate the Nix runtime shell with
+5. During first bootstrap in Git worktrees, ensure `.robo-nix/` is listed in the
+   workspace `.gitignore` without touching the Git index.
+6. Evaluate the Nix runtime shell with
    `nix develop --accept-flake-config --command sh -c 'printf ...; env -0'`.
-6. Hide successful Nix stdout/stderr, parse the NUL-separated environment,
+7. Hide successful Nix stdout/stderr, parse the NUL-separated environment,
    clear the inherited host environment, and apply the captured environment to
    the final process.
-7. For `robo shell`, launch the selected interactive shell directly with the
+8. For `robo shell`, launch the selected interactive shell directly with the
    resolved environment.
-8. For `robo run`, strip one optional leading `--` after `run`, then launch the
+9. For `robo run`, strip one optional leading `--` after `run`, then launch the
    requested command directly with the resolved environment.
-9. Propagate the final shell or command exit status. A nonzero user command is
+10. Propagate the final shell or command exit status. A nonzero user command is
    not treated as a robo setup failure.
 
 The preparation code lives in `src/bootstrap.rs`. Nix environment capture lives

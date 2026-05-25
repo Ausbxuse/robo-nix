@@ -22,6 +22,9 @@ environment manager.
 - `robo shell` may create missing runtime files during first bootstrap, then
   evaluates the Nix dev-shell environment and launches the user's shell with
   that environment.
+- In a Git worktree, first bootstrap should ensure `.robo-nix/` is ignored by
+  the workspace `.gitignore` without mutating the Git index or overwriting
+  existing ignore rules.
 - `.python-version` is required. `robo` does not choose a default Python
   version.
 - `pyproject.toml` is owned by uv/project policy. `robo` must never create it.

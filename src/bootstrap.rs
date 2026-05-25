@@ -1,8 +1,9 @@
 use std::collections::BTreeMap;
 use std::env;
-use std::fs;
-use std::io;
+use std::fs::{self, OpenOptions};
+use std::io::{self, Write};
 use std::path::Path;
+use std::process::Command;
 
 use crate::error::AppError;
 use crate::inference::{
@@ -14,6 +15,7 @@ use crate::ui::{attention, detail, row, section, success, Config};
 const PROJECT_FLAKE_TEMPLATE: &str = include_str!("templates/project/flake.nix");
 const PROJECT_ROBO_TEMPLATE: &str = include_str!("templates/project/robo.nix");
 const DEFAULT_ROBO_NIX_SOURCE_URL: &str = "github:ausbxuse/robo-nix/master";
+const ROBO_GITIGNORE_ENTRY: &str = ".robo-nix/";
 
 pub(crate) fn prepare_project(root: &Path) -> Result<BootstrapReport, AppError> {
     let python_version = read_python_version(root)?;
@@ -57,6 +59,10 @@ fn prepare_project_locked(
         report.inference = Some(inference);
     }
 
+    if (report.wrote_flake || report.wrote_robo_nix) && ensure_gitignore_ignores_robo_state(root)? {
+        report.updated_gitignore = true;
+    }
+
     report.python_version = python_version;
     Ok(report)
 }
@@ -80,13 +86,16 @@ pub(crate) fn read_python_version(root: &Path) -> Result<String, AppError> {
 }
 
 pub(crate) fn print_bootstrap_report(config: Config, report: &BootstrapReport) {
-    if report.wrote_flake || report.wrote_robo_nix {
+    if report.wrote_flake || report.wrote_robo_nix || report.updated_gitignore {
         section(config, "generated");
         if report.wrote_flake {
             row(config, "✓", "wrote", "./flake.nix");
         }
         if report.wrote_robo_nix {
             row(config, "✓", "wrote", "./robo.nix");
+        }
+        if report.updated_gitignore {
+            row(config, "✓", "updated", "./.gitignore");
         }
     }
 
@@ -176,6 +185,84 @@ fn robo_nix_source_url_from(runtime_override: Option<String>) -> String {
         .unwrap_or_else(|| DEFAULT_ROBO_NIX_SOURCE_URL.to_string())
 }
 
+fn ensure_gitignore_ignores_robo_state(root: &Path) -> Result<bool, AppError> {
+    if !is_git_worktree(root) {
+        return Ok(false);
+    }
+
+    let path = root.join(".gitignore");
+    let existing = match fs::read(&path) {
+        Ok(contents) => contents,
+        Err(err) if err.kind() == io::ErrorKind::NotFound => Vec::new(),
+        Err(err) => {
+            return Err(AppError::project(format!(
+                "failed to read .gitignore: {err}"
+            )));
+        }
+    };
+    if gitignore_ignores_robo_state(&String::from_utf8_lossy(&existing)) {
+        return Ok(false);
+    }
+
+    let mut suffix = Vec::new();
+    if !existing.is_empty() && !existing.ends_with(b"\n") {
+        suffix.push(b'\n');
+    }
+    suffix.extend_from_slice(ROBO_GITIGNORE_ENTRY.as_bytes());
+    suffix.push(b'\n');
+
+    let mut file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .map_err(|err| AppError::project(format!("failed to write .gitignore: {err}")))?;
+    file.write_all(&suffix)
+        .map_err(|err| AppError::project(format!("failed to write .gitignore: {err}")))?;
+    Ok(true)
+}
+
+fn is_git_worktree(root: &Path) -> bool {
+    let Ok(output) = Command::new("git")
+        .current_dir(root)
+        .arg("rev-parse")
+        .arg("--is-inside-work-tree")
+        .output()
+    else {
+        return false;
+    };
+
+    output.status.success() && String::from_utf8_lossy(&output.stdout).trim() == "true"
+}
+
+fn gitignore_ignores_robo_state(text: &str) -> bool {
+    let mut ignored = false;
+    for line in text.lines() {
+        match robo_state_gitignore_pattern(line) {
+            Some(true) => ignored = true,
+            Some(false) => ignored = false,
+            None => {}
+        }
+    }
+    ignored
+}
+
+fn robo_state_gitignore_pattern(line: &str) -> Option<bool> {
+    let line = line.trim_end();
+    if line.is_empty() || line.starts_with('#') {
+        return None;
+    }
+    let (negated, pattern) = match line.strip_prefix('!') {
+        Some(pattern) => (true, pattern),
+        None => (false, line),
+    };
+    let pattern = pattern.trim_end_matches('/');
+    let matches_robo_state = matches!(
+        pattern,
+        ".robo-nix" | "/.robo-nix" | ".robo-nix/**" | "/.robo-nix/**"
+    );
+    matches_robo_state.then_some(!negated)
+}
+
 fn escape_nix_string(value: &str) -> String {
     value
         .replace('\\', "\\\\")
@@ -227,6 +314,7 @@ pub(crate) struct BootstrapReport {
     python_version: String,
     wrote_flake: bool,
     wrote_robo_nix: bool,
+    updated_gitignore: bool,
     inference: Option<RuntimeInference>,
 }
 
@@ -289,6 +377,107 @@ mod tests {
         assert!(fs::read_to_string(root.join("robo.nix"))
             .unwrap()
             .contains("hostGraphics = \"auto\";"));
+
+        cleanup(root);
+    }
+
+    #[test]
+    fn bootstrap_adds_robo_state_to_gitignore_for_git_workspace() {
+        let root = temp_project("gitignore-create");
+        fs::create_dir_all(&root).unwrap();
+        if !init_git_repo(&root) {
+            cleanup(root);
+            return;
+        }
+        fs::write(root.join(".python-version"), "3.12\n").unwrap();
+
+        let report = prepare_project(&root).unwrap();
+
+        assert!(report.updated_gitignore);
+        assert_eq!(
+            fs::read_to_string(root.join(".gitignore")).unwrap(),
+            ".robo-nix/\n"
+        );
+
+        cleanup(root);
+    }
+
+    #[test]
+    fn bootstrap_appends_robo_state_to_existing_gitignore() {
+        let root = temp_project("gitignore-append");
+        fs::create_dir_all(&root).unwrap();
+        if !init_git_repo(&root) {
+            cleanup(root);
+            return;
+        }
+        fs::write(root.join(".python-version"), "3.12\n").unwrap();
+        fs::write(root.join(".gitignore"), "target").unwrap();
+
+        let report = prepare_project(&root).unwrap();
+
+        assert!(report.updated_gitignore);
+        assert_eq!(
+            fs::read_to_string(root.join(".gitignore")).unwrap(),
+            "target\n.robo-nix/\n"
+        );
+
+        cleanup(root);
+    }
+
+    #[test]
+    fn bootstrap_does_not_duplicate_existing_robo_state_gitignore() {
+        let root = temp_project("gitignore-existing");
+        fs::create_dir_all(&root).unwrap();
+        if !init_git_repo(&root) {
+            cleanup(root);
+            return;
+        }
+        fs::write(root.join(".python-version"), "3.12\n").unwrap();
+        fs::write(root.join(".gitignore"), "/.robo-nix/\n").unwrap();
+
+        let report = prepare_project(&root).unwrap();
+
+        assert!(!report.updated_gitignore);
+        assert_eq!(
+            fs::read_to_string(root.join(".gitignore")).unwrap(),
+            "/.robo-nix/\n"
+        );
+
+        cleanup(root);
+    }
+
+    #[test]
+    fn bootstrap_appends_after_negated_robo_state_gitignore() {
+        let root = temp_project("gitignore-negated");
+        fs::create_dir_all(&root).unwrap();
+        if !init_git_repo(&root) {
+            cleanup(root);
+            return;
+        }
+        fs::write(root.join(".python-version"), "3.12\n").unwrap();
+        fs::write(root.join(".gitignore"), ".robo-nix/\n!.robo-nix/\n").unwrap();
+
+        let report = prepare_project(&root).unwrap();
+
+        assert!(report.updated_gitignore);
+        assert_eq!(
+            fs::read_to_string(root.join(".gitignore")).unwrap(),
+            ".robo-nix/\n!.robo-nix/\n.robo-nix/\n"
+        );
+
+        cleanup(root);
+    }
+
+    #[test]
+    fn bootstrap_does_not_create_gitignore_outside_git_workspace() {
+        let root = temp_project("gitignore-non-git");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join(".python-version"), "3.12\n").unwrap();
+
+        let report = prepare_project(&root).unwrap();
+
+        assert!(!report.updated_gitignore);
+        assert!(!root.join(".gitignore").exists());
 
         cleanup(root);
     }
@@ -495,5 +684,12 @@ dependencies = ["opencv-python"]
 
     fn cleanup(root: PathBuf) {
         let _ = fs::remove_dir_all(root);
+    }
+
+    fn init_git_repo(root: &Path) -> bool {
+        let Ok(output) = Command::new("git").current_dir(root).arg("init").output() else {
+            return false;
+        };
+        output.status.success()
     }
 }
