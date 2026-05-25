@@ -47,10 +47,12 @@ nix profile remove robo || true
 nix profile add .#robo
 ```
 
-When `robo` is installed from a local checkout through Nix, newly generated
-project `flake.nix` files use that installed checkout snapshot as their
-`robo-nix` input. To rebootstrap a test project against the latest local
-install, remove its generated runtime files and run `robo shell` again.
+Newly generated project `flake.nix` files use
+`github:ausbxuse/robo-nix/master` as their `robo-nix` input by default, even
+when `robo` was installed from a local checkout. To test a project against local
+source, set `ROBO_NIX_DEFAULT_SOURCE_URL=path:/path/to/robo-nix` before first
+bootstrap, then remove generated runtime files and run `robo shell` again after
+changing that override.
 
 Enter a robot-learning project:
 

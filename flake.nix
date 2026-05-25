@@ -59,7 +59,6 @@
         version = "0.1.0";
         src = roboSource;
         cargoLock.lockFile = ./Cargo.lock;
-        ROBO_NIX_BUILD_SOURCE_URL = "path:${roboSource}";
         meta = {
           mainProgram = "robo";
           license = pkgs.lib.licenses.gpl3Only;

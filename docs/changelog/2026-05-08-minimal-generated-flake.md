@@ -28,7 +28,8 @@ Pending concerns:
 
 - Nix-built `robo` binaries embed the installed flake source as the default
   generated `robo-nix` input. Local iteration can still override it with
-  `ROBO_NIX_DEFAULT_SOURCE_URL=path:/...` before first bootstrap.
+  `ROBO_NIX_DEFAULT_SOURCE_URL=path:/...` before first bootstrap. Superseded by
+  `2026-05-25-remote-generated-flake-default.md`.
 - The root flake now carries the `nixpkgs-python` input because downstream
   generated flakes delegate Python interpreter selection to the repo library.
 

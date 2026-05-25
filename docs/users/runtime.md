@@ -236,7 +236,7 @@ Public environment knobs are intentionally small:
 | `ROBO_NIX_NIXGL` | Override the nixGL wrapper path selected by `hostGraphics = "auto";`, `"nixgl";`, or `"nixgl-nvidia";`. |
 | `ROBO_NIX_NVIDIA_VERSION` | Override the detected host NVIDIA driver version used by `hostGraphics = "nixgl-nvidia";`. |
 | `ROBO_NIX_LOCK_TIMEOUT` | Seconds to wait for robo-owned `.robo-nix/*.lock` files. |
-| `ROBO_NIX_DEFAULT_SOURCE_URL` | Override the generated flake input URL for local development. |
+| `ROBO_NIX_DEFAULT_SOURCE_URL` | Override the generated flake input URL, commonly for local source testing. |
 
 When `native-build` is selected, the shell also exports `ROBO_NIX_LIBC_DEV` as
 the active compiler libc development prefix for build scripts that need to

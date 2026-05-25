@@ -53,17 +53,17 @@ The generated project `flake.nix` should stay minimal: cache hints, one
 `robo-nix` input, and a handoff to
 `robo-nix.lib.mkProjectFlakeFromManifest ./robo.nix`.
 
-When `robo` is built by Nix, the package embeds the filtered package source as
-the default generated `robo-nix` input. This keeps local profile installs and
-freshly generated test projects on the same source snapshot. Non-Nix builds
-fall back to `github:ausbxuse/robo-nix/master`.
+Generated project flakes use `github:ausbxuse/robo-nix/master` as the default
+`robo-nix` input, including when `robo` was installed from a local Nix profile.
+This keeps newly bootstrapped projects portable and avoids locking generated
+flake state to a local checkout or Nix store source.
 
 The packaged source is explicitly filtered before it is copied to the Nix store.
 Repo-local caches and generated trees such as `.robo-nix/`, `target/`,
 `docs/node_modules/`, and VitePress cache/dist outputs are excluded.
 
 `ROBO_NIX_DEFAULT_SOURCE_URL` can override the generated flake input URL for
-focused tests.
+focused local-source tests.
 
 ## Runtime Inference
 

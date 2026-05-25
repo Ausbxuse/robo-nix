@@ -104,7 +104,7 @@ pub(crate) const ENV_VARS: &[EnvVarSpec] = &[
         name: "ROBO_NIX_DEFAULT_SOURCE_URL",
         visibility: EnvVarVisibility::Public,
         affects_runtime_key: false,
-        description: "Override the generated flake input URL for local development.",
+        description: "Override the generated flake input URL, commonly for local source testing.",
     },
     EnvVarSpec {
         name: "ROBO_NIX_ACTIVE",

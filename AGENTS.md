@@ -163,9 +163,10 @@ environment manager.
   .#` installs the default package, but Nix names that profile entry after the
   flake path instead of the package alias, so `nix profile remove robo` may not
   remove it on the next reinstall.
-- Nix-built `robo` packages should embed the installed flake source as the
-  default generated `robo-nix` input so local profile reinstall plus project
-  rebootstrap tests exercise the same source snapshot.
+- Generated project `flake.nix` should default `inputs.robo-nix.url` to
+  `github:ausbxuse/robo-nix/master` so first bootstrap stays portable and does
+  not lock downstream projects to a local checkout or Nix store source. Local
+  source testing must opt in with `ROBO_NIX_DEFAULT_SOURCE_URL=path:/...`.
 - Package source filtering must explicitly exclude repo-local caches and heavy
   generated directories such as `.robo-nix/`, `target/`, `docs/node_modules/`,
   and VitePress cache/dist outputs; do not rely only on Git ignore behavior for

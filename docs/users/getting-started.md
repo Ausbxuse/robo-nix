@@ -56,11 +56,13 @@ nix profile add .#robo
 Use `.#robo` instead of `.#` so the profile entry is named `robo` and future
 `nix profile remove robo` commands keep working.
 
-Local profile installs embed the installed checkout snapshot as the default
-`robo-nix` source for newly generated project `flake.nix` files. After
-reinstalling a local checkout, a test project can be rebootstrapped against
-that version by removing generated runtime files such as `flake.nix`,
-`flake.lock`, `robo.nix`, and `.robo-nix/`, then running `robo shell` again.
+Newly generated project `flake.nix` files point at
+`github:ausbxuse/robo-nix/master` by default, even when `robo` was installed
+from a local checkout. To test a project against local robo-nix source, set
+`ROBO_NIX_DEFAULT_SOURCE_URL=path:/path/to/robo-nix` before first bootstrap.
+After changing that override, rebootstrap the test project by removing generated
+runtime files such as `flake.nix`, `flake.lock`, `robo.nix`, and `.robo-nix/`,
+then running `robo shell` again.
 
 Installer overrides:
 

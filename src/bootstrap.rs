@@ -13,6 +13,7 @@ use crate::ui::{attention, detail, row, section, success, Config};
 
 const PROJECT_FLAKE_TEMPLATE: &str = include_str!("templates/project/flake.nix");
 const PROJECT_ROBO_TEMPLATE: &str = include_str!("templates/project/robo.nix");
+const DEFAULT_ROBO_NIX_SOURCE_URL: &str = "github:ausbxuse/robo-nix/master";
 
 pub(crate) fn prepare_project(root: &Path) -> Result<BootstrapReport, AppError> {
     let python_version = read_python_version(root)?;
@@ -166,24 +167,13 @@ fn render_flake_nix() -> Result<String, AppError> {
 }
 
 fn robo_nix_source_url() -> String {
-    robo_nix_source_url_from(
-        env::var("ROBO_NIX_DEFAULT_SOURCE_URL").ok(),
-        option_env!("ROBO_NIX_BUILD_SOURCE_URL"),
-    )
+    robo_nix_source_url_from(env::var("ROBO_NIX_DEFAULT_SOURCE_URL").ok())
 }
 
-fn robo_nix_source_url_from(
-    runtime_override: Option<String>,
-    build_default: Option<&str>,
-) -> String {
+fn robo_nix_source_url_from(runtime_override: Option<String>) -> String {
     runtime_override
         .filter(|value| !value.trim().is_empty())
-        .or_else(|| {
-            build_default
-                .filter(|value| !value.trim().is_empty())
-                .map(str::to_string)
-        })
-        .unwrap_or_else(|| "github:ausbxuse/robo-nix/master".to_string())
+        .unwrap_or_else(|| DEFAULT_ROBO_NIX_SOURCE_URL.to_string())
 }
 
 fn escape_nix_string(value: &str) -> String {
@@ -290,9 +280,9 @@ mod tests {
         assert!(report.wrote_robo_nix);
         assert!(root.join(".robo-nix").is_dir());
         assert!(!root.join("pyproject.toml").exists());
-        assert!(fs::read_to_string(root.join("flake.nix"))
-            .unwrap()
-            .contains("robo-nix.lib.mkProjectFlakeFromManifest ./robo.nix"));
+        let flake_nix = fs::read_to_string(root.join("flake.nix")).unwrap();
+        assert!(flake_nix.contains("inputs.robo-nix.url = \"github:ausbxuse/robo-nix/master\";"));
+        assert!(flake_nix.contains("robo-nix.lib.mkProjectFlakeFromManifest ./robo.nix"));
         assert!(fs::read_to_string(root.join("robo.nix"))
             .unwrap()
             .contains("\"python-uv\""));
@@ -304,17 +294,17 @@ mod tests {
     }
 
     #[test]
-    fn source_url_prefers_runtime_override_then_build_default() {
+    fn source_url_prefers_runtime_override_then_remote_default() {
         assert_eq!(
-            robo_nix_source_url_from(Some("path:/checkout".to_string()), Some("path:/store")),
+            robo_nix_source_url_from(Some("path:/checkout".to_string())),
             "path:/checkout"
         );
         assert_eq!(
-            robo_nix_source_url_from(None, Some("path:/store")),
-            "path:/store"
+            robo_nix_source_url_from(Some("   ".to_string())),
+            "github:ausbxuse/robo-nix/master"
         );
         assert_eq!(
-            robo_nix_source_url_from(None, None),
+            robo_nix_source_url_from(None),
             "github:ausbxuse/robo-nix/master"
         );
     }
