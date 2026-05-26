@@ -155,6 +155,11 @@ diagnostics are part of the shell/run workflow.
 
 The generated project `flake.nix` stays small and delegates runtime complexity
 to `robo-nix.lib.mkProjectFlakeFromManifest ./robo.nix`.
+During runtime setup, `robo` passes its public binary cache settings to Nix
+directly so `robo shell` and `robo run` can use those caches even when the host
+system substituter list does not include them. It also prefetches cacheable
+runtime input outputs before `nix develop` so missing optional outputs do not
+cause cached interpreters to compile locally.
 
 ## Runtime Components
 

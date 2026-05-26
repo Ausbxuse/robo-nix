@@ -23,7 +23,9 @@ use bootstrap::{prepare_project, print_bootstrap_report};
 use error::{print_error, write_debug_log, AppError};
 use host_cuda::{append_host_cuda_driver_bridge, HostCudaReport};
 use inference::dependency_evidence_from_pyproject;
-use nix_env::{apply_env, cache_runtime_environment, runtime_environment};
+use nix_env::{
+    apply_env, cache_runtime_environment, prefetch_runtime_input_outputs, runtime_environment,
+};
 use shell_launch::interactive_shell_launch;
 use shell_refresh::{runtime_input_state, runtime_input_state_for_env, set_active_shell_env};
 use ui::{attention, debug, detail, help_row, list_item, section, status, Config};
@@ -81,6 +83,12 @@ fn run(args: Vec<OsString>, config: Config) -> Result<ExitCode, AppError> {
         "search" => Ok(search::run(args.collect(), config)),
         "refresh" => refresh::run(args.collect(), config),
         "__shell-refresh" => Ok(shell_refresh::run(args.collect(), config)),
+        "__runtime-prefetch" => {
+            let workspace = env::current_dir()
+                .map_err(|err| AppError::project(format!("failed to determine workspace: {err}")))?;
+            prefetch_runtime_input_outputs(&workspace)?;
+            Ok(ExitCode::SUCCESS)
+        }
         "-h" | "--help" | "help" => {
             print_usage(config);
             Ok(ExitCode::SUCCESS)

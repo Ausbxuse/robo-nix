@@ -255,6 +255,13 @@ After a successful setup, `robo` caches the captured runtime shell environment b
 that same key. Later `robo shell` and `robo run` attempts can reuse it instantly
 as long as the referenced Nix store paths still exist.
 
+During runtime setup, `robo` passes its public binary cache settings to Nix
+directly. That lets `robo shell` and `robo run` use the robo-nix caches even when
+the host system substituter list does not include them. The host Nix daemon's
+normal trust policy still applies. `robo` also prefetches cacheable runtime
+inputs before entering `nix develop`, with local builds disabled for that
+prefetch step.
+
 Run `robo refresh` when you want to clear robo-owned local runtime state under
 `.robo-nix/`. Inside an active `robo shell`, this requests a refresh through the
 prompt hook; the shell updates at the next prompt. Outside a shell, the next

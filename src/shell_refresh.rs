@@ -12,7 +12,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::env_vars::{is_robo_managed_env, runtime_key_env_names};
 use crate::host_cuda::append_host_cuda_driver_bridge;
 use crate::nix_env::{
-    add_env_capture_args, inherit_terminal_environment, missing_store_roots, parse_env_zero,
+    add_env_capture_args, inherit_terminal_environment, missing_store_roots, nix_command,
+    parse_env_zero,
 };
 use crate::ui::{error, hint, output_with_tree, row_err, status, Config};
 
@@ -145,7 +146,7 @@ fn refreshed_shell_env(
 ) -> Result<Vec<(String, String)>, RefreshError> {
     // NOTE: stdout from `robo __shell-refresh` is eval'd by the shell hooks.
     // Keep diagnostics on stderr and reserve stdout for export statements.
-    let mut command = Command::new("nix");
+    let mut command = nix_command();
     command
         .current_dir(workspace)
         .arg("--log-format")

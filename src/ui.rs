@@ -210,6 +210,84 @@ impl ProgressStep {
     }
 }
 
+pub(crate) struct CommandProgressStep<'a> {
+    pub(crate) message: &'a str,
+    pub(crate) command: &'a mut Command,
+    pub(crate) success_suffix: Option<&'a str>,
+    pub(crate) required: bool,
+}
+
+pub(crate) fn output_with_tree_command_steps(
+    config: Config,
+    root: &str,
+    completed_steps: Vec<ProgressStep>,
+    steps: &mut [CommandProgressStep<'_>],
+) -> Result<Vec<Output>, std::io::Error> {
+    if steps.is_empty() {
+        return Err(other_io("progress tree requires at least one command"));
+    }
+    if should_use_plain_progress(config) {
+        for step in &completed_steps {
+            let suffix = step
+                .suffix
+                .as_deref()
+                .map(|suffix| format!(" {suffix}"))
+                .unwrap_or_default();
+            status(config, &format!("{}{}", step.message, suffix));
+        }
+
+        let mut outputs = Vec::new();
+        for step in steps {
+            status(config, step.message);
+            match step.command.output() {
+                Ok(output) if output.status.success() || step.required => outputs.push(output),
+                Ok(output) => {
+                    outputs.push(output);
+                    status(config, &format!("{} skipped", step.message));
+                }
+                Err(err) if step.required => return Err(err),
+                Err(_) => status(config, &format!("{} skipped", step.message)),
+            }
+        }
+        return Ok(outputs);
+    }
+
+    let tree = ProgressTree::new(config, root, steps[0].message, completed_steps);
+    let started_at = Instant::now();
+    let mut outputs = Vec::new();
+    let step_count = steps.len();
+    for (index, step) in steps.iter_mut().enumerate() {
+        if index > 0 {
+            tree.start_active_child(step.message);
+        }
+        match run_command_with_tree(step.command, &tree) {
+            Ok(output) if output.status.success() => {
+                if index + 1 == step_count {
+                    tree.finish_ready(started_at.elapsed());
+                } else {
+                    tree.finish_active_child(step.success_suffix);
+                }
+                outputs.push(output);
+            }
+            Ok(output) if step.required => {
+                tree.finish_clear();
+                outputs.push(output);
+                return Ok(outputs);
+            }
+            Ok(output) => {
+                tree.finish_active_child(Some("skipped"));
+                outputs.push(output);
+            }
+            Err(err) if step.required => {
+                tree.finish_clear();
+                return Err(err);
+            }
+            Err(_) => tree.finish_active_child(Some("skipped")),
+        }
+    }
+    Ok(outputs)
+}
+
 pub(crate) fn output_with_tree_steps(
     config: Config,
     command: &mut Command,
@@ -230,10 +308,23 @@ pub(crate) fn output_with_tree_steps(
         return command.output();
     }
 
-    command.stdout(Stdio::piped()).stderr(Stdio::piped());
     let tree = ProgressTree::new(config, root, message, completed_steps);
     let started_at = Instant::now();
+    let output = run_command_with_tree(command, &tree)?;
 
+    if output.status.success() {
+        tree.finish_ready(started_at.elapsed());
+    } else {
+        tree.finish_clear();
+    }
+    Ok(output)
+}
+
+fn run_command_with_tree(
+    command: &mut Command,
+    tree: &ProgressTree,
+) -> Result<Output, std::io::Error> {
+    command.stdout(Stdio::piped()).stderr(Stdio::piped());
     let mut child = match command.spawn() {
         Ok(child) => child,
         Err(err) => {
@@ -285,11 +376,6 @@ pub(crate) fn output_with_tree_steps(
         stdout,
         stderr,
     };
-    if output.status.success() {
-        tree.finish_ready(started_at.elapsed());
-    } else {
-        tree.finish_clear();
-    }
     Ok(output)
 }
 
@@ -584,6 +670,17 @@ impl ProgressTree {
         ));
         state.evaluated_packages.clear();
         state.details.clear();
+    }
+
+    fn start_active_child(&self, message: &str) {
+        {
+            let mut state = self.state.lock().expect("progress tree state poisoned");
+            state.active_message = message.to_string();
+            state.active_started_at = Instant::now();
+            state.evaluated_packages.clear();
+            state.details.clear();
+        }
+        self.render_live();
     }
 
     fn render_live(&self) {

@@ -2,6 +2,7 @@ use std::collections::BTreeSet;
 use std::ffi::OsString;
 use std::process::{Command, ExitCode, Output};
 
+use crate::nix_env::nix_command;
 use crate::ui::{detail, error, hint, list_item, output_with_spinner, row, section, Config};
 
 const MAX_PRINTED_CANDIDATES: usize = 12;
@@ -110,7 +111,7 @@ fn nix_locate_command(program: &str, query: &str) -> Command {
 }
 
 fn prebuilt_nix_locate_command(query: &str) -> Command {
-    let mut command = Command::new("nix");
+    let mut command = nix_command();
     command.args([
         "--extra-experimental-features",
         "nix-command",

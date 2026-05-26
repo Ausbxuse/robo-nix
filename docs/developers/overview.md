@@ -55,6 +55,13 @@ The generated project `flake.nix` should stay minimal: cache hints, one
 `robo-nix` input, and a handoff to
 `robo-nix.lib.mkProjectFlakeFromManifest ./robo.nix`.
 
+Robo-owned Nix commands pass the public robo-nix cache substituters and trusted
+keys directly. The generated `nixConfig` stays as portable project metadata, but
+runtime setup should not depend on the host system substituter list.
+Before `nix develop`, runtime setup prefetches dev-shell input outputs with
+local builds disabled; this lets cached outputs be copied while leaving normal
+Nix evaluation to handle local shell derivations and uncached project state.
+
 Generated project flakes use `github:ausbxuse/robo-nix/master` as the default
 `robo-nix` input, including when `robo` was installed from a local Nix profile.
 This keeps newly bootstrapped projects portable and avoids locking generated

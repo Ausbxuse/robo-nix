@@ -160,6 +160,12 @@ environment manager.
 - Hide successful Nix CLI output, including dirty Git tree warnings. Capture and
   replay Nix stdout/stderr only when Nix setup fails; after setup succeeds,
   launch the user's shell or command directly with the resolved environment.
+- Robo-owned Nix CLI invocations should pass the public robo-nix cache
+  substituters and trusted keys directly; do not rely only on host Nix cache
+  config or generated flake `nixConfig`.
+- Before `nix develop`, runtime setup should best-effort prefetch the dev-shell
+  input outputs from configured caches with local builds disabled, then let the
+  normal Nix evaluation remain the source of truth.
 - The installer-owned flake target is `#robo`; keep that alias available when
   changing package outputs.
 - For repeatable local Nix profile installs, prefer `.#robo`. `nix profile add

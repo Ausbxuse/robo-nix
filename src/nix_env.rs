@@ -1,17 +1,41 @@
+use std::collections::BTreeSet;
 use std::env;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use serde_json::Value;
+
 use crate::error::AppError;
-use crate::ui::{output_cached_tree, output_with_tree_steps, status, Config, ProgressStep};
+use crate::ui::{
+    output_cached_tree, output_with_tree_command_steps, output_with_tree_steps,
+    CommandProgressStep, Config, ProgressStep,
+};
 
 const ENV_START_MARKER: &[u8] = b"robo-nix-env-start";
 const ENV_CAPTURE_SCRIPT: &str = "printf '\\000robo-nix-env-start\\000'; env -0";
 const RUNTIME_ENV_CACHE_MAGIC: &str = "robo-nix-runtime-env-cache-v1";
 const RUNTIME_ENV_CACHE_FILE: &str = "runtime-env-cache-v1.env0";
 const GIT_TRACKED_RUNTIME_INPUTS: &[&str] = &[".python-version", "flake.nix", "robo.nix"];
+const ROBO_NIX_EXTRA_SUBSTITUTERS: &str = concat!(
+    "https://cache.nixos.org ",
+    "https://cache.zhenyuzhao.com/zhenyu-public ",
+    "https://nixpkgs-python.cachix.org"
+);
+const ROBO_NIX_EXTRA_TRUSTED_PUBLIC_KEYS: &str = concat!(
+    "cache.nixos.org-1:6NCHdD59X431o0gWmIcT6moLroYd5eH4kW+7CA+PajY= ",
+    "zhenyu-public:HJAdTzf9fcFLcjDfAE39xyQv20Ev4M8kTFzXx3ssGho= ",
+    "nixpkgs-python.cachix.org-1:hxjI7pFxTyuTHn2NkvWCrAUcNZLNS3ZAvfYNuYifcEU="
+);
+const ROBO_NIX_CACHE_OPTIONS: [(&str, &str); 3] = [
+    ("extra-substituters", ROBO_NIX_EXTRA_SUBSTITUTERS),
+    (
+        "extra-trusted-public-keys",
+        ROBO_NIX_EXTRA_TRUSTED_PUBLIC_KEYS,
+    ),
+    ("narinfo-cache-negative-ttl", "0"),
+];
 const INHERITED_TERMINAL_ENV_VARS: &[&str] = &[
     "TERM",
     "COLORTERM",
@@ -23,6 +47,26 @@ const INHERITED_TERMINAL_ENV_VARS: &[&str] = &[
     "TMUX_PANE",
     "STY",
 ];
+
+pub(crate) fn nix_command() -> Command {
+    let mut command = Command::new("nix");
+    append_robo_nix_cache_options(&mut command);
+    command
+}
+
+fn nix_store_command() -> Command {
+    let mut command = Command::new("nix-store");
+    append_robo_nix_cache_options(&mut command);
+    command
+}
+
+fn append_robo_nix_cache_options(command: &mut Command) -> &mut Command {
+    for (name, value) in ROBO_NIX_CACHE_OPTIONS {
+        command.arg("--option").arg(name).arg(value);
+    }
+    command
+}
+
 pub(crate) fn runtime_environment(
     config: Config,
     phase: &str,
@@ -40,16 +84,15 @@ pub(crate) fn runtime_environment(
             if config.debug {
                 crate::ui::debug(config, &format!("runtime cache {}", reason.detail()));
             }
-            // NOTE: closure size estimation evaluates Nix before the progress tree exists.
-            // Keep it out of the normal path so first-run setup does not look stuck.
             if config.debug {
                 if let Some(estimate) = estimate_runtime_disk_size(workspace) {
-                    status(config, &estimate.status_line(phase));
+                    crate::ui::status(config, &estimate.status_line(phase));
                 }
             }
 
             let flake_ref = workspace_flake_ref(workspace);
-            let mut command = Command::new("nix");
+            let mut prefetch_command = runtime_prefetch_command(workspace);
+            let mut command = nix_command();
             command
                 .current_dir(workspace)
                 .arg("--log-format")
@@ -62,17 +105,49 @@ pub(crate) fn runtime_environment(
                 .arg("sh")
                 .arg("-c")
                 .arg(ENV_CAPTURE_SCRIPT);
-            let output = output_with_tree_steps(
-                config,
-                &mut command,
-                &format!("robo {phase}"),
-                "evaluating runtime shell",
-                vec![ProgressStep::instant("runtime cache", reason.label())],
-            )
-            .map_err(|err| {
-                AppError::project(format!("failed to start nix: {err}"))
-                    .with_hint("install Nix with flakes enabled, then rerun `robo shell`.")
-            })?;
+            let completed_steps = vec![ProgressStep::instant("runtime cache", reason.label())];
+            let output = if let Some(prefetch_command) = prefetch_command.as_mut() {
+                let mut steps = [
+                    CommandProgressStep {
+                        message: "prefetching runtime paths",
+                        command: prefetch_command,
+                        success_suffix: None,
+                        required: false,
+                    },
+                    CommandProgressStep {
+                        message: "evaluating runtime shell",
+                        command: &mut command,
+                        success_suffix: None,
+                        required: true,
+                    },
+                ];
+                let mut outputs = output_with_tree_command_steps(
+                    config,
+                    &format!("robo {phase}"),
+                    completed_steps,
+                    &mut steps,
+                )
+                .map_err(|err| {
+                    AppError::project(format!("failed to start nix: {err}"))
+                        .with_hint("install Nix with flakes enabled, then rerun `robo shell`.")
+                })?;
+                outputs.pop().ok_or_else(|| {
+                    AppError::project("nix develop did not produce command output")
+                        .with_hint("install Nix with flakes enabled, then rerun `robo shell`.")
+                })?
+            } else {
+                output_with_tree_steps(
+                    config,
+                    &mut command,
+                    &format!("robo {phase}"),
+                    "evaluating runtime shell",
+                    completed_steps,
+                )
+                .map_err(|err| {
+                    AppError::project(format!("failed to start nix: {err}"))
+                        .with_hint("install Nix with flakes enabled, then rerun `robo shell`.")
+                })?
+            };
 
             if output.status.success() {
                 let _ =
@@ -114,44 +189,8 @@ impl RuntimeDiskEstimate {
 }
 
 fn estimate_runtime_disk_size(workspace: &Path) -> Option<RuntimeDiskEstimate> {
-    let flake_ref = workspace_flake_ref(workspace);
-    let current_system = command_stdout(
-        Command::new("nix")
-            .current_dir(workspace)
-            .arg("eval")
-            .arg("--impure")
-            .arg("--raw")
-            .arg("--expr")
-            .arg("builtins.currentSystem"),
-    )?;
-    let current_system = current_system.trim();
-    if current_system.is_empty() {
-        return None;
-    }
-
-    let dev_shell_attr = format!("{flake_ref}#devShells.{current_system}.default");
-    let derivation = command_stdout(
-        Command::new("nix")
-            .current_dir(workspace)
-            .arg("path-info")
-            .arg("--impure")
-            .arg("--accept-flake-config")
-            .arg("--derivation")
-            .arg(dev_shell_attr),
-    )?;
-    let derivation = derivation
-        .lines()
-        .map(str::trim)
-        .find(|line| line.starts_with("/nix/store/") && line.ends_with(".drv"))?;
-
-    let requisites = command_stdout(
-        Command::new("nix-store")
-            .current_dir(workspace)
-            .arg("-q")
-            .arg("--requisites")
-            .arg("--include-outputs")
-            .arg(derivation),
-    )?;
+    let derivation = runtime_shell_derivation(workspace)?;
+    let requisites = runtime_shell_requisites(workspace, &derivation)?;
     let mut paths = requisites
         .lines()
         .map(str::trim)
@@ -167,7 +206,7 @@ fn estimate_runtime_disk_size(workspace: &Path) -> Option<RuntimeDiskEstimate> {
     let mut known_bytes = 0;
     let mut known_paths = 0;
     for chunk in paths.chunks(200) {
-        let mut command = Command::new("nix");
+        let mut command = nix_command();
         command.arg("path-info").arg("--size");
         command.args(chunk);
         let output = command.current_dir(workspace).output().ok()?;
@@ -182,6 +221,132 @@ fn estimate_runtime_disk_size(workspace: &Path) -> Option<RuntimeDiskEstimate> {
         known_paths,
         unknown_paths: paths.len().saturating_sub(known_paths),
     })
+}
+
+fn runtime_shell_derivation(workspace: &Path) -> Option<String> {
+    let mut current_system_command = nix_command();
+    current_system_command
+        .current_dir(workspace)
+        .arg("eval")
+        .arg("--impure")
+        .arg("--raw")
+        .arg("--expr")
+        .arg("builtins.currentSystem");
+    let current_system = command_stdout(&mut current_system_command)?;
+    let current_system = current_system.trim();
+    if current_system.is_empty() {
+        return None;
+    }
+
+    let flake_ref = workspace_flake_ref(workspace);
+    let dev_shell_attr = format!("{flake_ref}#devShells.{current_system}.default");
+    let mut derivation_command = nix_command();
+    derivation_command
+        .current_dir(workspace)
+        .arg("path-info")
+        .arg("--impure")
+        .arg("--accept-flake-config")
+        .arg("--derivation")
+        .arg(dev_shell_attr);
+    let derivation = command_stdout(&mut derivation_command)?;
+    let derivation = derivation
+        .lines()
+        .map(str::trim)
+        .find(|line| line.starts_with("/nix/store/") && line.ends_with(".drv"))?;
+    Some(derivation.to_string())
+}
+
+fn runtime_shell_requisites(workspace: &Path, derivation: &str) -> Option<String> {
+    let mut requisites_command = nix_store_command();
+    requisites_command
+        .current_dir(workspace)
+        .arg("-q")
+        .arg("--requisites")
+        .arg("--include-outputs")
+        .arg(derivation);
+    command_stdout(&mut requisites_command)
+}
+
+fn runtime_prefetch_command(workspace: &Path) -> Option<Command> {
+    let executable = env::current_exe().ok()?;
+    let mut command = Command::new(executable);
+    command.current_dir(workspace).arg("__runtime-prefetch");
+    Some(command)
+}
+
+pub(crate) fn prefetch_runtime_input_outputs(workspace: &Path) -> Result<(), AppError> {
+    let Some(mut command) = runtime_input_output_prefetch_command(workspace) else {
+        return Ok(());
+    };
+    let _ = command
+        .status()
+        .map_err(|err| AppError::project(format!("failed to start nix: {err}")))?;
+    Ok(())
+}
+
+fn runtime_input_output_prefetch_command(workspace: &Path) -> Option<Command> {
+    let Some(derivation) = runtime_shell_derivation(workspace) else {
+        return None;
+    };
+    let Some(installables) = runtime_input_output_installables(workspace, &derivation) else {
+        return None;
+    };
+    if installables.is_empty() {
+        return None;
+    }
+
+    let mut command = nix_command();
+    command
+        .current_dir(workspace)
+        .arg("--option")
+        .arg("max-jobs")
+        .arg("0")
+        .arg("build")
+        .arg("--no-link")
+        .arg("--keep-going")
+        .args(installables);
+    Some(command)
+}
+
+fn runtime_input_output_installables(workspace: &Path, derivation: &str) -> Option<Vec<String>> {
+    let mut command = nix_command();
+    command
+        .current_dir(workspace)
+        .arg("derivation")
+        .arg("show")
+        .arg("--no-pretty")
+        .arg(derivation);
+    let output = command_stdout(&mut command)?;
+    input_output_installables_from_derivation_json(&output)
+}
+
+fn input_output_installables_from_derivation_json(output: &str) -> Option<Vec<String>> {
+    let value: Value = serde_json::from_str(output).ok()?;
+    let root = value.as_object()?;
+    let derivations = root
+        .get("derivations")
+        .and_then(Value::as_object)
+        .unwrap_or(root);
+    let (_path, derivation) = derivations.iter().next()?;
+    let drvs = derivation.get("inputs")?.get("drvs")?.as_object()?;
+    let mut installables = BTreeSet::new();
+    for (drv, input) in drvs {
+        let drv_path = if drv.starts_with("/nix/store/") {
+            drv.to_string()
+        } else {
+            format!("/nix/store/{drv}")
+        };
+        let Some(outputs) = input.get("outputs").and_then(Value::as_array) else {
+            continue;
+        };
+        for output in outputs {
+            let Some(output) = output.as_str() else {
+                continue;
+            };
+            installables.insert(format!("{drv_path}^{output}"));
+        }
+    }
+    Some(installables.into_iter().collect())
 }
 
 fn workspace_flake_ref(workspace: &Path) -> String {
@@ -483,6 +648,57 @@ mod tests {
             vec![
                 ("PATH".to_string(), "/bin".to_string()),
                 ("QUOTE".to_string(), "a'b".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn nix_command_adds_robo_cache_options() {
+        let command = nix_command();
+        let args = command
+            .get_args()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            args,
+            vec![
+                "--option",
+                "extra-substituters",
+                ROBO_NIX_EXTRA_SUBSTITUTERS,
+                "--option",
+                "extra-trusted-public-keys",
+                ROBO_NIX_EXTRA_TRUSTED_PUBLIC_KEYS,
+                "--option",
+                "narinfo-cache-negative-ttl",
+                "0",
+            ]
+        );
+    }
+
+    #[test]
+    fn parses_runtime_input_output_installables_from_derivation_json() {
+        let json = r#"{
+          "derivations": {
+            "/nix/store/shell.drv": {
+              "inputs": {
+                "drvs": {
+                  "abc-python3-3.11.15.drv": {"outputs": ["out"]},
+                  "/nix/store/def-lib.drv": {"outputs": ["dev", "out"]},
+                  "ignored-source.drv": {"dynamicOutputs": {}}
+                }
+              }
+            }
+          },
+          "version": 4
+        }"#;
+
+        assert_eq!(
+            input_output_installables_from_derivation_json(json).unwrap(),
+            vec![
+                "/nix/store/abc-python3-3.11.15.drv^out".to_string(),
+                "/nix/store/def-lib.drv^dev".to_string(),
+                "/nix/store/def-lib.drv^out".to_string(),
             ]
         );
     }
