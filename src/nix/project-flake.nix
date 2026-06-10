@@ -169,6 +169,10 @@
               exit 1
             fi
             substituteInPlace "$out/nixGL.nix" --replace '        kernel = null;' ""
+            substituteInPlace "$out/nixGL.nix" \
+              --replace 'nvidiaLibsOnly}/share/glvnd/egl_vendor.d/*nvidia.json' 'nvidiaDrivers}/share/glvnd/egl_vendor.d/*nvidia.json' \
+              --replace 'nvidiaLibsOnly}/share/vulkan/icd.d/nvidia_icd.x86_64.json' 'nvidiaDrivers}/share/vulkan/icd.d/nvidia_icd.x86_64.json' \
+              --replace '[ libglvnd nvidiaLibsOnly ]' '[ libglvnd nvidiaDrivers ]'
           '';
       patchedNixgl =
         if patchedNixglSource == ""
@@ -343,9 +347,36 @@
                     ${graphicsWrapperEnvScrubArgs} \
                     "$robo_nix_nixgl" env -0)
 
+                  if [ "$robo_nix_host_graphics_policy" = "nixgl-nvidia" ] && [ -z "''${__EGL_EXTERNAL_PLATFORM_CONFIG_DIRS:-}" ]; then
+                    robo_nix_nvidia_egl_vendor="''${__EGL_VENDOR_LIBRARY_FILENAMES%%:*}"
+                    case "$robo_nix_nvidia_egl_vendor" in
+                      */share/glvnd/egl_vendor.d/10_nvidia.json)
+                        robo_nix_nvidia_root="''${robo_nix_nvidia_egl_vendor%/share/glvnd/egl_vendor.d/10_nvidia.json}"
+                        if [ -d "$robo_nix_nvidia_root/share/egl/egl_external_platform.d" ]; then
+                          export __EGL_EXTERNAL_PLATFORM_CONFIG_DIRS="$robo_nix_nvidia_root/share/egl/egl_external_platform.d"
+                        elif [ -n "''${WAYLAND_DISPLAY:-}" ]; then
+                          for robo_nix_nvidia_egl_platform_dir in /nix/store/*-nvidia-x11-*-nixGL/share/egl/egl_external_platform.d; do
+                            if [ -d "$robo_nix_nvidia_egl_platform_dir" ]; then
+                              robo_nix_nvidia_egl_root="''${robo_nix_nvidia_egl_platform_dir%/share/egl/egl_external_platform.d}"
+                              robo_nix_prepend_path LD_LIBRARY_PATH "$robo_nix_nvidia_egl_root/lib"
+                              export __EGL_EXTERNAL_PLATFORM_CONFIG_DIRS="$robo_nix_nvidia_egl_platform_dir"
+                              break
+                            fi
+                          done
+                          if [ -z "''${__EGL_EXTERNAL_PLATFORM_CONFIG_DIRS:-}" ]; then
+                            printf '%s\n' "robo-nix: nixGLNvidia selected an NVIDIA driver output without EGL Wayland external platform files." >&2
+                            printf '%s\n' "robo-nix: Wayland OpenGL may fail; try \`robo refresh\` or set ROBO_NIX_NIXGL to a complete nixGLNvidia wrapper." >&2
+                          fi
+                        fi
+                        ;;
+                    esac
+                  fi
+
                   unset robo_nix_nixgl robo_nix_nixgl_candidate robo_nix_nixgl_entry
                   unset robo_nix_nvidia_version robo_nix_nvidia_smi robo_nix_nixgl_store
                   unset robo_nix_nixgl_ld_library_path robo_nix_runtime_ld_library_path
+                  unset robo_nix_nvidia_egl_vendor robo_nix_nvidia_root
+                  unset robo_nix_nvidia_egl_platform_dir robo_nix_nvidia_egl_root
                 fi
 
                 unset robo_nix_host_graphics_policy
