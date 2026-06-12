@@ -299,6 +299,13 @@ mod tests {
         );
     }
 
+    #[test]
+    fn prompt_refresh_hooks_stop_after_failed_refresh() {
+        assert!(BASHRC_TEMPLATE.contains("__robo_shell_refresh && __robo_prompt_prefix"));
+        assert!(ZSHRC_TEMPLATE.contains("__robo_shell_refresh || return $?"));
+        assert!(FISH_INIT.contains("__robo_shell_refresh; or return $status"));
+    }
+
     fn fake_shell(name: &str) -> Option<PathBuf> {
         match name {
             "zsh" => Some(PathBuf::from("/bin/zsh")),

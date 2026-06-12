@@ -48,7 +48,7 @@ const INHERITED_TERMINAL_ENV_VARS: &[&str] = &[
     "TMUX_PANE",
     "STY",
 ];
-const VOLATILE_RUNTIME_ENV_VARS: &[&str] = &["TMPDIR", "TMP", "TEMP", "TEMPDIR"];
+const VOLATILE_RUNTIME_ENV_VARS: &[&str] = &["TMPDIR", "TMP", "TEMP", "TEMPDIR", "PWD", "OLDPWD"];
 
 pub(crate) fn nix_command() -> Command {
     let mut command = Command::new("nix");
@@ -912,6 +912,7 @@ mod tests {
             ("TERM".to_string(), "tmux-256color".to_string()),
             ("TMUX".to_string(), "/tmp/tmux-1000/default,1,0".to_string()),
             ("TMPDIR".to_string(), "/tmp/nix-shell.deleted".to_string()),
+            ("PWD".to_string(), "/workspace".to_string()),
         ];
 
         let cache_envs = cacheable_runtime_env(&envs);
@@ -923,14 +924,17 @@ mod tests {
         assert!(shell_env_value(&cache_envs, "TERM").is_none());
         assert!(shell_env_value(&cache_envs, "TMUX").is_none());
         assert!(shell_env_value(&cache_envs, "TMPDIR").is_none());
+        assert!(shell_env_value(&cache_envs, "PWD").is_none());
     }
 
     #[test]
-    fn captured_runtime_env_excludes_volatile_temp_values() {
+    fn captured_runtime_env_excludes_volatile_shell_values() {
         let mut envs = vec![
             ("PATH".to_string(), "/bin".to_string()),
             ("TMPDIR".to_string(), "/tmp/nix-shell.deleted".to_string()),
             ("TEMP".to_string(), "/tmp/nix-shell.deleted".to_string()),
+            ("PWD".to_string(), "/workspace".to_string()),
+            ("OLDPWD".to_string(), "/workspace/old".to_string()),
         ];
 
         remove_volatile_runtime_env_values(&mut envs);

@@ -23,6 +23,7 @@ const ROBO_MANAGED_ENV_NAMES: &[&str] = &[
     "ROBO_NIX_RUNTIME_INPUT_FILES",
     "ROBO_NIX_RUNTIME_INPUT_SETTLE",
     "ROBO_NIX_PROFILE",
+    "ROBO_NIX_PROFILE_SELECTOR",
     "ROBO_NIX_COMPONENTS",
     "ROBO_NIX_MANAGED_ENV_VARS",
     "ROBO_NIX_PYTHON",
@@ -354,5 +355,10 @@ mod tests {
                 spec.name
             );
         }
+    }
+
+    #[test]
+    fn profile_selector_is_robo_managed() {
+        assert!(is_robo_managed_env("ROBO_NIX_PROFILE_SELECTOR"));
     }
 }
