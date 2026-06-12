@@ -12,8 +12,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::env_vars::{is_robo_managed_env, runtime_key_env_names};
 use crate::host_cuda::append_host_cuda_driver_bridge;
 use crate::nix_env::{
-    add_env_capture_args, inherit_terminal_environment, missing_store_roots, nix_command,
-    parse_env_zero,
+    add_env_capture_args, filter_nix_output_for_user, inherit_terminal_environment,
+    missing_store_roots, nix_command, parse_env_zero, remove_volatile_runtime_env_values,
+    workspace_flake_ref,
 };
 use crate::ui::{error, hint, output_with_tree, row_err, status, Config};
 
@@ -147,11 +148,13 @@ fn refreshed_shell_env(
     // NOTE: stdout from `robo __shell-refresh` is eval'd by the shell hooks.
     // Keep diagnostics on stderr and reserve stdout for export statements.
     let mut command = nix_command();
+    let flake_ref = workspace_flake_ref(workspace);
     command
         .current_dir(workspace)
         .arg("--log-format")
         .arg("raw")
         .arg("develop")
+        .arg(&flake_ref)
         .arg("--impure")
         .arg("--accept-flake-config")
         .arg("--command");
@@ -170,11 +173,12 @@ fn refreshed_shell_env(
     if output.status.success() {
         let _ = record_observed_runtime_inputs(&workspace, &output.stderr);
         let mut envs = parse_env_zero(&output.stdout).map_err(RefreshError::new)?;
+        remove_volatile_runtime_env_values(&mut envs);
         inherit_terminal_environment(&mut envs);
         return Ok(envs);
     }
 
-    write_command_output_to_stderr(&output)?;
+    write_command_output_to_stderr(&filter_nix_output_for_user(&output))?;
     Err(RefreshError::new(format!(
         "failed to refresh shell environment; nix develop exited with {}",
         output.status
@@ -1079,6 +1083,67 @@ printf '\000robo-nix-env-start\000PATH=/bin\000ROBO_NIX_COMPONENTS=python-uv\000
 
         try_run(vec![OsString::from("sh")], test_config()).unwrap();
         assert_eq!(fs::read_to_string(&count_path).unwrap().trim(), "2");
+
+        cleanup(root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn active_refresh_uses_workspace_flake_ref() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let _lock = env_lock().lock().unwrap();
+        let root = temp_project("refresh-flake-ref");
+        fs::create_dir_all(root.join("bin")).unwrap();
+        fs::write(root.join(".python-version"), "3.11\n").unwrap();
+        fs::write(root.join("flake.nix"), "{ outputs = _: {}; }\n").unwrap();
+        fs::write(root.join("robo.nix"), "{}\n").unwrap();
+        let init = Command::new("git")
+            .current_dir(&root)
+            .arg("init")
+            .output()
+            .unwrap();
+        if !init.status.success() {
+            cleanup(root);
+            return;
+        }
+        let add = Command::new("git")
+            .current_dir(&root)
+            .arg("add")
+            .arg(".python-version")
+            .arg("flake.nix")
+            .output()
+            .unwrap();
+        assert!(add.status.success());
+
+        let fake_nix = root.join("bin").join("nix");
+        let args_path = root.join("nix-args");
+        fs::write(
+            &fake_nix,
+            r#"#!/bin/sh
+printf '%s\n' "$@" > "${ROBO_NIX_FAKE_NIX_ARGS:?}"
+printf '\000robo-nix-env-start\000PATH=/bin\000ROBO_NIX_COMPONENTS=python-uv\000'
+"#,
+        )
+        .unwrap();
+        let mut permissions = fs::metadata(&fake_nix).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&fake_nix, permissions).unwrap();
+
+        let path = env::var_os("PATH").unwrap_or_default();
+        let mut paths = vec![root.join("bin")];
+        paths.extend(env::split_paths(&path));
+        let path = env::join_paths(paths).unwrap();
+        let _env = EnvGuard::set(&[
+            ("PATH", path),
+            ("ROBO_NIX_FAKE_NIX_ARGS", args_path.clone().into_os_string()),
+        ]);
+
+        refreshed_shell_env(&root, test_config()).unwrap();
+
+        let args = fs::read_to_string(&args_path).unwrap();
+        assert!(args.contains("develop\n"));
+        assert!(args.contains(&format!("path:{}\n", root.display())));
 
         cleanup(root);
     }

@@ -153,6 +153,7 @@
       componentPackageLists = map (component: builtins.getAttr component componentPackages) selectedComponents;
       componentRuntimeLibraryLists = map (component: builtins.getAttr component componentRuntimeLibraries) selectedComponents;
       runtimeLibraries = (builtins.concatLists componentRuntimeLibraryLists) ++ extraRuntimeLibraries pkgs;
+      runtimeTools = [pkgs.git];
       runtimeLibraryPath = lib.makeLibraryPath runtimeLibraries;
       nixglSource =
         if nixgl == null
@@ -214,7 +215,7 @@
         then throw "robo-nix: hostGraphics in robo.nix must be null, \"auto\", \"nixgl\", or \"nixgl-nvidia\""
         else
           pkgs.mkShell {
-            packages = (builtins.concatLists componentPackageLists) ++ extraPackages pkgs;
+            packages = runtimeTools ++ (builtins.concatLists componentPackageLists) ++ extraPackages pkgs;
 
             shellHook =
               ''

@@ -47,17 +47,30 @@ const INHERITED_TERMINAL_ENV_VARS: &[&str] = &[
     "TMUX_PANE",
     "STY",
 ];
+const VOLATILE_RUNTIME_ENV_VARS: &[&str] = &["TMPDIR", "TMP", "TEMP", "TEMPDIR"];
 
 pub(crate) fn nix_command() -> Command {
     let mut command = Command::new("nix");
+    remove_volatile_runtime_env(&mut command);
     append_robo_nix_cache_options(&mut command);
     command
 }
 
 fn nix_store_command() -> Command {
     let mut command = Command::new("nix-store");
+    remove_volatile_runtime_env(&mut command);
     append_robo_nix_cache_options(&mut command);
     command
+}
+
+fn remove_volatile_runtime_env(command: &mut Command) {
+    for name in VOLATILE_RUNTIME_ENV_VARS {
+        command.env_remove(name);
+    }
+}
+
+fn remove_runtime_library_env(command: &mut Command) {
+    command.env_remove("LD_LIBRARY_PATH");
 }
 
 fn append_robo_nix_cache_options(command: &mut Command) -> &mut Command {
@@ -153,11 +166,12 @@ pub(crate) fn runtime_environment(
                 let _ =
                     crate::shell_refresh::record_observed_runtime_inputs(workspace, &output.stderr);
                 let mut envs = parse_env_zero(&output.stdout).map_err(AppError::project)?;
+                remove_volatile_runtime_env_values(&mut envs);
                 inherit_terminal_environment(&mut envs);
                 return Ok(envs);
             }
 
-            crate::write_command_output(&output)?;
+            crate::write_command_output(&filter_nix_output_for_user(&output))?;
             Err(AppError::project(format!(
                 "nix develop exited with {}",
                 output.status
@@ -349,7 +363,7 @@ fn input_output_installables_from_derivation_json(output: &str) -> Option<Vec<St
     Some(installables.into_iter().collect())
 }
 
-fn workspace_flake_ref(workspace: &Path) -> String {
+pub(crate) fn workspace_flake_ref(workspace: &Path) -> String {
     workspace_flake_ref_for_git_state(workspace, has_untracked_git_runtime_inputs(workspace))
 }
 
@@ -365,8 +379,8 @@ fn workspace_flake_ref_for_git_state(
 }
 
 fn has_untracked_git_runtime_inputs(workspace: &Path) -> bool {
-    let Ok(output) = Command::new("git")
-        .current_dir(workspace)
+    let mut rev_parse = git_command(workspace);
+    let Ok(output) = rev_parse
         .arg("rev-parse")
         .arg("--is-inside-work-tree")
         .output()
@@ -377,8 +391,8 @@ fn has_untracked_git_runtime_inputs(workspace: &Path) -> bool {
         return false;
     }
 
-    let Ok(output) = Command::new("git")
-        .current_dir(workspace)
+    let mut ls_files = git_command(workspace);
+    let Ok(output) = ls_files
         .arg("ls-files")
         .arg("--error-unmatch")
         .arg("--")
@@ -388,6 +402,13 @@ fn has_untracked_git_runtime_inputs(workspace: &Path) -> bool {
         return true;
     };
     !output.status.success()
+}
+
+fn git_command(workspace: &Path) -> Command {
+    let mut command = Command::new("git");
+    command.current_dir(workspace);
+    remove_runtime_library_env(&mut command);
+    command
 }
 
 fn command_stdout(command: &mut Command) -> Option<String> {
@@ -588,8 +609,40 @@ fn inherit_terminal_environment_from(
 fn cacheable_runtime_env(envs: &[(String, String)]) -> Vec<(String, String)> {
     envs.iter()
         .filter(|(name, _)| !INHERITED_TERMINAL_ENV_VARS.contains(&name.as_str()))
+        .filter(|(name, _)| !VOLATILE_RUNTIME_ENV_VARS.contains(&name.as_str()))
         .cloned()
         .collect()
+}
+
+pub(crate) fn remove_volatile_runtime_env_values(envs: &mut Vec<(String, String)>) {
+    envs.retain(|(name, _)| !VOLATILE_RUNTIME_ENV_VARS.contains(&name.as_str()));
+}
+
+pub(crate) fn filter_nix_output_for_user(output: &std::process::Output) -> std::process::Output {
+    let mut filtered = output.clone();
+    filtered.stderr = filter_nix_stderr_for_user(&output.stderr);
+    filtered
+}
+
+fn filter_nix_stderr_for_user(stderr: &[u8]) -> Vec<u8> {
+    let text = String::from_utf8_lossy(stderr);
+    let filtered = text
+        .lines()
+        .filter(|line| !is_restricted_nix_setting_warning(line))
+        .collect::<Vec<_>>()
+        .join("\n");
+    if filtered.is_empty() {
+        Vec::new()
+    } else {
+        let mut bytes = filtered.into_bytes();
+        bytes.push(b'\n');
+        bytes
+    }
+}
+
+fn is_restricted_nix_setting_warning(line: &str) -> bool {
+    line.starts_with("warning: ignoring the client-specified setting '")
+        && line.ends_with("', because it is a restricted setting and you are not a trusted user")
 }
 
 pub(crate) fn missing_store_roots(envs: &[(String, String)]) -> Vec<PathBuf> {
@@ -674,6 +727,34 @@ mod tests {
                 "0",
             ]
         );
+    }
+
+    #[test]
+    fn nix_command_removes_volatile_temp_env() {
+        let command = nix_command();
+        let removed = command
+            .get_envs()
+            .filter_map(|(name, value)| {
+                value.is_none().then(|| name.to_string_lossy().into_owned())
+            })
+            .collect::<Vec<_>>();
+
+        for name in VOLATILE_RUNTIME_ENV_VARS {
+            assert!(removed.contains(&name.to_string()));
+        }
+    }
+
+    #[test]
+    fn git_command_removes_runtime_library_path() {
+        let command = git_command(Path::new("/tmp/project"));
+        let removed = command
+            .get_envs()
+            .filter_map(|(name, value)| {
+                value.is_none().then(|| name.to_string_lossy().into_owned())
+            })
+            .collect::<Vec<_>>();
+
+        assert!(removed.contains(&"LD_LIBRARY_PATH".to_string()));
     }
 
     #[test]
@@ -798,6 +879,7 @@ mod tests {
             ("PATH".to_string(), "/bin".to_string()),
             ("TERM".to_string(), "tmux-256color".to_string()),
             ("TMUX".to_string(), "/tmp/tmux-1000/default,1,0".to_string()),
+            ("TMPDIR".to_string(), "/tmp/nix-shell.deleted".to_string()),
         ];
 
         let cache_envs = cacheable_runtime_env(&envs);
@@ -808,6 +890,30 @@ mod tests {
         );
         assert!(shell_env_value(&cache_envs, "TERM").is_none());
         assert!(shell_env_value(&cache_envs, "TMUX").is_none());
+        assert!(shell_env_value(&cache_envs, "TMPDIR").is_none());
+    }
+
+    #[test]
+    fn captured_runtime_env_excludes_volatile_temp_values() {
+        let mut envs = vec![
+            ("PATH".to_string(), "/bin".to_string()),
+            ("TMPDIR".to_string(), "/tmp/nix-shell.deleted".to_string()),
+            ("TEMP".to_string(), "/tmp/nix-shell.deleted".to_string()),
+        ];
+
+        remove_volatile_runtime_env_values(&mut envs);
+
+        assert_eq!(envs, vec![("PATH".to_string(), "/bin".to_string())]);
+    }
+
+    #[test]
+    fn user_nix_stderr_filters_restricted_setting_warnings() {
+        let stderr = b"warning: ignoring the client-specified setting 'trusted-public-keys', because it is a restricted setting and you are not a trusted user\nbuilding '/nix/store/example.drv'...\nerror: failed\n";
+
+        assert_eq!(
+            filter_nix_stderr_for_user(stderr),
+            b"building '/nix/store/example.drv'...\nerror: failed\n"
+        );
     }
 
     #[test]
