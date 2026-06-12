@@ -10,7 +10,7 @@ use crate::error::AppError;
 use crate::nix_env::{filter_nix_output_for_user, nix_command};
 use crate::profile::RuntimeProfile;
 use crate::shell_refresh::request_manual_runtime_refresh;
-use crate::ui::{status, Config};
+use crate::ui::{output_with_spinner, row, section, Config};
 
 const ROBO_NIX_INPUT: &str = "robo-nix";
 
@@ -23,10 +23,11 @@ pub(crate) fn run(args: Vec<OsString>, config: Config) -> Result<ExitCode, AppEr
 
     let workspace = update_workspace_root()?;
     validate_robo_flake(&workspace)?;
-    status(config, "updating robo-nix flake input");
-    update_robo_nix_input(&workspace)?;
+    update_robo_nix_input(config, &workspace)?;
     clear_runtime_profile_state(&workspace)?;
-    status(config, "cleared runtime cache state");
+    section(config, "update");
+    row(config, "✓", "updated", "robo-nix flake input");
+    row(config, "✓", "cleared", "runtime cache state");
 
     if env::var_os("ROBO_NIX_ACTIVE").is_some() {
         let profile = RuntimeProfile::from_active_env();
@@ -34,9 +35,9 @@ pub(crate) fn run(args: Vec<OsString>, config: Config) -> Result<ExitCode, AppEr
             AppError::project(format!("failed to request active shell refresh: {err}"))
                 .with_hint("the lock was updated; run `robo refresh` or start a new `robo shell`.")
         })?;
-        status(config, "active shell refresh requested");
+        row(config, "✓", "requested", "active shell refresh");
     } else {
-        status(config, "next robo command will use the updated lock");
+        row(config, "✓", "next", "robo command will use updated lock");
     }
 
     Ok(ExitCode::SUCCESS)
@@ -83,14 +84,14 @@ fn validate_robo_flake(workspace: &Path) -> Result<(), AppError> {
     Ok(())
 }
 
-fn update_robo_nix_input(workspace: &Path) -> Result<(), AppError> {
+fn update_robo_nix_input(config: Config, workspace: &Path) -> Result<(), AppError> {
     let mut command = nix_command();
-    let output = command
+    command
         .current_dir(workspace)
         .arg("flake")
         .arg("update")
-        .arg(ROBO_NIX_INPUT)
-        .output()
+        .arg(ROBO_NIX_INPUT);
+    let output = output_with_spinner(config, &mut command, "updating robo-nix flake input")
         .map_err(|err| {
             AppError::project(format!("failed to start nix: {err}"))
                 .with_hint("install Nix with flakes enabled, then rerun `robo update`.")

@@ -316,10 +316,8 @@
                 unset PYTHONHOME
                 unset PYTHONPATH
 
-                if [ -d "$UV_PROJECT_ENVIRONMENT/bin" ]; then
-                  export VIRTUAL_ENV="$UV_PROJECT_ENVIRONMENT"
-                  robo_nix_prepend_path PATH "$UV_PROJECT_ENVIRONMENT/bin"
-                fi
+                export VIRTUAL_ENV="$UV_PROJECT_ENVIRONMENT"
+                robo_nix_prepend_path PATH "$UV_PROJECT_ENVIRONMENT/bin"
               ''
               + lib.optionalString (runtimeLibraryPath != "") ''
 

@@ -8,7 +8,7 @@ use std::process::ExitCode;
 use crate::error::AppError;
 use crate::profile::{parse_profile_option, RuntimeProfile};
 use crate::shell_refresh::request_manual_runtime_refresh;
-use crate::ui::{status, Config};
+use crate::ui::{row, section, Config};
 
 pub(crate) fn run(args: Vec<OsString>, config: Config) -> Result<ExitCode, AppError> {
     let (mut profile, args) = parse_profile_option(args)?;
@@ -23,9 +23,12 @@ pub(crate) fn run(args: Vec<OsString>, config: Config) -> Result<ExitCode, AppEr
         profile = RuntimeProfile::from_active_env();
     }
     clear_robo_state(&workspace, &profile)?;
-    status(
+    section(config, "refresh");
+    row(
         config,
-        &format!("cleared {} runtime state", profile_status_name(&profile)),
+        "✓",
+        "cleared",
+        &format!("{} runtime state", profile_status_name(&profile)),
     );
 
     if env::var_os("ROBO_NIX_ACTIVE").is_some() {
@@ -34,9 +37,14 @@ pub(crate) fn run(args: Vec<OsString>, config: Config) -> Result<ExitCode, AppEr
                 "the runtime state was cleared; run `robo refresh` again or start a new `robo shell`.",
             )
         })?;
-        status(config, "active shell refresh requested");
+        row(config, "✓", "requested", "active shell refresh");
     } else {
-        status(config, "next robo command will rebuild the runtime cache");
+        row(
+            config,
+            "✓",
+            "next",
+            "robo command will rebuild runtime cache",
+        );
     }
 
     Ok(ExitCode::SUCCESS)
