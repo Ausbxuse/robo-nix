@@ -138,7 +138,7 @@ fn print_usage(config: Config) {
     help_row(
         config,
         "robo update",
-        "update the project robo-nix flake input",
+        "update robo-nix and reinstall the CLI",
     );
 
     println!();

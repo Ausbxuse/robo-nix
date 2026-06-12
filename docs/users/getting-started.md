@@ -15,8 +15,9 @@ dependency groups, lockfiles, and virtualenv sync.
   libraries, such as `libassimp.so`. It only prints suggestions.
 - `robo refresh` clears robo-owned runtime state under `.robo-nix/`. In an
   active runtime shell, the shell updates at the next prompt.
-- `robo update` updates the project `robo-nix` flake input and clears runtime
-  cache state. It does not update Python dependencies or `robo.nix`.
+- `robo update` updates the project `robo-nix` flake input, reinstalls the
+  `robo` CLI binary from that updated input, and clears runtime cache state. It
+  does not update Python dependencies or `robo.nix`.
 - `robo --help`, `robo --version`, and `robo -V` are available as standard CLI
   utilities.
 - Active `robo shell` sessions refresh at the next prompt when runtime inputs
@@ -211,8 +212,9 @@ Update the version of robo-nix pinned by the project:
 robo update
 ```
 
-This updates only the `robo-nix` input in `flake.lock`. The next `robo shell`
-or `robo run` uses the updated lock.
+This updates the `robo-nix` input in `flake.lock`, reinstalls the `robo` CLI
+binary from that updated input, and clears runtime cache state. The next
+`robo shell` or `robo run` uses the updated lock.
 
 ## What robo does not do
 

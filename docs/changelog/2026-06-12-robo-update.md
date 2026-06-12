@@ -18,14 +18,16 @@ only need to update the runtime tooling itself.
 Potential conflict: `robo-nix` should not grow into a general environment or
 dependency manager.
 
-Resolution: `robo update` updates only the workspace `robo-nix` flake input,
-refuses non-robo flakes, does not touch `robo.nix`, does not update Python
-dependencies, and does not update arbitrary Nix inputs.
+Resolution: `robo update` updates the workspace `robo-nix` flake input and
+reinstalls the `robo` CLI binary from that updated input. It refuses non-robo
+flakes, does not touch `robo.nix`, does not update Python dependencies, and
+does not update arbitrary Nix inputs.
 
 ## Change
 
 - Add `robo update`.
 - Run `nix flake update robo-nix` in the workspace root.
+- Reinstall the `robo` CLI binary from the updated locked `robo-nix` input.
 - Clear `.robo-nix/profiles/` after a successful lock update so runtime cache
   state is rebuilt from the updated lock.
 - In active runtime shells, request prompt-time refresh for the active profile.
@@ -36,5 +38,4 @@ dependencies, and does not update arbitrary Nix inputs.
 - [x] `nix develop --command cargo fmt --check`
 - [x] `cargo test`
 - [x] `nix-instantiate --parse flake.nix`
-- [x] temporary Git-backed flake smoke test for `robo update`
 - [x] `nix build .#checks.x86_64-linux.default --no-link`

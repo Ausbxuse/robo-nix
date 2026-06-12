@@ -5,6 +5,8 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+use serde_json::Value;
+
 use crate::bootstrap::looks_like_robo_flake;
 use crate::error::AppError;
 use crate::nix_env::{filter_nix_output_for_user, nix_command};
@@ -24,9 +26,12 @@ pub(crate) fn run(args: Vec<OsString>, config: Config) -> Result<ExitCode, AppEr
     let workspace = update_workspace_root()?;
     validate_robo_flake(&workspace)?;
     update_robo_nix_input(config, &workspace)?;
+    let installable = locked_robo_nix_installable(&workspace)?;
+    reinstall_robo_binary(config, &workspace, &installable)?;
     clear_runtime_profile_state(&workspace)?;
     section(config, "update");
     row(config, "✓", "updated", "robo-nix flake input");
+    row(config, "✓", "installed", "robo CLI binary");
     row(config, "✓", "cleared", "runtime cache state");
 
     if env::var_os("ROBO_NIX_ACTIVE").is_some() {
@@ -68,7 +73,7 @@ fn validate_robo_flake(workspace: &Path) -> Result<(), AppError> {
     if !looks_like_robo_flake(&flake) {
         return Err(
             AppError::project("this repository does not use a robo-nix flake").with_hint(
-                "`robo update` only updates the `robo-nix` input in robo-owned project flakes.",
+                "`robo update` updates the `robo-nix` input and CLI binary for robo-owned project flakes.",
             ),
         );
     }
@@ -107,6 +112,104 @@ fn update_robo_nix_input(config: Config, workspace: &Path) -> Result<(), AppErro
         output.status
     ))
     .with_hint("review the Nix output above; the existing flake.lock was left as Nix reported."))
+}
+
+fn locked_robo_nix_installable(workspace: &Path) -> Result<String, AppError> {
+    let lock_path = workspace.join("flake.lock");
+    let lock = fs::read_to_string(&lock_path).map_err(|err| {
+        AppError::project(format!("failed to read {}: {err}", lock_path.display()))
+            .with_hint("rerun `robo update`; Nix should create or update flake.lock first.")
+    })?;
+    let lock: Value = serde_json::from_str(&lock).map_err(|err| {
+        AppError::project(format!("failed to parse {}: {err}", lock_path.display()))
+    })?;
+    let locked = lock
+        .get("nodes")
+        .and_then(|nodes| nodes.get(ROBO_NIX_INPUT))
+        .and_then(|node| node.get("locked"))
+        .ok_or_else(|| {
+            AppError::project("flake.lock does not contain a locked `robo-nix` input").with_hint(
+                "rerun `robo update`; generated robo project flakes define inputs.robo-nix.",
+            )
+        })?;
+
+    let source = locked_robo_nix_source(locked)?;
+    Ok(format!("{source}#robo"))
+}
+
+fn locked_robo_nix_source(locked: &Value) -> Result<String, AppError> {
+    match json_str(locked, "type") {
+        Some("github") => {
+            let owner = required_locked_field(locked, "owner")?;
+            let repo = required_locked_field(locked, "repo")?;
+            let rev = required_locked_field(locked, "rev")?;
+            Ok(format!("github:{owner}/{repo}/{rev}"))
+        }
+        Some("path") => {
+            let path = required_locked_field(locked, "path")?;
+            Ok(format!("path:{path}"))
+        }
+        Some(kind) => Err(AppError::project(format!(
+            "cannot reinstall robo from locked robo-nix input type `{kind}`"
+        ))
+        .with_hint(
+            "install robo manually with `nix profile install <robo-nix-flake>#robo`, then rerun `robo update`.",
+        )),
+        None => Err(AppError::project(
+            "locked robo-nix input is missing its source type",
+        )),
+    }
+}
+
+fn required_locked_field<'a>(locked: &'a Value, name: &str) -> Result<&'a str, AppError> {
+    json_str(locked, name).ok_or_else(|| {
+        AppError::project(format!("locked robo-nix input is missing `{name}`"))
+            .with_hint("rerun `robo update`; Nix should write a complete flake.lock entry.")
+    })
+}
+
+fn json_str<'a>(value: &'a Value, name: &str) -> Option<&'a str> {
+    value.get(name).and_then(Value::as_str)
+}
+
+fn reinstall_robo_binary(
+    config: Config,
+    workspace: &Path,
+    installable: &str,
+) -> Result<(), AppError> {
+    let mut remove = nix_command();
+    let _ = remove
+        .current_dir(workspace)
+        .arg("profile")
+        .arg("remove")
+        .arg("robo")
+        .output();
+
+    let mut install = nix_command();
+    install
+        .current_dir(workspace)
+        .arg("--accept-flake-config")
+        .arg("profile")
+        .arg("install")
+        .arg(installable);
+    let output =
+        output_with_spinner(config, &mut install, "installing robo CLI binary").map_err(|err| {
+            AppError::project(format!("failed to start nix: {err}"))
+                .with_hint("install Nix with flakes enabled, then rerun `robo update`.")
+        })?;
+
+    if output.status.success() {
+        return Ok(());
+    }
+
+    crate::write_command_output(&filter_nix_output_for_user(&output))?;
+    Err(AppError::project(format!(
+        "nix profile install {installable} exited with {}",
+        output.status
+    ))
+    .with_hint(
+        "the project lock was updated, but the robo CLI binary was not reinstalled; rerun `robo update` after fixing the Nix error.",
+    ))
 }
 
 fn clear_runtime_profile_state(workspace: &Path) -> Result<(), AppError> {
@@ -160,6 +263,60 @@ mod tests {
 
         assert!(!root.join(".robo-nix").join("profiles").exists());
         assert!(venv.exists());
+        cleanup(root);
+    }
+
+    #[test]
+    fn locked_installable_uses_github_revision() {
+        let root = temp_project("github-installable");
+        fs::write(
+            root.join("flake.lock"),
+            r#"{
+  "nodes": {
+    "robo-nix": {
+      "locked": {
+        "type": "github",
+        "owner": "ausbxuse",
+        "repo": "robo-nix",
+        "rev": "abc123"
+      }
+    }
+  }
+}
+"#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            locked_robo_nix_installable(&root).unwrap(),
+            "github:ausbxuse/robo-nix/abc123#robo"
+        );
+        cleanup(root);
+    }
+
+    #[test]
+    fn locked_installable_supports_path_inputs() {
+        let root = temp_project("path-installable");
+        fs::write(
+            root.join("flake.lock"),
+            r#"{
+  "nodes": {
+    "robo-nix": {
+      "locked": {
+        "type": "path",
+        "path": "/workspace/robo-nix"
+      }
+    }
+  }
+}
+"#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            locked_robo_nix_installable(&root).unwrap(),
+            "path:/workspace/robo-nix#robo"
+        );
         cleanup(root);
     }
 

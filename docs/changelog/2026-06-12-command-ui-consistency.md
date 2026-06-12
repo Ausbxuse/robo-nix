@@ -14,7 +14,8 @@ aligns output presentation for existing commands.
 ## Change
 
 - Print `robo refresh` success output with a `refresh` section and `✓` rows.
-- Print `robo update` success output with an `update` section and `✓` rows.
+- Print `robo update` success output with an `update` section and `✓` rows,
+  including the CLI reinstall step.
 - Keep a spinner/status line for the potentially slow `nix flake update
   robo-nix` step.
 

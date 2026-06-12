@@ -132,7 +132,8 @@ robo update
 ```
 
 Updates the project `robo-nix` flake input and clears runtime cache state.
-It does not update Python dependencies, Nix package inputs, or `robo.nix`.
+It also reinstalls the `robo` CLI binary from that updated input. It does not
+update Python dependencies, other Nix inputs, or `robo.nix`.
 
 Global utility flags:
 
@@ -144,8 +145,8 @@ robo -V
 
 The public command surface is intentionally limited to runtime shell, runtime
 command execution, shared-library lookup, runtime state refresh, and updating
-the project `robo-nix` input. Setup diagnostics are part of the shell/run
-workflow.
+robo-nix runtime tooling plus the installed CLI. Setup diagnostics are part of
+the shell/run workflow.
 
 ## Runtime Model
 
