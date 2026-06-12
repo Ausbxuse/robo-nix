@@ -19,6 +19,7 @@ mod search;
 mod shell_launch;
 mod shell_refresh;
 mod ui;
+mod update;
 
 use bootstrap::{prepare_project, print_bootstrap_report};
 use error::{print_error, write_debug_log, AppError};
@@ -84,6 +85,7 @@ fn run(args: Vec<OsString>, config: Config) -> Result<ExitCode, AppError> {
         "run" => run_command(args.collect(), config),
         "search" => Ok(search::run(args.collect(), config)),
         "refresh" => refresh::run(args.collect(), config),
+        "update" => update::run(args.collect(), config),
         "__shell-refresh" => Ok(shell_refresh::run(args.collect(), config)),
         "__runtime-prefetch" => {
             let workspace = env::current_dir()
@@ -132,6 +134,11 @@ fn print_usage(config: Config) {
         config,
         "robo refresh [--profile <name>]",
         "clear runtime state and refresh the active shell",
+    );
+    help_row(
+        config,
+        "robo update",
+        "update the project robo-nix flake input",
     );
 
     println!();

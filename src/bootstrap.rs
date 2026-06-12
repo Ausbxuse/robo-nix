@@ -154,7 +154,7 @@ fn print_inference_report(config: Config, inference: &RuntimeInference) {
     }
 }
 
-fn looks_like_robo_flake(flake: &str) -> bool {
+pub(crate) fn looks_like_robo_flake(flake: &str) -> bool {
     flake.contains("mkProjectFlakeFromManifest")
         || (flake.contains("nixpkgs-python")
             && flake.contains("import ./robo.nix")

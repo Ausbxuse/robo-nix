@@ -200,6 +200,16 @@ active runtime shell, it writes a profile-scoped manual refresh request that is
 part of the runtime input key; the prompt hook consumes that request after a
 successful environment refresh.
 
+## Update
+
+`robo update` updates only the workspace `robo-nix` flake input by running
+`nix flake update robo-nix` in the project root. It refuses non-robo flakes,
+does not rewrite `robo.nix`, and does not update Python dependencies or other
+Nix inputs. After a successful lock update, it clears `.robo-nix/profiles/` so
+the next `robo shell` or `robo run` rebuilds runtime cache state from the
+updated lock. Inside an active runtime shell, it also requests prompt-time
+refresh for the active profile.
+
 ## Changelog
 
 Each changelog-backed change should:

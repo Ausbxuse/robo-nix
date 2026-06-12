@@ -15,12 +15,15 @@ Current command surface:
   libraries. It does not edit project files.
 - `robo refresh`: clear robo-owned runtime state under `.robo-nix/` and request
   prompt-time environment refresh inside an active runtime shell.
+- `robo update`: update only the workspace `robo-nix` flake input and clear
+  robo-owned runtime cache state.
 - `robo __shell-refresh <shell>`: hidden prompt-hook helper used by active
   `robo shell` sessions.
 
 The public command surface is intentionally limited to the commands above.
-Global utility flags such as `robo --help`, `robo --version`, and `robo -V` do
-not add runtime workflows.
+`robo update` is a self-update helper for the project runtime tooling, not a
+general Nix or Python dependency updater. Global utility flags such as
+`robo --help`, `robo --version`, and `robo -V` do not add runtime workflows.
 
 Read next:
 

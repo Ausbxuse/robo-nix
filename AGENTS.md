@@ -17,6 +17,9 @@ environment manager.
   active `robo shell`, it requests prompt-time environment refresh through the
   existing shell hook; outside a shell, it makes the next `robo shell` or
   `robo run` rebuild runtime cache state.
+- `robo update` updates only the workspace `robo-nix` flake input and clears
+  robo-owned runtime cache state so the next runtime command uses the updated
+  lock. It is not a general dependency updater.
 - There is no `robo init`, `robo check`, or `robo diagnose` in the current
   product surface.
 - `robo shell` may create missing runtime files during first bootstrap, then

@@ -127,6 +127,13 @@ Clears robo-owned runtime state under `.robo-nix/`. Inside an active
 hook. Outside a shell, the next `robo shell` or `robo run` rebuilds the runtime
 cache.
 
+```bash
+robo update
+```
+
+Updates the project `robo-nix` flake input and clears runtime cache state.
+It does not update Python dependencies, Nix package inputs, or `robo.nix`.
+
 Global utility flags:
 
 ```bash
@@ -136,8 +143,9 @@ robo -V
 ```
 
 The public command surface is intentionally limited to runtime shell, runtime
-command execution, shared-library lookup, and runtime state refresh. Setup
-diagnostics are part of the shell/run workflow.
+command execution, shared-library lookup, runtime state refresh, and updating
+the project `robo-nix` input. Setup diagnostics are part of the shell/run
+workflow.
 
 ## Runtime Model
 
