@@ -59,6 +59,9 @@
         version = "0.1.0";
         src = roboSource;
         cargoLock.lockFile = ./Cargo.lock;
+        nativeCheckInputs = [
+          pkgs.git
+        ];
         meta = {
           mainProgram = "robo";
           license = pkgs.lib.licenses.gpl3Only;

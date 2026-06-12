@@ -21,6 +21,7 @@ use crate::ui::{error, hint, output_with_tree, row_err, status, Config};
 const OBSERVED_RUNTIME_INPUTS_FILE: &str = "runtime-inputs-v1";
 const MANUAL_REFRESH_REQUEST_FILE: &str = "refresh-requested-v1";
 const MANUAL_REFRESH_REQUEST_INPUT: &str = ".robo-nix/refresh-requested-v1";
+const LAUNCH_RUNTIME_INPUT_SETTLE_ENV: &str = "ROBO_NIX_RUNTIME_INPUT_SETTLE";
 
 #[derive(Debug)]
 pub(crate) struct RuntimeInputState {
@@ -78,6 +79,7 @@ pub(crate) fn set_active_shell_env(
         "ROBO_NIX_RUNTIME_INPUT_FILES",
         serialize_runtime_input_files(&state.files),
     );
+    command.env(LAUNCH_RUNTIME_INPUT_SETTLE_ENV, "1");
     command.env(
         "ROBO_NIX_MANAGED_ENV_VARS",
         managed_env_var_names_from_command_env(state, workspace, runtime_env),
@@ -116,6 +118,10 @@ fn try_run(args: Vec<OsString>, config: Config) -> Result<(), RefreshError> {
     }
 
     let changed = changed_runtime_inputs(&workspace, &current);
+    if should_settle_launched_runtime_inputs(&changed, &missing_store_paths) {
+        print_settled_active_shell_state(shell, &current);
+        return Ok(());
+    }
     print_runtime_refresh_notice(config, &workspace, &changed, &missing_store_paths);
     let mut envs = refreshed_shell_env(&workspace, config)?;
     let _ = append_host_cuda_driver_bridge(&mut envs, &workspace);
@@ -581,6 +587,42 @@ fn changed_runtime_inputs(_root: &Path, current: &RuntimeInputState) -> Vec<Stri
     changed.into_iter().collect()
 }
 
+fn should_settle_launched_runtime_inputs(
+    changed: &[String],
+    missing_store_paths: &[PathBuf],
+) -> bool {
+    env::var_os(LAUNCH_RUNTIME_INPUT_SETTLE_ENV).is_some()
+        && missing_store_paths.is_empty()
+        && !changed.is_empty()
+        && changed.iter().all(|path| path.starts_with("env:"))
+}
+
+fn print_settled_active_shell_state(shell: &str, current: &RuntimeInputState) {
+    for line in settled_active_shell_state_lines(shell, current) {
+        println!("{line}");
+    }
+}
+
+fn settled_active_shell_state_lines(shell: &str, current: &RuntimeInputState) -> Vec<String> {
+    let envs = [
+        (
+            "ROBO_NIX_RUNTIME_INPUT_KEY".to_string(),
+            current.key.clone(),
+        ),
+        (
+            "ROBO_NIX_RUNTIME_INPUT_FILES".to_string(),
+            serialize_runtime_input_files(&current.files),
+        ),
+    ];
+    let mut lines = shell_delta_lines(shell, &envs, &[]);
+    if shell == "fish" {
+        lines.push(format!("set -e {LAUNCH_RUNTIME_INPUT_SETTLE_ENV}"));
+    } else {
+        lines.push(format!("unset {LAUNCH_RUNTIME_INPUT_SETTLE_ENV}"));
+    }
+    lines
+}
+
 fn append_active_shell_env(
     envs: &mut Vec<(String, String)>,
     workspace: &Path,
@@ -761,6 +803,7 @@ fn managed_env_var_names_from_command_env(
 ) -> String {
     let mut envs = runtime_env.to_vec();
     append_active_shell_env(&mut envs, workspace, state);
+    set_env_value(&mut envs, LAUNCH_RUNTIME_INPUT_SETTLE_ENV, "1".to_string());
     managed_env_var_names(&envs)
 }
 
@@ -1261,6 +1304,81 @@ src = ./src;
         );
 
         cleanup(root);
+    }
+
+    #[test]
+    fn launch_active_env_requests_one_runtime_input_settle() {
+        let root = PathBuf::from("/workspace/project");
+        let state = RuntimeInputState {
+            key: "launch-key".to_string(),
+            files: vec![("robo.nix".to_string(), "hash".to_string())],
+        };
+        let mut command = Command::new("sh");
+
+        set_active_shell_env(
+            &mut command,
+            &root,
+            &state,
+            &[("LD_LIBRARY_PATH".to_string(), "/nix/store/lib".to_string())],
+        );
+
+        assert_eq!(
+            command.get_envs().find_map(|(name, value)| {
+                (name == LAUNCH_RUNTIME_INPUT_SETTLE_ENV)
+                    .then(|| value.unwrap().to_string_lossy().into_owned())
+            }),
+            Some("1".to_string())
+        );
+        assert!(command
+            .get_envs()
+            .find_map(|(name, value)| {
+                (name == "ROBO_NIX_MANAGED_ENV_VARS")
+                    .then(|| value.unwrap().to_string_lossy().into_owned())
+            })
+            .unwrap()
+            .contains(LAUNCH_RUNTIME_INPUT_SETTLE_ENV));
+    }
+
+    #[test]
+    fn launched_runtime_settle_accepts_only_env_input_changes() {
+        let _lock = env_lock().lock().unwrap();
+        let _env = EnvGuard::set(&[(LAUNCH_RUNTIME_INPUT_SETTLE_ENV, OsString::from("1"))]);
+
+        assert!(should_settle_launched_runtime_inputs(
+            &["env:LD_LIBRARY_PATH".to_string()],
+            &[]
+        ));
+        assert!(!should_settle_launched_runtime_inputs(
+            &["robo.nix".to_string()],
+            &[]
+        ));
+        assert!(!should_settle_launched_runtime_inputs(
+            &["env:LD_LIBRARY_PATH".to_string()],
+            &[PathBuf::from("/nix/store/missing")]
+        ));
+    }
+
+    #[test]
+    fn settled_active_shell_state_updates_metadata_and_unsets_marker() {
+        let state = RuntimeInputState {
+            key: "settled-key".to_string(),
+            files: vec![("env:LD_LIBRARY_PATH".to_string(), "/after".to_string())],
+        };
+
+        assert_eq!(
+            settled_active_shell_state_lines("bash", &state),
+            vec![
+                "export ROBO_NIX_RUNTIME_INPUT_KEY='settled-key'".to_string(),
+                "export ROBO_NIX_RUNTIME_INPUT_FILES='env:LD_LIBRARY_PATH=/after'".to_string(),
+                format!("unset {LAUNCH_RUNTIME_INPUT_SETTLE_ENV}"),
+            ]
+        );
+        assert_eq!(
+            settled_active_shell_state_lines("fish", &state)
+                .last()
+                .unwrap(),
+            &format!("set -e {LAUNCH_RUNTIME_INPUT_SETTLE_ENV}")
+        );
     }
 
     #[test]
