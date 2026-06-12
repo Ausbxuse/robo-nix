@@ -8,12 +8,13 @@
   mkProjectFlakeFromManifest = manifestPath:
     mkProjectFlake {
       projectRoot = builtins.dirOf manifestPath;
-      spec = import manifestPath;
+      manifestSpec = import manifestPath;
     };
 
   mkProjectFlake = {
     projectRoot ? ./.,
-    spec,
+    spec ? null,
+    manifestSpec ? spec,
   }: let
     forAllSystems = nixpkgs.lib.genAttrs systems;
   in {
@@ -23,6 +24,38 @@
         config.allowUnfree = true;
       };
       lib = pkgs.lib;
+      rawSpec = manifestSpec;
+      requestedProfile = builtins.getEnv "ROBO_NIX_PROFILE";
+      profileMode = rawSpec ? profiles;
+      availableProfiles =
+        if profileMode
+        then builtins.attrNames rawSpec.profiles
+        else [];
+      selectedProfileName =
+        if profileMode
+        then
+          if requestedProfile != ""
+          then requestedProfile
+          else
+            rawSpec.defaultProfile
+            or (throw "robo-nix: robo.nix defines profiles but no defaultProfile")
+        else if requestedProfile != ""
+        then throw "robo-nix: --profile was requested, but this legacy robo.nix does not define profiles"
+        else "";
+      selectedProfileNameValid =
+        !profileMode || builtins.match "[A-Za-z0-9][A-Za-z0-9._-]*" selectedProfileName != null;
+      profileSpec =
+        if !profileMode
+        then rawSpec
+        else if !selectedProfileNameValid
+        then throw "robo-nix: invalid runtime profile name \"${selectedProfileName}\""
+        else if !(builtins.hasAttr selectedProfileName rawSpec.profiles)
+        then throw "robo-nix: unknown runtime profile \"${selectedProfileName}\"; available profiles: ${lib.concatStringsSep ", " availableProfiles}"
+        else builtins.getAttr selectedProfileName rawSpec.profiles;
+      spec =
+        if profileSpec ? profiles
+        then throw "robo-nix: runtime profile \"${selectedProfileName}\" must be a manifest, not another profile set"
+        else profileSpec;
       renderScript = path: replacements: let
         names = builtins.attrNames replacements;
       in
@@ -40,6 +73,18 @@
         else throw "robo-nix: nixpkgs-python does not provide Python ${rawPythonVersion} for ${system}";
 
       selectedComponents = spec.components or [];
+      pythonExtras = spec.pythonExtras or [];
+      pythonGroupsSet = spec ? pythonGroups;
+      pythonGroups = spec.pythonGroups or [];
+      profileVenv = spec.venv or (
+        if profileMode
+        then ".robo-nix/venvs/${selectedProfileName}"
+        else ".venv"
+      );
+      uvProjectEnvironmentDefault =
+        if lib.hasPrefix "/" profileVenv
+        then profileVenv
+        else "$PWD/${profileVenv}";
       extraPackages = spec.extraPackages or (_: []);
       extraRuntimeLibraries = spec.extraRuntimeLibraries or (_: []);
       hostGraphics = spec.hostGraphics or "auto";
@@ -222,9 +267,21 @@
                 export ROBO_NIX_PYTHON="${python}/bin/python"
                 export UV_PYTHON="$ROBO_NIX_PYTHON"
                 export UV_PYTHON_DOWNLOADS=never
-                export UV_PROJECT_ENVIRONMENT="''${UV_PROJECT_ENVIRONMENT:-$PWD/.venv}"
+                export UV_PROJECT_ENVIRONMENT="''${UV_PROJECT_ENVIRONMENT:-${uvProjectEnvironmentDefault}}"
                 export UV_CACHE_DIR="''${UV_CACHE_DIR:-$PWD/.robo-nix/uv-cache}"
                 export ROBO_NIX_COMPONENTS="${lib.concatStringsSep ":" selectedComponents}"
+                ${
+                  if profileMode
+                  then ''export ROBO_NIX_PROFILE="${selectedProfileName}"''
+                  else "unset ROBO_NIX_PROFILE"
+                }
+                export ROBO_NIX_PYTHON_EXTRAS="${lib.concatStringsSep ":" pythonExtras}"
+                export ROBO_NIX_PYTHON_GROUPS="${lib.concatStringsSep ":" pythonGroups}"
+                ${
+                  if pythonGroupsSet
+                  then "export ROBO_NIX_PYTHON_GROUPS_SET=1"
+                  else "unset ROBO_NIX_PYTHON_GROUPS_SET"
+                }
                 # mkShell runs shellHook under Bash. Keep colon-list updates in
                 # one place so CUDA, graphics, headers, and venv setup have the
                 # same duplicate-prevention behavior.

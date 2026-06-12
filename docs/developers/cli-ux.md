@@ -81,10 +81,10 @@ to the user's existing prompt. `robo` does not invent a project-name prompt.
 
 The same startup files run a prompt-time freshness check. If `flake.nix`,
 `flake.lock`, `.python-version`, `pyproject.toml`, `uv.lock`, `robo.nix`, or
-the default `.venv/bin/python` changes while the shell is active, `robo`
-reports the changed inputs, re-evaluates the runtime shell, and exports the
-refreshed environment into the current shell. This refresh does not rewrite
-`robo.nix` and does not run `uv sync`.
+the selected runtime profile changes while the shell is active, `robo` reports
+the changed inputs, re-evaluates the runtime shell, and exports the refreshed
+environment into the current shell. This refresh does not rewrite `robo.nix`
+and does not run `uv sync`.
 
 Once the Nix runtime environment has been captured for a runtime input key,
 subsequent `robo shell` and `robo run` attempts may show the evaluation step as

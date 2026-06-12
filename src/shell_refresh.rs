@@ -12,15 +12,15 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::env_vars::{is_robo_managed_env, runtime_key_env_names};
 use crate::host_cuda::append_host_cuda_driver_bridge;
 use crate::nix_env::{
-    add_env_capture_args, filter_nix_output_for_user, inherit_terminal_environment,
-    missing_store_roots, nix_command, parse_env_zero, remove_volatile_runtime_env_values,
-    workspace_flake_ref,
+    add_env_capture_args, apply_profile_env, filter_nix_output_for_user,
+    inherit_terminal_environment, missing_store_roots, nix_command, parse_env_zero,
+    remove_volatile_runtime_env_values, workspace_flake_ref,
 };
+use crate::profile::RuntimeProfile;
 use crate::ui::{error, hint, output_with_tree, row_err, status, Config};
 
 const OBSERVED_RUNTIME_INPUTS_FILE: &str = "runtime-inputs-v1";
 const MANUAL_REFRESH_REQUEST_FILE: &str = "refresh-requested-v1";
-const MANUAL_REFRESH_REQUEST_INPUT: &str = ".robo-nix/refresh-requested-v1";
 const LAUNCH_RUNTIME_INPUT_SETTLE_ENV: &str = "ROBO_NIX_RUNTIME_INPUT_SETTLE";
 
 #[derive(Debug)]
@@ -37,8 +37,8 @@ pub(crate) fn run(args: Vec<OsString>, config: Config) -> ExitCode {
     ExitCode::SUCCESS
 }
 
-pub(crate) fn runtime_input_state(root: &Path) -> RuntimeInputState {
-    let files = runtime_input_fingerprints(root, |name| env::var(name).ok());
+pub(crate) fn runtime_input_state(root: &Path, profile: &RuntimeProfile) -> RuntimeInputState {
+    let files = runtime_input_fingerprints(root, profile, |name| env::var(name).ok());
     RuntimeInputState {
         key: runtime_input_key(&files),
         files,
@@ -48,8 +48,9 @@ pub(crate) fn runtime_input_state(root: &Path) -> RuntimeInputState {
 pub(crate) fn runtime_input_state_for_env(
     root: &Path,
     envs: &[(String, String)],
+    profile: &RuntimeProfile,
 ) -> RuntimeInputState {
-    let files = runtime_input_fingerprints(root, |name| {
+    let files = runtime_input_fingerprints(root, profile, |name| {
         envs.iter()
             .find_map(|(candidate, value)| (candidate == name).then_some(value.clone()))
     });
@@ -68,11 +69,16 @@ impl RuntimeInputState {
 pub(crate) fn set_active_shell_env(
     command: &mut Command,
     workspace: &Path,
+    profile: &RuntimeProfile,
     state: &RuntimeInputState,
     runtime_env: &[(String, String)],
 ) {
     command.env("ROBO_NIX_ACTIVE", "1");
     command.env("ROBO_NIX_ENV_NAME", "robo");
+    command.env(
+        RuntimeProfile::active_selector_env_name(),
+        profile.selector(),
+    );
     command.env("WORKSPACE_ROOT", workspace);
     command.env("ROBO_NIX_RUNTIME_INPUT_KEY", &state.key);
     command.env(
@@ -82,7 +88,7 @@ pub(crate) fn set_active_shell_env(
     command.env(LAUNCH_RUNTIME_INPUT_SETTLE_ENV, "1");
     command.env(
         "ROBO_NIX_MANAGED_ENV_VARS",
-        managed_env_var_names_from_command_env(state, workspace, runtime_env),
+        managed_env_var_names_from_command_env(profile, state, workspace, runtime_env),
     );
 }
 
@@ -109,7 +115,8 @@ fn try_run(args: Vec<OsString>, config: Config) -> Result<(), RefreshError> {
         return Ok(());
     }
 
-    let current = runtime_input_state(&workspace);
+    let profile = RuntimeProfile::from_active_env();
+    let current = runtime_input_state(&workspace, &profile);
     let missing_store_paths = missing_active_store_roots();
     if env::var("ROBO_NIX_RUNTIME_INPUT_KEY").ok().as_deref() == Some(current.key.as_str())
         && missing_store_paths.is_empty()
@@ -123,10 +130,10 @@ fn try_run(args: Vec<OsString>, config: Config) -> Result<(), RefreshError> {
         return Ok(());
     }
     print_runtime_refresh_notice(config, &workspace, &changed, &missing_store_paths);
-    let mut envs = refreshed_shell_env(&workspace, config)?;
+    let mut envs = refreshed_shell_env(&workspace, &profile, config)?;
     let _ = append_host_cuda_driver_bridge(&mut envs, &workspace);
-    let _ = clear_manual_runtime_refresh_request(&workspace);
-    append_refreshed_active_shell_env(&mut envs, &workspace);
+    let _ = clear_manual_runtime_refresh_request(&workspace, &profile);
+    append_refreshed_active_shell_env(&mut envs, &workspace, &profile);
     print_shell_delta(shell, &envs);
     Ok(())
 }
@@ -149,11 +156,13 @@ where
 
 fn refreshed_shell_env(
     workspace: &Path,
+    profile: &RuntimeProfile,
     config: Config,
 ) -> Result<Vec<(String, String)>, RefreshError> {
     // NOTE: stdout from `robo __shell-refresh` is eval'd by the shell hooks.
     // Keep diagnostics on stderr and reserve stdout for export statements.
     let mut command = nix_command();
+    apply_profile_env(&mut command, profile);
     let flake_ref = workspace_flake_ref(workspace);
     command
         .current_dir(workspace)
@@ -192,33 +201,39 @@ fn refreshed_shell_env(
     .with_hint("the current shell remains usable, but may be stale."))
 }
 
-fn runtime_input_fingerprints<F>(root: &Path, mut env_value: F) -> Vec<(String, String)>
+fn runtime_input_fingerprints<F>(
+    root: &Path,
+    profile: &RuntimeProfile,
+    mut env_value: F,
+) -> Vec<(String, String)>
 where
     F: FnMut(&str) -> Option<String>,
 {
-    let mut runtime_files = [
+    let mut runtime_files = vec![
         "flake.nix",
         "flake.lock",
         ".python-version",
         "pyproject.toml",
         "uv.lock",
         "robo.nix",
-        ".venv/bin/python",
-        MANUAL_REFRESH_REQUEST_INPUT,
     ]
     .into_iter()
     .map(str::to_string)
     .collect::<BTreeSet<_>>();
+    runtime_files.insert(manual_runtime_refresh_request_input(profile));
     runtime_files.extend(local_nix_runtime_inputs(root));
     runtime_files.extend(read_observed_runtime_inputs(root));
 
-    let mut files = runtime_files
-        .into_iter()
-        .map(|path| {
-            let fingerprint = fingerprint_file(&root.join(&path));
-            (path, fingerprint)
-        })
-        .collect::<Vec<_>>();
+    let mut files = vec![("profile".to_string(), profile.selector().to_string())];
+    files.extend(
+        runtime_files
+            .into_iter()
+            .map(|path| {
+                let fingerprint = fingerprint_file(&root.join(&path));
+                (path, fingerprint)
+            })
+            .collect::<Vec<_>>(),
+    );
     files.extend(runtime_key_env_names().map(|name| {
         (
             format!("env:{name}"),
@@ -236,10 +251,13 @@ pub(crate) fn record_observed_runtime_inputs(root: &Path, nix_stderr: &[u8]) -> 
     write_observed_runtime_inputs(root, &inputs)
 }
 
-pub(crate) fn request_manual_runtime_refresh(root: &Path) -> io::Result<PathBuf> {
-    let state_dir = root.join(".robo-nix");
+pub(crate) fn request_manual_runtime_refresh(
+    root: &Path,
+    profile: &RuntimeProfile,
+) -> io::Result<PathBuf> {
+    let state_dir = profile.state_dir(root);
     fs::create_dir_all(&state_dir)?;
-    let path = manual_runtime_refresh_request_path(root);
+    let path = manual_runtime_refresh_request_path(root, profile);
     let tmp_path = state_dir.join(format!(
         "{MANUAL_REFRESH_REQUEST_FILE}.tmp-{}",
         std::process::id()
@@ -249,16 +267,24 @@ pub(crate) fn request_manual_runtime_refresh(root: &Path) -> io::Result<PathBuf>
     Ok(path)
 }
 
-fn clear_manual_runtime_refresh_request(root: &Path) -> io::Result<()> {
-    match fs::remove_file(manual_runtime_refresh_request_path(root)) {
+fn clear_manual_runtime_refresh_request(root: &Path, profile: &RuntimeProfile) -> io::Result<()> {
+    match fs::remove_file(manual_runtime_refresh_request_path(root, profile)) {
         Ok(()) => Ok(()),
         Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(()),
         Err(err) => Err(err),
     }
 }
 
-fn manual_runtime_refresh_request_path(root: &Path) -> PathBuf {
-    root.join(".robo-nix").join(MANUAL_REFRESH_REQUEST_FILE)
+fn manual_runtime_refresh_request_path(root: &Path, profile: &RuntimeProfile) -> PathBuf {
+    profile.state_dir(root).join(MANUAL_REFRESH_REQUEST_FILE)
+}
+
+fn manual_runtime_refresh_request_input(profile: &RuntimeProfile) -> String {
+    format!(
+        ".robo-nix/profiles/{}/{}",
+        profile.selector(),
+        MANUAL_REFRESH_REQUEST_FILE
+    )
 }
 
 fn manual_runtime_refresh_request_contents() -> String {
@@ -626,10 +652,16 @@ fn settled_active_shell_state_lines(shell: &str, current: &RuntimeInputState) ->
 fn append_active_shell_env(
     envs: &mut Vec<(String, String)>,
     workspace: &Path,
+    profile: &RuntimeProfile,
     state: &RuntimeInputState,
 ) {
     set_env_value(envs, "ROBO_NIX_ACTIVE", "1".to_string());
     set_env_value(envs, "ROBO_NIX_ENV_NAME", "robo".to_string());
+    set_env_value(
+        envs,
+        RuntimeProfile::active_selector_env_name(),
+        profile.selector().to_string(),
+    );
     set_env_value(envs, "ROBO_NIX_PROMPT_PREFIX", "1".to_string());
     set_env_value(envs, "WORKSPACE_ROOT", workspace.display().to_string());
     set_env_value(envs, "ROBO_NIX_RUNTIME_INPUT_KEY", state.key.clone());
@@ -645,9 +677,13 @@ fn append_active_shell_env(
     );
 }
 
-fn append_refreshed_active_shell_env(envs: &mut Vec<(String, String)>, workspace: &Path) {
-    let state = runtime_input_state_for_env(workspace, envs);
-    append_active_shell_env(envs, workspace, &state);
+fn append_refreshed_active_shell_env(
+    envs: &mut Vec<(String, String)>,
+    workspace: &Path,
+    profile: &RuntimeProfile,
+) {
+    let state = runtime_input_state_for_env(workspace, envs, &profile);
+    append_active_shell_env(envs, workspace, profile, &state);
 }
 
 fn set_env_value(envs: &mut Vec<(String, String)>, name: &str, value: String) {
@@ -685,12 +721,10 @@ fn print_runtime_refresh_notice(
     changed: &[String],
     missing_store_paths: &[PathBuf],
 ) {
-    let manual_refresh_requested = changed
-        .iter()
-        .any(|path| path == MANUAL_REFRESH_REQUEST_INPUT);
+    let manual_refresh_requested = changed.iter().any(|path| is_manual_refresh_input(path));
     let changed_inputs = changed
         .iter()
-        .filter(|path| path.as_str() != MANUAL_REFRESH_REQUEST_INPUT)
+        .filter(|path| !is_manual_refresh_input(path))
         .collect::<Vec<_>>();
     let reason = if manual_refresh_requested
         && changed_inputs.is_empty()
@@ -708,7 +742,7 @@ fn print_runtime_refresh_notice(
     };
     status(config, &format!("{reason} in {}", workspace.display()));
     for path in changed {
-        if path == MANUAL_REFRESH_REQUEST_INPUT {
+        if is_manual_refresh_input(path) {
             row_err(config, "✓", "refresh", "requested manually");
         } else {
             row_err(
@@ -725,13 +759,17 @@ fn print_runtime_refresh_notice(
 }
 
 fn display_runtime_input_name(workspace: &Path, name: &str) -> String {
-    if name == MANUAL_REFRESH_REQUEST_INPUT {
+    if is_manual_refresh_input(name) {
         return "manual refresh request".to_string();
     }
     if name.starts_with("env:") {
         return name.to_string();
     }
     display_runtime_input_path(workspace, &workspace.join(name))
+}
+
+fn is_manual_refresh_input(name: &str) -> bool {
+    name.starts_with(".robo-nix/profiles/") && name.ends_with(MANUAL_REFRESH_REQUEST_FILE)
 }
 
 fn display_runtime_input_path(workspace: &Path, path: &Path) -> String {
@@ -797,12 +835,13 @@ fn managed_env_var_names(envs: &[(String, String)]) -> String {
 }
 
 fn managed_env_var_names_from_command_env(
+    profile: &RuntimeProfile,
     state: &RuntimeInputState,
     workspace: &Path,
     runtime_env: &[(String, String)],
 ) -> String {
     let mut envs = runtime_env.to_vec();
-    append_active_shell_env(&mut envs, workspace, state);
+    append_active_shell_env(&mut envs, workspace, profile, state);
     set_env_value(&mut envs, LAUNCH_RUNTIME_INPUT_SETTLE_ENV, "1".to_string());
     managed_env_var_names(&envs)
 }
@@ -863,13 +902,14 @@ mod tests {
         )
         .unwrap();
 
-        let before = runtime_input_state(&root);
+        let profile = RuntimeProfile::default();
+        let before = runtime_input_state(&root, &profile);
         fs::write(
             root.join("pyproject.toml"),
             "[project]\ndependencies = []\n",
         )
         .unwrap();
-        let after = runtime_input_state(&root);
+        let after = runtime_input_state(&root, &profile);
 
         assert_ne!(before.key, after.key);
         assert_eq!(
@@ -900,13 +940,14 @@ in
         .unwrap();
         fs::write(root.join("nix/runtime-libs.nix"), "pkgs: [ pkgs.assimp ]\n").unwrap();
 
-        let before = runtime_input_state(&root);
+        let profile = RuntimeProfile::default();
+        let before = runtime_input_state(&root, &profile);
         fs::write(
             root.join("nix/runtime-libs.nix"),
             "pkgs: [ pkgs.assimp pkgs.glfw ]\n",
         )
         .unwrap();
-        let after = runtime_input_state(&root);
+        let after = runtime_input_state(&root, &profile);
 
         assert_ne!(before.key, after.key);
         assert!(after
@@ -933,7 +974,7 @@ in
         .unwrap();
         fs::write(root.join("nix/runtime/default.nix"), "[ \"python-uv\" ]\n").unwrap();
 
-        let state = runtime_input_state(&root);
+        let state = runtime_input_state(&root, &RuntimeProfile::default());
 
         assert!(state
             .files
@@ -960,13 +1001,14 @@ in
         );
 
         record_observed_runtime_inputs(&root, stderr.as_bytes()).unwrap();
-        let before = runtime_input_state(&root);
+        let profile = RuntimeProfile::default();
+        let before = runtime_input_state(&root, &profile);
         fs::write(
             root.join("nix/runtime-libs.nix"),
             "pkgs: [ pkgs.assimp pkgs.glfw ]\n",
         )
         .unwrap();
-        let after = runtime_input_state(&root);
+        let after = runtime_input_state(&root, &profile);
 
         assert_ne!(before.key, after.key);
         assert!(after
@@ -982,19 +1024,19 @@ in
         let root = temp_project("runtime-key-manual-refresh");
         fs::create_dir_all(&root).unwrap();
         fs::write(root.join("robo.nix"), "{}").unwrap();
-        let before = runtime_input_state(&root);
+        let profile = RuntimeProfile::default();
+        let before = runtime_input_state(&root, &profile);
 
-        request_manual_runtime_refresh(&root).unwrap();
-        let requested = runtime_input_state(&root);
+        request_manual_runtime_refresh(&root, &profile).unwrap();
+        let requested = runtime_input_state(&root, &profile);
 
         assert_ne!(before.key, requested.key);
-        assert!(requested
-            .files
-            .iter()
-            .any(|(path, hash)| path == MANUAL_REFRESH_REQUEST_INPUT && hash != "missing"));
+        assert!(requested.files.iter().any(|(path, hash)| path
+            == &manual_runtime_refresh_request_input(&profile)
+            && hash != "missing"));
 
-        clear_manual_runtime_refresh_request(&root).unwrap();
-        let after = runtime_input_state(&root);
+        clear_manual_runtime_refresh_request(&root, &profile).unwrap();
+        let after = runtime_input_state(&root, &profile);
 
         assert_eq!(before.key, after.key);
         cleanup(root);
@@ -1066,7 +1108,8 @@ in
             "{ components = [ \"python-uv\" ]; }\n",
         )
         .unwrap();
-        let active_state = runtime_input_state(&root);
+        let profile = RuntimeProfile::default();
+        let active_state = runtime_input_state(&root, &profile);
         fs::write(
             root.join("nix/runtime-libs.nix"),
             "{ components = [ \"python-uv\" \"native-build\" ]; }\n",
@@ -1182,7 +1225,7 @@ printf '\000robo-nix-env-start\000PATH=/bin\000ROBO_NIX_COMPONENTS=python-uv\000
             ("ROBO_NIX_FAKE_NIX_ARGS", args_path.clone().into_os_string()),
         ]);
 
-        refreshed_shell_env(&root, test_config()).unwrap();
+        refreshed_shell_env(&root, &RuntimeProfile::default(), test_config()).unwrap();
 
         let args = fs::read_to_string(&args_path).unwrap();
         assert!(args.contains("develop\n"));
@@ -1220,6 +1263,7 @@ src = ./src;
                 "LD_LIBRARY_PATH".to_string(),
                 "/nix/store/runtime/lib".to_string(),
             )],
+            &RuntimeProfile::default(),
         );
 
         assert!(state.files.iter().any(|(name, value)| {
@@ -1263,7 +1307,7 @@ src = ./src;
             ("KEEP_ME".to_string(), "1".to_string()),
         ];
 
-        append_active_shell_env(&mut envs, &root, &state);
+        append_active_shell_env(&mut envs, &root, &RuntimeProfile::default(), &state);
 
         assert_eq!(
             env_value(&envs, "ROBO_NIX_RUNTIME_INPUT_KEY"),
@@ -1294,13 +1338,17 @@ src = ./src;
             "/nix/store/final-runtime/lib".to_string(),
         )];
 
-        append_refreshed_active_shell_env(&mut envs, &root);
+        append_refreshed_active_shell_env(&mut envs, &root, &RuntimeProfile::default());
 
         let files = env_value(&envs, "ROBO_NIX_RUNTIME_INPUT_FILES").unwrap();
         assert!(files.contains("env:LD_LIBRARY_PATH=/nix/store/final-runtime/lib"));
         assert_eq!(
             env_value(&envs, "ROBO_NIX_RUNTIME_INPUT_KEY"),
-            Some(runtime_input_state_for_env(&root, &envs).key.as_str())
+            Some(
+                runtime_input_state_for_env(&root, &envs, &RuntimeProfile::default())
+                    .key
+                    .as_str()
+            )
         );
 
         cleanup(root);
@@ -1318,6 +1366,7 @@ src = ./src;
         set_active_shell_env(
             &mut command,
             &root,
+            &RuntimeProfile::named("driver".to_string()).unwrap(),
             &state,
             &[("LD_LIBRARY_PATH".to_string(), "/nix/store/lib".to_string())],
         );
@@ -1337,6 +1386,13 @@ src = ./src;
             })
             .unwrap()
             .contains(LAUNCH_RUNTIME_INPUT_SETTLE_ENV));
+        assert_eq!(
+            command.get_envs().find_map(|(name, value)| {
+                (name == RuntimeProfile::active_selector_env_name())
+                    .then(|| value.unwrap().to_string_lossy().into_owned())
+            }),
+            Some("driver".to_string())
+        );
     }
 
     #[test]

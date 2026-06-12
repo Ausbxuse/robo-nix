@@ -6,7 +6,8 @@ or Python package resolver.
 
 ## Runtime Flow
 
-`robo shell` and `robo run [--] <command>` share the same preparation path:
+`robo shell [--profile <name>]` and
+`robo run [--profile <name>] [--] <command>` share the same preparation path:
 
 1. Read `.python-version`. Missing or empty files are hard errors.
 2. Create `.robo-nix/` if needed.
@@ -120,7 +121,8 @@ Important shell behavior:
 
 - `UV_PYTHON` points at the Nix-managed CPython.
 - `UV_PYTHON_DOWNLOADS=never` prevents uv from downloading another Python.
-- `UV_PROJECT_ENVIRONMENT` defaults to `$PWD/.venv`.
+- `UV_PROJECT_ENVIRONMENT` defaults to `$PWD/.venv` for legacy manifests and
+  `$PWD/.robo-nix/venvs/<profile>` for profile-based manifests.
 - The `python-uv` component wraps `uv pip install` so ad hoc installs target
   `$UV_PROJECT_ENVIRONMENT/bin/python` when that venv exists and no explicit
   uv target was provided.
@@ -178,7 +180,6 @@ Refresh fingerprints these runtime inputs:
 - `pyproject.toml`
 - `uv.lock`
 - `robo.nix`
-- `.venv/bin/python`
 
 When the fingerprint changes, refresh runs the same Nix environment capture,
 exports the refreshed environment into the current shell, and updates the active
@@ -186,14 +187,18 @@ fingerprint state. It reports changed paths. It does not run `uv sync`, migrate
 the shell process, or rewrite `robo.nix`.
 
 `robo shell` and `robo run` cache the captured Nix runtime environment under
-`.robo-nix/` by the same runtime input key. Cache hits skip `nix develop` after
-verifying referenced `/nix/store` paths still exist. Active shell fingerprints
-are computed from the final launched environment so prompt refresh does not
-immediately re-run after host CUDA or library path preparation.
+`.robo-nix/profiles/<profile>/` by the same runtime input key. Cache hits skip
+`nix develop` after verifying referenced `/nix/store` paths still exist. Active
+shell fingerprints are computed from the final launched environment so prompt
+refresh does not immediately re-run after host CUDA or library path preparation.
+Profile-based manifests also default `UV_PROJECT_ENVIRONMENT` to
+`.robo-nix/venvs/<profile>/`, keeping uv-owned virtualenv contents separate
+between runtime profiles.
 
-`robo refresh` removes robo-owned `.robo-nix/` state. In an active runtime
-shell, it writes a manual refresh request that is part of the runtime input key;
-the prompt hook consumes that request after a successful environment refresh.
+`robo refresh` removes robo-owned state for the selected runtime profile. In an
+active runtime shell, it writes a profile-scoped manual refresh request that is
+part of the runtime input key; the prompt hook consumes that request after a
+successful environment refresh.
 
 ## Changelog
 

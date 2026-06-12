@@ -40,19 +40,77 @@ headers:
 
 ```nix
 {
-  components = [
-    "python-uv"
-    "native-build"
-    "linux-headers"
-  ];
+  defaultProfile = "default";
 
-  extraPackages = pkgs: [
-  ];
+  profiles = {
+    default = {
+      components = [
+        "python-uv"
+        "native-build"
+        "linux-headers"
+      ];
 
-  extraRuntimeLibraries = pkgs: [
-  ];
+      pythonExtras = [];
+      pythonGroups = [];
+
+      extraPackages = pkgs: [
+      ];
+
+      extraRuntimeLibraries = pkgs: [
+      ];
+    };
+  };
 }
 ```
+
+## Runtime profiles
+
+Use profiles when one workspace contains multiple deployable runtime surfaces.
+Each profile is a complete runtime manifest inside the same `robo.nix`:
+
+```nix
+{
+  defaultProfile = "workstation";
+
+  profiles = {
+    workstation = {
+      components = [ "python-uv" "native-build" "linux-headers" "desktop-gl" ];
+      pythonExtras = [ "workstation" ];
+      pythonGroups = [ "dev" ];
+      hostGraphics = "auto";
+    };
+
+    tianji-driver = {
+      components = [ "python-uv" "native-build" "linux-headers" ];
+      pythonExtras = [ "tianji-driver" ];
+      pythonGroups = [];
+      hostGraphics = null;
+    };
+  };
+}
+```
+
+`robo shell` uses `defaultProfile`. Select another runtime profile explicitly:
+
+```bash
+robo shell --profile tianji-driver
+robo run --profile tianji-driver -- python -m dexmate.driver
+robo refresh --profile tianji-driver
+```
+
+For profile-based manifests, robo sets `UV_PROJECT_ENVIRONMENT` to
+`.robo-nix/venvs/<profile>/`. That keeps installed Python environments
+decoupled, so syncing the driver profile does not overwrite workstation
+packages.
+
+`pythonExtras` and `pythonGroups` are uv sync policy. Robo does not resolve
+Python packages or edit `uv.lock`; it exports defaults through the uv wrapper so
+plain `uv sync --locked` inside a runtime shell uses the selected profile's
+extras and groups. Passing explicit uv flags such as `--extra`, `--group`, or
+`--no-default-groups` overrides those defaults for that command.
+
+The examples below show profile bodies. Put them under `profiles.<name>` in
+`robo.nix`.
 
 ## Example: simulator or desktop window
 

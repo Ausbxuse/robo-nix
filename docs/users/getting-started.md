@@ -9,8 +9,8 @@ dependency groups, lockfiles, and virtualenv sync.
   normal interactive shell with a `[robo]` prompt prefix.
 - On first use, `robo shell` may create `flake.nix`, `robo.nix`, and
   `.robo-nix/`. After that, `robo.nix` is yours to edit.
-- `robo run [--] <command> [args...]` uses the same runtime preparation path
-  for one command without keeping a shell open.
+- `robo run [--profile <name>] [--] <command> [args...]` uses the same runtime
+  preparation path for one command without keeping a shell open.
 - `robo search <library>` helps find Nix package candidates for missing shared
   libraries, such as `libassimp.so`. It only prints suggestions.
 - `robo refresh` clears robo-owned runtime state under `.robo-nix/`. In an
@@ -18,8 +18,8 @@ dependency groups, lockfiles, and virtualenv sync.
 - `robo --help`, `robo --version`, and `robo -V` are available as standard CLI
   utilities.
 - Active `robo shell` sessions refresh at the next prompt when runtime inputs
-  change. This includes `flake.nix`, `flake.lock`, `.python-version`,
-  `pyproject.toml`, `uv.lock`, `robo.nix`, the default `.venv/bin/python`, and
+  change. This includes the selected runtime profile, `flake.nix`,
+  `flake.lock`, `.python-version`, `pyproject.toml`, `uv.lock`, `robo.nix`, and
   local `.nix` files imported by `robo.nix` or the project flake.
 - Refreshing exports a re-evaluated shell environment. It does not run
   `uv sync` and does not rewrite `robo.nix`.
@@ -105,7 +105,10 @@ uv sync
 ```
 
 Run `uv sync` inside the prepared shell so native Python extensions can see the
-runtime libraries and headers exposed by Nix.
+runtime libraries and headers exposed by Nix. In profile-based projects, robo
+sets `UV_PROJECT_ENVIRONMENT` to a profile-specific virtualenv under
+`.robo-nix/venvs/<profile>/`, so different runtime profiles can stay installed
+side by side.
 
 ## 5. Adjust runtime components
 
@@ -116,19 +119,62 @@ For example, a project using `evdev` and GLFW-style windows usually needs:
 
 ```nix
 {
-  components = [
-    "python-uv"
-    "native-build"
-    "linux-headers"
-    "desktop-gl"
-  ];
+  defaultProfile = "default";
 
-  extraPackages = pkgs: [
-  ];
+  profiles = {
+    default = {
+      components = [
+        "python-uv"
+        "native-build"
+        "linux-headers"
+        "desktop-gl"
+      ];
 
-  extraRuntimeLibraries = pkgs: [
-  ];
+      pythonExtras = [];
+      pythonGroups = [];
+
+      extraPackages = pkgs: [
+      ];
+
+      extraRuntimeLibraries = pkgs: [
+      ];
+
+      hostGraphics = "auto";
+    };
+  };
 }
+```
+
+Projects that contain multiple deployable surfaces can define more profiles in
+the same `robo.nix`:
+
+```nix
+{
+  defaultProfile = "workstation";
+
+  profiles = {
+    workstation = {
+      components = [ "python-uv" "native-build" "linux-headers" "desktop-gl" ];
+      pythonExtras = [ "workstation" ];
+      pythonGroups = [ "dev" ];
+      hostGraphics = "auto";
+    };
+
+    tianji-driver = {
+      components = [ "python-uv" "native-build" "linux-headers" ];
+      pythonExtras = [ "tianji-driver" ];
+      pythonGroups = [];
+      hostGraphics = null;
+    };
+  };
+}
+```
+
+Use a non-default profile with:
+
+```bash
+robo shell --profile tianji-driver
+uv sync --locked
 ```
 
 If runtime inputs change while `robo shell` is open, the prompt hook refreshes
@@ -144,7 +190,7 @@ robo search libassimp.so
 Use one command inside the runtime without staying in an interactive shell:
 
 ```bash
-robo run [--] <command> [args...]
+robo run [--profile <name>] [--] <command> [args...]
 ```
 
 Use the optional `--` when the command name starts with `-`. Any later `--`

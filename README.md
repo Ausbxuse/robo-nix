@@ -103,7 +103,7 @@ Prepares the runtime and launches your default interactive shell with a
 `[robo]` prompt prefix.
 
 ```bash
-robo run [--] <command> [args...]
+robo run [--profile <name>] [--] <command> [args...]
 ```
 
 Runs one command inside the prepared runtime without opening an interactive

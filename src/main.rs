@@ -12,6 +12,7 @@ mod error;
 mod host_cuda;
 mod inference;
 mod nix_env;
+mod profile;
 mod project_lock;
 mod refresh;
 mod search;
@@ -26,6 +27,7 @@ use inference::dependency_evidence_from_pyproject;
 use nix_env::{
     apply_env, cache_runtime_environment, prefetch_runtime_input_outputs, runtime_environment,
 };
+use profile::{parse_profile_option, RuntimeProfile};
 use shell_launch::interactive_shell_launch;
 use shell_refresh::{runtime_input_state, runtime_input_state_for_env, set_active_shell_env};
 use ui::{attention, debug, detail, help_row, list_item, section, status, Config};
@@ -86,7 +88,7 @@ fn run(args: Vec<OsString>, config: Config) -> Result<ExitCode, AppError> {
         "__runtime-prefetch" => {
             let workspace = env::current_dir()
                 .map_err(|err| AppError::project(format!("failed to determine workspace: {err}")))?;
-            prefetch_runtime_input_outputs(&workspace)?;
+            prefetch_runtime_input_outputs(&workspace, &RuntimeProfile::from_active_env())?;
             Ok(ExitCode::SUCCESS)
         }
         "-h" | "--help" | "help" => {
@@ -111,10 +113,14 @@ fn run(args: Vec<OsString>, config: Config) -> Result<ExitCode, AppError> {
 
 fn print_usage(config: Config) {
     section(config, "usage");
-    help_row(config, "robo shell", "open an interactive runtime shell");
     help_row(
         config,
-        "robo run [--] <command>",
+        "robo shell [--profile <name>]",
+        "open an interactive runtime shell",
+    );
+    help_row(
+        config,
+        "robo run [--profile <name>] [--] <command>",
         "run a command inside the prepared runtime",
     );
     help_row(
@@ -124,7 +130,7 @@ fn print_usage(config: Config) {
     );
     help_row(
         config,
-        "robo refresh",
+        "robo refresh [--profile <name>]",
         "clear runtime state and refresh the active shell",
     );
 
@@ -152,6 +158,7 @@ fn print_usage(config: Config) {
 }
 
 fn shell_command(args: Vec<OsString>, config: Config) -> Result<ExitCode, AppError> {
+    let (profile, args) = parse_profile_option(args)?;
     if !args.is_empty() {
         return Err(AppError::user(
             "shell does not accept arguments; use `robo run` for commands",
@@ -160,7 +167,7 @@ fn shell_command(args: Vec<OsString>, config: Config) -> Result<ExitCode, AppErr
     if env::var_os("ROBO_NIX_ACTIVE").is_some() {
         return Err(nested_shell_error());
     }
-    run_nix_develop(Vec::new(), config)
+    run_nix_develop(Vec::new(), profile, config)
 }
 
 fn nested_shell_error() -> AppError {
@@ -169,7 +176,8 @@ fn nested_shell_error() -> AppError {
 }
 
 fn run_command(args: Vec<OsString>, config: Config) -> Result<ExitCode, AppError> {
-    run_nix_develop(normalize_run_args(args)?, config)
+    let (profile, args) = parse_profile_option(args)?;
+    run_nix_develop(normalize_run_args(args)?, profile, config)
 }
 
 fn normalize_run_args(mut args: Vec<OsString>) -> Result<Vec<OsString>, AppError> {
@@ -187,14 +195,18 @@ fn normalize_run_args(mut args: Vec<OsString>) -> Result<Vec<OsString>, AppError
     Ok(args)
 }
 
-fn run_nix_develop(command_args: Vec<OsString>, config: Config) -> Result<ExitCode, AppError> {
+fn run_nix_develop(
+    command_args: Vec<OsString>,
+    profile: RuntimeProfile,
+    config: Config,
+) -> Result<ExitCode, AppError> {
     let phase = if command_args.is_empty() {
         "shell"
     } else {
         "run"
     };
     let workspace = workspace_root()?;
-    let mut run_report = LastRunReport::new(phase, &workspace, &command_args);
+    let mut run_report = LastRunReport::new(phase, &workspace, &command_args, &profile);
 
     let report = match prepare_project(&workspace) {
         Ok(report) => report,
@@ -232,16 +244,17 @@ fn run_nix_develop(command_args: Vec<OsString>, config: Config) -> Result<ExitCo
     run_report.dependencies = dependency_facts(&workspace);
     print_bootstrap_report(config, &report);
 
-    let cache_state = runtime_input_state(&workspace);
-    let mut runtime_env = match runtime_environment(config, phase, &workspace, cache_state.key()) {
-        Ok(runtime_env) => runtime_env,
-        Err(error) => {
-            run_report.errors.push(error_fact(&error));
-            write_last_run_report(config, &workspace, &run_report);
-            return Err(error);
-        }
-    };
-    let post_nix_state = runtime_input_state(&workspace);
+    let cache_state = runtime_input_state(&workspace, &profile);
+    let mut runtime_env =
+        match runtime_environment(config, phase, &workspace, &profile, cache_state.key()) {
+            Ok(runtime_env) => runtime_env,
+            Err(error) => {
+                run_report.errors.push(error_fact(&error));
+                write_last_run_report(config, &workspace, &run_report);
+                return Err(error);
+            }
+        };
+    let post_nix_state = runtime_input_state(&workspace, &profile);
     let cuda_report = append_host_cuda_driver_bridge(&mut runtime_env, &workspace);
     run_report
         .host_probes
@@ -262,7 +275,7 @@ fn run_nix_develop(command_args: Vec<OsString>, config: Config) -> Result<ExitCo
             debug(config, &line);
         }
     }
-    cache_runtime_environment(&workspace, post_nix_state.key(), &runtime_env);
+    cache_runtime_environment(&workspace, &profile, post_nix_state.key(), &runtime_env);
     if let Some(components) = runtime_env_value(&runtime_env, "ROBO_NIX_COMPONENTS") {
         run_report.components = components
             .split(':')
@@ -283,7 +296,7 @@ fn run_nix_develop(command_args: Vec<OsString>, config: Config) -> Result<ExitCo
     write_last_run_report(config, &workspace, &run_report);
 
     let mut command = if command_args.is_empty() {
-        shell_launch_command(config, &runtime_env, &workspace)?
+        shell_launch_command(config, &runtime_env, &workspace, &profile)?
     } else {
         run_launch_command(command_args, &runtime_env)?
     };
@@ -312,6 +325,7 @@ fn shell_launch_command(
     config: Config,
     runtime_env: &[(String, String)],
     workspace: &Path,
+    profile: &RuntimeProfile,
 ) -> Result<Command, AppError> {
     let launch = interactive_shell_launch().ok_or_else(|| {
         AppError::project("could not determine an interactive shell to launch")
@@ -328,7 +342,8 @@ fn shell_launch_command(
     set_active_shell_env(
         &mut command,
         workspace,
-        &runtime_input_state_for_env(workspace, runtime_env),
+        profile,
+        &runtime_input_state_for_env(workspace, runtime_env, profile),
         runtime_env,
     );
     Ok(command)
@@ -376,6 +391,7 @@ struct LastRunReport {
     timestamp_unix: u64,
     command: String,
     workspace: String,
+    profile: Option<String>,
     python_version: Option<String>,
     dependencies: Vec<String>,
     components: Vec<String>,
@@ -387,7 +403,12 @@ struct LastRunReport {
 }
 
 impl LastRunReport {
-    fn new(phase: &str, workspace: &Path, command_args: &[OsString]) -> Self {
+    fn new(
+        phase: &str,
+        workspace: &Path,
+        command_args: &[OsString],
+        profile: &RuntimeProfile,
+    ) -> Self {
         let command = if command_args.is_empty() {
             phase.to_string()
         } else {
@@ -408,6 +429,7 @@ impl LastRunReport {
                 .unwrap_or_default(),
             command,
             workspace: workspace.display().to_string(),
+            profile: profile.requested().map(str::to_string),
             python_version: None,
             dependencies: Vec::new(),
             components: Vec::new(),
@@ -428,6 +450,10 @@ impl LastRunReport {
         text.push_str(&format!(
             "  \"workspace\": {},\n",
             json_string(&self.workspace)
+        ));
+        text.push_str(&format!(
+            "  \"profile\": {},\n",
+            json_optional_string(self.profile.as_deref())
         ));
         text.push_str(&format!(
             "  \"python_version\": {},\n",
@@ -811,7 +837,12 @@ mod tests {
         let workspace = env::temp_dir().join(format!("robo-last-run-test-{}", std::process::id()));
         let _ = fs::remove_dir_all(&workspace);
         fs::create_dir_all(&workspace).unwrap();
-        let mut report = LastRunReport::new("run", &workspace, &[OsString::from("python")]);
+        let mut report = LastRunReport::new(
+            "run",
+            &workspace,
+            &[OsString::from("python")],
+            &RuntimeProfile::named("driver".to_string()).unwrap(),
+        );
         report.python_version = Some("3.11".to_string());
         report
             .dependencies
@@ -830,6 +861,7 @@ mod tests {
 
         assert!(json.contains("\"schema_version\": 2"));
         assert!(json.contains("\"command\": \"run python\""));
+        assert!(json.contains("\"profile\": \"driver\""));
         assert!(json.contains("\"host_probes\": [{\"name\": \"host-cuda\""));
         assert!(json.contains("\"env_names\": [\"PATH\"]"));
         assert!(!json.contains("LD_LIBRARY_PATH="));
@@ -847,6 +879,7 @@ mod tests {
                 OsString::from("-c"),
                 OsString::from("secret"),
             ],
+            &RuntimeProfile::default(),
         );
 
         assert_eq!(report.command, "run python");

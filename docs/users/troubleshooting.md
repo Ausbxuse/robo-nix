@@ -1,6 +1,7 @@
 # Troubleshooting
 
-The primary diagnostics surface is `robo shell` or `robo run [--] <command>`.
+The primary diagnostics surface is `robo shell` or
+`robo run [--profile <name>] [--] <command>`.
 Every runtime attempt writes `.robo-nix/last-run.json` with redacted facts such
 as dependency evidence, selected components, decision lines, host probe
 summaries, and environment variable names. When project setup fails, `robo` also
@@ -162,7 +163,7 @@ directly when a project needs another component.
 
 Active `robo shell` sessions check runtime input files at the next prompt. When
 `flake.nix`, `flake.lock`, `.python-version`, `pyproject.toml`, `uv.lock`,
-`robo.nix`, the default `.venv/bin/python`, or a local `.nix` file imported by
+`robo.nix`, the selected runtime profile, or a local `.nix` file imported by
 `robo.nix` or the project flake changes, `robo` re-evaluates the shell and
 exports refreshed environment variables into the current shell.
 

@@ -6,22 +6,30 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use crate::error::AppError;
+use crate::profile::{parse_profile_option, RuntimeProfile};
 use crate::shell_refresh::request_manual_runtime_refresh;
 use crate::ui::{status, Config};
 
 pub(crate) fn run(args: Vec<OsString>, config: Config) -> Result<ExitCode, AppError> {
+    let (mut profile, args) = parse_profile_option(args)?;
     if !args.is_empty() {
         return Err(AppError::user(
-            "refresh does not accept arguments; run `robo refresh`",
+            "refresh does not accept arguments; run `robo refresh [--profile <name>]`",
         ));
     }
 
     let workspace = refresh_workspace_root()?;
-    clear_robo_state(&workspace)?;
-    status(config, "cleared .robo-nix runtime state");
+    if env::var_os("ROBO_NIX_ACTIVE").is_some() && profile.requested().is_none() {
+        profile = RuntimeProfile::from_active_env();
+    }
+    clear_robo_state(&workspace, &profile)?;
+    status(
+        config,
+        &format!("cleared {} runtime state", profile_status_name(&profile)),
+    );
 
     if env::var_os("ROBO_NIX_ACTIVE").is_some() {
-        request_manual_runtime_refresh(&workspace).map_err(|err| {
+        request_manual_runtime_refresh(&workspace, &profile).map_err(|err| {
             AppError::project(format!("failed to request active shell refresh: {err}")).with_hint(
                 "the runtime state was cleared; run `robo refresh` again or start a new `robo shell`.",
             )
@@ -44,8 +52,8 @@ fn refresh_workspace_root() -> Result<PathBuf, AppError> {
         .map_err(|err| AppError::project(format!("failed to determine workspace root: {err}")))
 }
 
-fn clear_robo_state(workspace: &Path) -> Result<(), AppError> {
-    let state_dir = workspace.join(".robo-nix");
+fn clear_robo_state(workspace: &Path, profile: &RuntimeProfile) -> Result<(), AppError> {
+    let state_dir = profile.state_dir(workspace);
     let metadata = match fs::symlink_metadata(&state_dir) {
         Ok(metadata) => metadata,
         Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(()),
@@ -69,6 +77,13 @@ fn clear_robo_state(workspace: &Path) -> Result<(), AppError> {
     })
 }
 
+fn profile_status_name(profile: &RuntimeProfile) -> String {
+    match profile.requested() {
+        Some(name) => format!("profile `{name}`"),
+        None => "default profile".to_string(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -76,12 +91,13 @@ mod tests {
     #[test]
     fn clear_robo_state_removes_runtime_state_directory() {
         let root = temp_project("refresh-clear-state");
-        fs::create_dir_all(root.join(".robo-nix/nested")).unwrap();
-        fs::write(root.join(".robo-nix/nested/cache"), "cached").unwrap();
+        let state_dir = RuntimeProfile::default().state_dir(&root);
+        fs::create_dir_all(state_dir.join("nested")).unwrap();
+        fs::write(state_dir.join("nested/cache"), "cached").unwrap();
 
-        clear_robo_state(&root).unwrap();
+        clear_robo_state(&root, &RuntimeProfile::default()).unwrap();
 
-        assert!(!root.join(".robo-nix").exists());
+        assert!(!RuntimeProfile::default().state_dir(&root).exists());
         cleanup(root);
     }
 
@@ -89,7 +105,7 @@ mod tests {
     fn clear_robo_state_allows_absent_state_directory() {
         let root = temp_project("refresh-clear-absent");
 
-        clear_robo_state(&root).unwrap();
+        clear_robo_state(&root, &RuntimeProfile::default()).unwrap();
 
         cleanup(root);
     }

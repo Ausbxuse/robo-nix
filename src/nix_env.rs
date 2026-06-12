@@ -8,6 +8,7 @@ use std::process::Command;
 use serde_json::Value;
 
 use crate::error::AppError;
+use crate::profile::RuntimeProfile;
 use crate::ui::{
     output_cached_tree, output_with_tree_command_steps, output_with_tree_steps,
     CommandProgressStep, Config, ProgressStep,
@@ -73,6 +74,14 @@ fn remove_runtime_library_env(command: &mut Command) {
     command.env_remove("LD_LIBRARY_PATH");
 }
 
+pub(crate) fn apply_profile_env(command: &mut Command, profile: &RuntimeProfile) {
+    if let Some(profile) = profile.requested() {
+        command.env("ROBO_NIX_PROFILE", profile);
+    } else {
+        command.env_remove("ROBO_NIX_PROFILE");
+    }
+}
+
 fn append_robo_nix_cache_options(command: &mut Command) -> &mut Command {
     for (name, value) in ROBO_NIX_CACHE_OPTIONS {
         command.arg("--option").arg(name).arg(value);
@@ -84,9 +93,10 @@ pub(crate) fn runtime_environment(
     config: Config,
     phase: &str,
     workspace: &Path,
+    profile: &RuntimeProfile,
     cache_key: &str,
 ) -> Result<Vec<(String, String)>, AppError> {
-    let cache = read_runtime_env_cache(workspace, cache_key);
+    let cache = read_runtime_env_cache(workspace, profile, cache_key);
     match cache {
         RuntimeEnvCache::Hit(mut envs) => {
             output_cached_tree(config, "runtime cache");
@@ -98,14 +108,15 @@ pub(crate) fn runtime_environment(
                 crate::ui::debug(config, &format!("runtime cache {}", reason.detail()));
             }
             if config.debug {
-                if let Some(estimate) = estimate_runtime_disk_size(workspace) {
+                if let Some(estimate) = estimate_runtime_disk_size(workspace, profile) {
                     crate::ui::status(config, &estimate.status_line(phase));
                 }
             }
 
             let flake_ref = workspace_flake_ref(workspace);
-            let mut prefetch_command = runtime_prefetch_command(workspace);
+            let mut prefetch_command = runtime_prefetch_command(workspace, profile);
             let mut command = nix_command();
+            apply_profile_env(&mut command, profile);
             command
                 .current_dir(workspace)
                 .arg("--log-format")
@@ -202,8 +213,11 @@ impl RuntimeDiskEstimate {
     }
 }
 
-fn estimate_runtime_disk_size(workspace: &Path) -> Option<RuntimeDiskEstimate> {
-    let derivation = runtime_shell_derivation(workspace)?;
+fn estimate_runtime_disk_size(
+    workspace: &Path,
+    profile: &RuntimeProfile,
+) -> Option<RuntimeDiskEstimate> {
+    let derivation = runtime_shell_derivation(workspace, profile)?;
     let requisites = runtime_shell_requisites(workspace, &derivation)?;
     let mut paths = requisites
         .lines()
@@ -237,8 +251,9 @@ fn estimate_runtime_disk_size(workspace: &Path) -> Option<RuntimeDiskEstimate> {
     })
 }
 
-fn runtime_shell_derivation(workspace: &Path) -> Option<String> {
+fn runtime_shell_derivation(workspace: &Path, profile: &RuntimeProfile) -> Option<String> {
     let mut current_system_command = nix_command();
+    apply_profile_env(&mut current_system_command, profile);
     current_system_command
         .current_dir(workspace)
         .arg("eval")
@@ -255,6 +270,7 @@ fn runtime_shell_derivation(workspace: &Path) -> Option<String> {
     let flake_ref = workspace_flake_ref(workspace);
     let dev_shell_attr = format!("{flake_ref}#devShells.{current_system}.default");
     let mut derivation_command = nix_command();
+    apply_profile_env(&mut derivation_command, profile);
     derivation_command
         .current_dir(workspace)
         .arg("path-info")
@@ -281,15 +297,19 @@ fn runtime_shell_requisites(workspace: &Path, derivation: &str) -> Option<String
     command_stdout(&mut requisites_command)
 }
 
-fn runtime_prefetch_command(workspace: &Path) -> Option<Command> {
+fn runtime_prefetch_command(workspace: &Path, profile: &RuntimeProfile) -> Option<Command> {
     let executable = env::current_exe().ok()?;
     let mut command = Command::new(executable);
     command.current_dir(workspace).arg("__runtime-prefetch");
+    apply_profile_env(&mut command, profile);
     Some(command)
 }
 
-pub(crate) fn prefetch_runtime_input_outputs(workspace: &Path) -> Result<(), AppError> {
-    let Some(mut command) = runtime_input_output_prefetch_command(workspace) else {
+pub(crate) fn prefetch_runtime_input_outputs(
+    workspace: &Path,
+    profile: &RuntimeProfile,
+) -> Result<(), AppError> {
+    let Some(mut command) = runtime_input_output_prefetch_command(workspace, profile) else {
         return Ok(());
     };
     let _ = command
@@ -298,8 +318,11 @@ pub(crate) fn prefetch_runtime_input_outputs(workspace: &Path) -> Result<(), App
     Ok(())
 }
 
-fn runtime_input_output_prefetch_command(workspace: &Path) -> Option<Command> {
-    let Some(derivation) = runtime_shell_derivation(workspace) else {
+fn runtime_input_output_prefetch_command(
+    workspace: &Path,
+    profile: &RuntimeProfile,
+) -> Option<Command> {
+    let Some(derivation) = runtime_shell_derivation(workspace, profile) else {
         return None;
     };
     let Some(installables) = runtime_input_output_installables(workspace, &derivation) else {
@@ -310,6 +333,7 @@ fn runtime_input_output_prefetch_command(workspace: &Path) -> Option<Command> {
     }
 
     let mut command = nix_command();
+    apply_profile_env(&mut command, profile);
     command
         .current_dir(workspace)
         .arg("--option")
@@ -449,11 +473,12 @@ fn human_bytes(bytes: u64) -> String {
 
 pub(crate) fn cache_runtime_environment(
     workspace: &Path,
+    profile: &RuntimeProfile,
     cache_key: &str,
     envs: &[(String, String)],
 ) {
     let cache_envs = cacheable_runtime_env(envs);
-    let _ = write_runtime_env_cache(workspace, cache_key, &cache_envs);
+    let _ = write_runtime_env_cache(workspace, profile, cache_key, &cache_envs);
 }
 
 pub(crate) fn parse_env_zero(bytes: &[u8]) -> Result<Vec<(String, String)>, String> {
@@ -522,8 +547,12 @@ impl RuntimeCacheMiss {
     }
 }
 
-fn read_runtime_env_cache(workspace: &Path, cache_key: &str) -> RuntimeEnvCache {
-    let Ok(bytes) = fs::read(runtime_env_cache_path(workspace)) else {
+fn read_runtime_env_cache(
+    workspace: &Path,
+    profile: &RuntimeProfile,
+    cache_key: &str,
+) -> RuntimeEnvCache {
+    let Ok(bytes) = fs::read(runtime_env_cache_path(workspace, profile)) else {
         return RuntimeEnvCache::Miss(RuntimeCacheMiss::Missing);
     };
     let Some((magic, rest)) = split_once_byte(&bytes, b'\n') else {
@@ -550,12 +579,13 @@ fn read_runtime_env_cache(workspace: &Path, cache_key: &str) -> RuntimeEnvCache 
 
 fn write_runtime_env_cache(
     workspace: &Path,
+    profile: &RuntimeProfile,
     cache_key: &str,
     envs: &[(String, String)],
 ) -> io::Result<()> {
-    let state_dir = workspace.join(".robo-nix");
+    let state_dir = profile.state_dir(workspace);
     fs::create_dir_all(&state_dir)?;
-    let cache_path = runtime_env_cache_path(workspace);
+    let cache_path = runtime_env_cache_path(workspace, profile);
     let tmp_path = state_dir.join(format!(
         "{RUNTIME_ENV_CACHE_FILE}.tmp-{}",
         std::process::id()
@@ -581,8 +611,8 @@ fn write_runtime_env_cache(
     fs::rename(tmp_path, cache_path)
 }
 
-fn runtime_env_cache_path(workspace: &Path) -> PathBuf {
-    workspace.join(".robo-nix").join(RUNTIME_ENV_CACHE_FILE)
+fn runtime_env_cache_path(workspace: &Path, profile: &RuntimeProfile) -> PathBuf {
+    profile.state_dir(workspace).join(RUNTIME_ENV_CACHE_FILE)
 }
 
 fn split_once_byte(bytes: &[u8], needle: u8) -> Option<(&[u8], &[u8])> {
@@ -795,7 +825,8 @@ mod tests {
     #[test]
     fn runtime_env_cache_round_trips_nul_environment() {
         let root = temp_project("runtime-env-cache");
-        fs::create_dir_all(root.join(".robo-nix")).unwrap();
+        let profile = RuntimeProfile::default();
+        fs::create_dir_all(profile.state_dir(&root)).unwrap();
         let envs = vec![
             ("PATH".to_string(), "/bin".to_string()),
             (
@@ -804,14 +835,14 @@ mod tests {
             ),
         ];
 
-        write_runtime_env_cache(&root, "cache-key", &envs).unwrap();
+        write_runtime_env_cache(&root, &profile, "cache-key", &envs).unwrap();
 
         assert_eq!(
-            read_runtime_env_cache(&root, "cache-key"),
+            read_runtime_env_cache(&root, &profile, "cache-key"),
             RuntimeEnvCache::Hit(envs)
         );
         assert_eq!(
-            read_runtime_env_cache(&root, "other-key"),
+            read_runtime_env_cache(&root, &profile, "other-key"),
             RuntimeEnvCache::Miss(RuntimeCacheMiss::StaleInputs)
         );
 
@@ -821,17 +852,18 @@ mod tests {
     #[test]
     fn runtime_env_cache_reports_miss_reasons() {
         let root = temp_project("runtime-env-cache-reasons");
+        let profile = RuntimeProfile::default();
 
         assert_eq!(
-            read_runtime_env_cache(&root, "cache-key"),
+            read_runtime_env_cache(&root, &profile, "cache-key"),
             RuntimeEnvCache::Miss(RuntimeCacheMiss::Missing)
         );
 
-        fs::create_dir_all(root.join(".robo-nix")).unwrap();
-        fs::write(runtime_env_cache_path(&root), "bad-cache").unwrap();
+        fs::create_dir_all(profile.state_dir(&root)).unwrap();
+        fs::write(runtime_env_cache_path(&root, &profile), "bad-cache").unwrap();
 
         assert_eq!(
-            read_runtime_env_cache(&root, "cache-key"),
+            read_runtime_env_cache(&root, &profile, "cache-key"),
             RuntimeEnvCache::Miss(RuntimeCacheMiss::FormatChanged)
         );
 
