@@ -30,8 +30,11 @@ use nix_env::{
 };
 use profile::{parse_profile_option, RuntimeProfile};
 use shell_launch::interactive_shell_launch;
-use shell_refresh::{runtime_input_state, runtime_input_state_for_env, set_active_shell_env};
-use ui::{attention, debug, detail, help_row, list_item, section, status, Config};
+use shell_refresh::{
+    request_active_profile_switch, runtime_input_state, runtime_input_state_for_env,
+    set_active_shell_env,
+};
+use ui::{attention, debug, detail, help_row, list_item, row, section, status, Config};
 
 fn main() -> ExitCode {
     let config = ui_config();
@@ -172,14 +175,54 @@ fn shell_command(args: Vec<OsString>, config: Config) -> Result<ExitCode, AppErr
         ));
     }
     if env::var_os("ROBO_NIX_ACTIVE").is_some() {
+        if profile.requested().is_some() {
+            return request_active_shell_profile_switch(&profile, config);
+        }
         return Err(nested_shell_error());
     }
     run_nix_develop(Vec::new(), profile, config)
 }
 
+fn request_active_shell_profile_switch(
+    profile: &RuntimeProfile,
+    config: Config,
+) -> Result<ExitCode, AppError> {
+    let workspace = active_shell_workspace_root()?;
+    request_active_profile_switch(&workspace, profile).map_err(|err| {
+        AppError::project(format!(
+            "failed to request active shell profile switch: {err}"
+        ))
+        .with_hint(
+            "the current shell is still usable; run `robo refresh --profile <name>` or start a new `robo shell --profile <name>`.",
+        )
+    })?;
+
+    section(config, "shell");
+    row(
+        config,
+        "✓",
+        "requested",
+        &format!("active shell switch to profile `{}`", profile.selector()),
+    );
+    row(
+        config,
+        "→",
+        "next",
+        "press Enter or run the next command after the prompt refreshes",
+    );
+    Ok(ExitCode::SUCCESS)
+}
+
+fn active_shell_workspace_root() -> Result<PathBuf, AppError> {
+    if let Some(workspace) = env::var_os("WORKSPACE_ROOT") {
+        return Ok(PathBuf::from(workspace));
+    }
+    workspace_root()
+}
+
 fn nested_shell_error() -> AppError {
     AppError::user("already inside a robo shell")
-        .with_hint("exit the current shell before running `robo shell` again.")
+        .with_hint("use `robo shell --profile <name>` to switch the active shell profile, or exit the current shell before starting a new one.")
 }
 
 fn run_command(args: Vec<OsString>, config: Config) -> Result<ExitCode, AppError> {

@@ -48,6 +48,7 @@ const INHERITED_TERMINAL_ENV_VARS: &[&str] = &[
     "TMUX_PANE",
     "STY",
 ];
+const TERMINAL_COLOR_ENV_VARS: &[&str] = &["NO_COLOR", "FORCE_COLOR", "CLICOLOR", "CLICOLOR_FORCE"];
 const VOLATILE_RUNTIME_ENV_VARS: &[&str] = &["TMPDIR", "TMP", "TEMP", "TEMPDIR", "PWD", "OLDPWD"];
 
 pub(crate) fn nix_command() -> Command {
@@ -567,9 +568,10 @@ fn read_runtime_env_cache(
     if key != cache_key.as_bytes() {
         return RuntimeEnvCache::Miss(RuntimeCacheMiss::StaleInputs);
     }
-    let Ok(envs) = parse_env_zero(env_bytes) else {
+    let Ok(mut envs) = parse_env_zero(env_bytes) else {
         return RuntimeEnvCache::Miss(RuntimeCacheMiss::InvalidEnvironment);
     };
+    remove_volatile_runtime_env_values(&mut envs);
     let missing_store_paths = missing_store_roots(&envs);
     if !missing_store_paths.is_empty() {
         return RuntimeEnvCache::Miss(RuntimeCacheMiss::MissingStorePaths(missing_store_paths));
@@ -639,13 +641,17 @@ fn inherit_terminal_environment_from(
 fn cacheable_runtime_env(envs: &[(String, String)]) -> Vec<(String, String)> {
     envs.iter()
         .filter(|(name, _)| !INHERITED_TERMINAL_ENV_VARS.contains(&name.as_str()))
+        .filter(|(name, _)| !TERMINAL_COLOR_ENV_VARS.contains(&name.as_str()))
         .filter(|(name, _)| !VOLATILE_RUNTIME_ENV_VARS.contains(&name.as_str()))
         .cloned()
         .collect()
 }
 
 pub(crate) fn remove_volatile_runtime_env_values(envs: &mut Vec<(String, String)>) {
-    envs.retain(|(name, _)| !VOLATILE_RUNTIME_ENV_VARS.contains(&name.as_str()));
+    envs.retain(|(name, _)| {
+        !TERMINAL_COLOR_ENV_VARS.contains(&name.as_str())
+            && !VOLATILE_RUNTIME_ENV_VARS.contains(&name.as_str())
+    });
 }
 
 pub(crate) fn filter_nix_output_for_user(output: &std::process::Output) -> std::process::Output {
@@ -911,6 +917,8 @@ mod tests {
             ("PATH".to_string(), "/bin".to_string()),
             ("TERM".to_string(), "tmux-256color".to_string()),
             ("TMUX".to_string(), "/tmp/tmux-1000/default,1,0".to_string()),
+            ("NO_COLOR".to_string(), "1".to_string()),
+            ("FORCE_COLOR".to_string(), "1".to_string()),
             ("TMPDIR".to_string(), "/tmp/nix-shell.deleted".to_string()),
             ("PWD".to_string(), "/workspace".to_string()),
         ];
@@ -923,6 +931,8 @@ mod tests {
         );
         assert!(shell_env_value(&cache_envs, "TERM").is_none());
         assert!(shell_env_value(&cache_envs, "TMUX").is_none());
+        assert!(shell_env_value(&cache_envs, "NO_COLOR").is_none());
+        assert!(shell_env_value(&cache_envs, "FORCE_COLOR").is_none());
         assert!(shell_env_value(&cache_envs, "TMPDIR").is_none());
         assert!(shell_env_value(&cache_envs, "PWD").is_none());
     }
@@ -931,6 +941,8 @@ mod tests {
     fn captured_runtime_env_excludes_volatile_shell_values() {
         let mut envs = vec![
             ("PATH".to_string(), "/bin".to_string()),
+            ("NO_COLOR".to_string(), "1".to_string()),
+            ("CLICOLOR_FORCE".to_string(), "1".to_string()),
             ("TMPDIR".to_string(), "/tmp/nix-shell.deleted".to_string()),
             ("TEMP".to_string(), "/tmp/nix-shell.deleted".to_string()),
             ("PWD".to_string(), "/workspace".to_string()),

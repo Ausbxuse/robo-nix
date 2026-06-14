@@ -21,6 +21,7 @@ use crate::ui::{error, hint, output_with_tree, row_err, status, Config};
 
 const OBSERVED_RUNTIME_INPUTS_FILE: &str = "runtime-inputs-v1";
 const MANUAL_REFRESH_REQUEST_FILE: &str = "refresh-requested-v1";
+const ACTIVE_PROFILE_SWITCH_REQUEST_FILE: &str = "active-profile-switch-request-v1";
 const LAUNCH_RUNTIME_INPUT_SETTLE_ENV: &str = "ROBO_NIX_RUNTIME_INPUT_SETTLE";
 
 #[derive(Debug)]
@@ -115,10 +116,14 @@ fn try_run(args: Vec<OsString>, config: Config) -> Result<(), RefreshError> {
         return Ok(());
     }
 
-    let profile = RuntimeProfile::from_active_env();
+    let requested_profile = read_active_profile_switch_request(&workspace);
+    let profile = requested_profile
+        .clone()
+        .unwrap_or_else(RuntimeProfile::from_active_env);
     let current = runtime_input_state(&workspace, &profile);
     let missing_store_paths = missing_active_store_roots();
-    if env::var("ROBO_NIX_RUNTIME_INPUT_KEY").ok().as_deref() == Some(current.key.as_str())
+    if requested_profile.is_none()
+        && env::var("ROBO_NIX_RUNTIME_INPUT_KEY").ok().as_deref() == Some(current.key.as_str())
         && missing_store_paths.is_empty()
     {
         return Ok(());
@@ -133,6 +138,7 @@ fn try_run(args: Vec<OsString>, config: Config) -> Result<(), RefreshError> {
     let mut envs = refreshed_shell_env(&workspace, &profile, config)?;
     let _ = append_host_cuda_driver_bridge(&mut envs, &workspace);
     let _ = clear_manual_runtime_refresh_request(&workspace, &profile);
+    let _ = clear_active_profile_switch_request(&workspace);
     append_refreshed_active_shell_env(&mut envs, &workspace, &profile);
     print_shell_delta(shell, &envs);
     Ok(())
@@ -220,6 +226,7 @@ where
     .into_iter()
     .map(str::to_string)
     .collect::<BTreeSet<_>>();
+    runtime_files.insert(active_profile_switch_request_input());
     runtime_files.insert(manual_runtime_refresh_request_input(profile));
     runtime_files.extend(local_nix_runtime_inputs(root));
     runtime_files.extend(read_observed_runtime_inputs(root));
@@ -267,8 +274,32 @@ pub(crate) fn request_manual_runtime_refresh(
     Ok(path)
 }
 
+pub(crate) fn request_active_profile_switch(
+    root: &Path,
+    profile: &RuntimeProfile,
+) -> io::Result<PathBuf> {
+    let state_dir = root.join(".robo-nix");
+    fs::create_dir_all(&state_dir)?;
+    let path = active_profile_switch_request_path(root);
+    let tmp_path = state_dir.join(format!(
+        "{ACTIVE_PROFILE_SWITCH_REQUEST_FILE}.tmp-{}",
+        std::process::id()
+    ));
+    fs::write(&tmp_path, format!("{}\n", profile.selector()))?;
+    fs::rename(tmp_path, &path)?;
+    Ok(path)
+}
+
 fn clear_manual_runtime_refresh_request(root: &Path, profile: &RuntimeProfile) -> io::Result<()> {
     match fs::remove_file(manual_runtime_refresh_request_path(root, profile)) {
+        Ok(()) => Ok(()),
+        Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(err) => Err(err),
+    }
+}
+
+fn clear_active_profile_switch_request(root: &Path) -> io::Result<()> {
+    match fs::remove_file(active_profile_switch_request_path(root)) {
         Ok(()) => Ok(()),
         Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(()),
         Err(err) => Err(err),
@@ -279,12 +310,30 @@ fn manual_runtime_refresh_request_path(root: &Path, profile: &RuntimeProfile) ->
     profile.state_dir(root).join(MANUAL_REFRESH_REQUEST_FILE)
 }
 
+fn active_profile_switch_request_path(root: &Path) -> PathBuf {
+    root.join(".robo-nix")
+        .join(ACTIVE_PROFILE_SWITCH_REQUEST_FILE)
+}
+
 fn manual_runtime_refresh_request_input(profile: &RuntimeProfile) -> String {
     format!(
         ".robo-nix/profiles/{}/{}",
         profile.selector(),
         MANUAL_REFRESH_REQUEST_FILE
     )
+}
+
+fn active_profile_switch_request_input() -> String {
+    format!(".robo-nix/{ACTIVE_PROFILE_SWITCH_REQUEST_FILE}")
+}
+
+fn read_active_profile_switch_request(root: &Path) -> Option<RuntimeProfile> {
+    let selector = fs::read_to_string(active_profile_switch_request_path(root)).ok()?;
+    let selector = selector.trim();
+    if selector == "default" {
+        return Some(RuntimeProfile::default());
+    }
+    RuntimeProfile::named(selector.to_string()).ok()
 }
 
 fn manual_runtime_refresh_request_contents() -> String {
@@ -759,6 +808,9 @@ fn print_runtime_refresh_notice(
 }
 
 fn display_runtime_input_name(workspace: &Path, name: &str) -> String {
+    if is_active_profile_switch_input(name) {
+        return "active profile switch request".to_string();
+    }
     if is_manual_refresh_input(name) {
         return "manual refresh request".to_string();
     }
@@ -770,6 +822,10 @@ fn display_runtime_input_name(workspace: &Path, name: &str) -> String {
 
 fn is_manual_refresh_input(name: &str) -> bool {
     name.starts_with(".robo-nix/profiles/") && name.ends_with(MANUAL_REFRESH_REQUEST_FILE)
+}
+
+fn is_active_profile_switch_input(name: &str) -> bool {
+    name == active_profile_switch_request_input()
 }
 
 fn display_runtime_input_path(workspace: &Path, path: &Path) -> String {
@@ -1036,6 +1092,30 @@ in
             && hash != "missing"));
 
         clear_manual_runtime_refresh_request(&root, &profile).unwrap();
+        let after = runtime_input_state(&root, &profile);
+
+        assert_eq!(before.key, after.key);
+        cleanup(root);
+    }
+
+    #[test]
+    fn runtime_input_key_tracks_active_profile_switch_requests() {
+        let root = temp_project("runtime-key-profile-switch");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("robo.nix"), "{}").unwrap();
+        let profile = RuntimeProfile::named("training".to_string()).unwrap();
+        let before = runtime_input_state(&root, &profile);
+
+        request_active_profile_switch(&root, &profile).unwrap();
+        let requested = runtime_input_state(&root, &profile);
+
+        assert_ne!(before.key, requested.key);
+        assert_eq!(read_active_profile_switch_request(&root).unwrap(), profile);
+        assert!(requested.files.iter().any(|(path, hash)| path
+            == &active_profile_switch_request_input()
+            && hash != "missing"));
+
+        clear_active_profile_switch_request(&root).unwrap();
         let after = runtime_input_state(&root, &profile);
 
         assert_eq!(before.key, after.key);
@@ -1456,6 +1536,10 @@ src = ./src;
         assert_eq!(
             display_runtime_input_name(workspace, "env:LD_LIBRARY_PATH"),
             "env:LD_LIBRARY_PATH"
+        );
+        assert_eq!(
+            display_runtime_input_name(workspace, &active_profile_switch_request_input()),
+            "active profile switch request"
         );
     }
 
