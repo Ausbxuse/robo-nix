@@ -74,8 +74,9 @@ when `ROBO_NIX_DEBUG=1` is set, or when `ROBO_NIX_NO_SPINNER=1` is set.
 - the parent interactive shell
 - `zsh`, `bash`, `fish`, then `sh` from `PATH`
 
-Interactive shells show the original `[robo]` prompt prefix by default. The
-prefix is injected through temporary startup files under
+Interactive shells show a `[robo:<profile>]` prompt prefix by default. The
+profile segment uses the active runtime profile selector, including `default`.
+The prefix is injected through temporary startup files under
 `.robo-nix/shell-startup/`; it does not edit user dotfiles. The prefix is added
 to the user's existing prompt. `robo` does not invent a project-name prompt.
 

@@ -1,13 +1,15 @@
 if [ -n "${ROBO_NIX_PARENT_ZDOTDIR:-}" ] && [ -f "${ROBO_NIX_PARENT_ZDOTDIR}/.zshrc" ]; then source "${ROBO_NIX_PARENT_ZDOTDIR}/.zshrc"; elif [ -f "$HOME/.zshrc" ]; then source "$HOME/.zshrc"; fi
 __robo_prompt_prefix() {
-  local color_prefix="%F{8}[%f%F{white}ro%f%F{cyan}bo%f%F{8}]%f"
+  local prompt_profile="${ROBO_NIX_PROFILE_SELECTOR:-${ROBO_NIX_PROFILE:-default}}"
+  local color_prefix="%F{8}[%f%F{white}ro%f%F{cyan}bo%f%F{8}:%f%F{cyan}${prompt_profile}%f%F{8}]%f"
   local prompt_start_marker=$'%{\e]133;A;cl=line\a%}'
-  local ansi_prefix_39=$'\e[90m[\e[39m\e[37mro\e[39m\e[36mbo\e[39m\e[90m]\e[39m'
-  local ansi_prefix_0=$'\e[90m[\e[0m\e[37mro\e[0m\e[36mbo\e[0m\e[90m]\e[0m'
-  local plain_prefix="[robo]"
+  local ansi_prefix_39=$'\e[90m[\e[39m\e[37mro\e[39m\e[36mbo\e[39m\e[90m:\e[39m\e[36m'"${prompt_profile}"$'\e[39m\e[90m]\e[39m'
+  local ansi_prefix_0=$'\e[90m[\e[0m\e[37mro\e[0m\e[36mbo\e[0m\e[90m:\e[0m\e[36m'"${prompt_profile}"$'\e[0m\e[90m]\e[0m'
+  local plain_prefix="[robo:${prompt_profile}]"
   local base="${PROMPT-}"
   __robo_strip_prompt_marker() {
     local marker="$1"
+    if [[ -z "$marker" ]]; then return 1; fi
     if [[ "$base" == "$marker"* ]]; then
       base="${base#"$marker"}"
       return 0
@@ -23,14 +25,29 @@ __robo_prompt_prefix() {
     return 1
   }
   while true; do
+    __robo_strip_prompt_marker "${__robo_prompt_last_prompt_start_color:-}" && continue
+    __robo_strip_prompt_marker "${__robo_prompt_last_color:-}" && continue
+    __robo_strip_prompt_marker "${__robo_prompt_last_ansi_39:-}" && continue
+    __robo_strip_prompt_marker "${__robo_prompt_last_ansi_0:-}" && continue
+    __robo_strip_prompt_marker "${__robo_prompt_last_plain:-}" && continue
     __robo_strip_prompt_marker "$prompt_start_marker$color_prefix" && continue
     __robo_strip_prompt_marker "$color_prefix" && continue
     __robo_strip_prompt_marker "$ansi_prefix_39" && continue
     __robo_strip_prompt_marker "$ansi_prefix_0" && continue
     __robo_strip_prompt_marker "$plain_prefix" && continue
+    __robo_strip_prompt_marker "$prompt_start_marker%F{8}[%f%F{white}ro%f%F{cyan}bo%f%F{8}]%f" && continue
+    __robo_strip_prompt_marker "%F{8}[%f%F{white}ro%f%F{cyan}bo%f%F{8}]%f" && continue
+    __robo_strip_prompt_marker $'\e[90m[\e[39m\e[37mro\e[39m\e[36mbo\e[39m\e[90m]\e[39m' && continue
+    __robo_strip_prompt_marker $'\e[90m[\e[0m\e[37mro\e[0m\e[36mbo\e[0m\e[90m]\e[0m' && continue
+    __robo_strip_prompt_marker "[robo]" && continue
     break
   done
   unfunction __robo_strip_prompt_marker
+  __robo_prompt_last_prompt_start_color="$prompt_start_marker$color_prefix"
+  __robo_prompt_last_color="$color_prefix"
+  __robo_prompt_last_ansi_39="$ansi_prefix_39"
+  __robo_prompt_last_ansi_0="$ansi_prefix_0"
+  __robo_prompt_last_plain="$plain_prefix"
   PROMPT="${color_prefix}${base}"
   PS1="$PROMPT"
 }

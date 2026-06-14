@@ -56,7 +56,7 @@
       pkgs = import nixpkgs {inherit system;};
       robo = pkgs.rustPlatform.buildRustPackage {
         pname = "robo";
-        version = "0.1.0";
+        version = "0.1.1";
         src = roboSource;
         cargoLock.lockFile = ./Cargo.lock;
         nativeCheckInputs = [
