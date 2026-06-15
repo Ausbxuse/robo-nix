@@ -1,9 +1,9 @@
 if [ -f "$HOME/.bashrc" ]; then . "$HOME/.bashrc"; fi
 __robo_prompt_prefix() {
   __robo_prompt_profile="${ROBO_NIX_PROFILE_SELECTOR:-${ROBO_NIX_PROFILE:-default}}"
-  __robo_prompt_color="\[\033[90m\][\[\033[37m\]ro\[\033[36m\]bo\[\033[90m\]:\[\033[36m\]${__robo_prompt_profile}\[\033[90m\]]\[\033[0m\]"
-  __robo_prompt_ansi_39="$(printf '\033[90m[\033[39m\033[37mro\033[39m\033[36mbo\033[39m\033[90m:\033[39m\033[36m%s\033[39m\033[90m]\033[39m' "$__robo_prompt_profile")"
-  __robo_prompt_ansi_0="$(printf '\033[90m[\033[0m\033[37mro\033[0m\033[36mbo\033[0m\033[90m:\033[0m\033[36m%s\033[0m\033[90m]\033[0m' "$__robo_prompt_profile")"
+  __robo_prompt_color="\[\033[90m\][\[\033[37m\]robo\[\033[90m\]:\[\033[36m\]${__robo_prompt_profile}\[\033[90m\]]\[\033[0m\]"
+  __robo_prompt_ansi_39="$(printf '\033[90m[\033[39m\033[37mrobo\033[39m\033[90m:\033[39m\033[36m%s\033[39m\033[90m]\033[39m' "$__robo_prompt_profile")"
+  __robo_prompt_ansi_0="$(printf '\033[90m[\033[0m\033[37mrobo\033[0m\033[90m:\033[0m\033[36m%s\033[0m\033[90m]\033[0m' "$__robo_prompt_profile")"
   __robo_prompt_plain="[robo:${__robo_prompt_profile}]"
   __robo_prompt_base="${PS1-}"
   __robo_strip_prompt_marker() {
@@ -38,7 +38,10 @@ __robo_prompt_prefix() {
     __robo_strip_prompt_marker "$__robo_prompt_ansi_39" && continue
     __robo_strip_prompt_marker "$__robo_prompt_ansi_0" && continue
     __robo_strip_prompt_marker "$__robo_prompt_plain" && continue
+    __robo_strip_prompt_marker "\[\033[90m\][\[\033[37m\]robo\[\033[90m\]]\[\033[0m\]" && continue
     __robo_strip_prompt_marker "\[\033[90m\][\[\033[37m\]ro\[\033[36m\]bo\[\033[90m\]]\[\033[0m\]" && continue
+    __robo_strip_prompt_marker "$(printf '\033[90m[\033[39m\033[37mrobo\033[39m\033[90m]\033[39m')" && continue
+    __robo_strip_prompt_marker "$(printf '\033[90m[\033[0m\033[37mrobo\033[0m\033[90m]\033[0m')" && continue
     __robo_strip_prompt_marker "$(printf '\033[90m[\033[39m\033[37mro\033[39m\033[36mbo\033[39m\033[90m]\033[39m')" && continue
     __robo_strip_prompt_marker "$(printf '\033[90m[\033[0m\033[37mro\033[0m\033[36mbo\033[0m\033[90m]\033[0m')" && continue
     __robo_strip_prompt_marker "[robo]" && continue
