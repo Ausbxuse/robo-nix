@@ -217,6 +217,83 @@ pub(crate) struct CommandProgressStep<'a> {
     pub(crate) required: bool,
 }
 
+pub(crate) struct ProgressTreeSession {
+    config: Config,
+    tree: Option<ProgressTree>,
+    started_at: Instant,
+}
+
+impl ProgressTreeSession {
+    pub(crate) fn new(
+        config: Config,
+        root: &str,
+        first_message: &str,
+        completed_steps: Vec<ProgressStep>,
+    ) -> Self {
+        if should_use_plain_progress(config) {
+            for step in &completed_steps {
+                let suffix = step
+                    .suffix
+                    .as_deref()
+                    .map(|suffix| format!(" {suffix}"))
+                    .unwrap_or_default();
+                status(config, &format!("{}{}", step.message, suffix));
+            }
+            status(config, first_message);
+            return Self {
+                config,
+                tree: None,
+                started_at: Instant::now(),
+            };
+        }
+
+        Self {
+            config,
+            tree: Some(ProgressTree::new(
+                config,
+                root,
+                first_message,
+                completed_steps,
+            )),
+            started_at: Instant::now(),
+        }
+    }
+
+    pub(crate) fn start_active_child(&mut self, message: &str) {
+        if let Some(tree) = &self.tree {
+            tree.start_active_child(message);
+        } else {
+            status(self.config, message);
+        }
+    }
+
+    pub(crate) fn run_command(&mut self, command: &mut Command) -> Result<Output, std::io::Error> {
+        if let Some(tree) = &self.tree {
+            run_command_with_tree(command, tree)
+        } else {
+            command.output()
+        }
+    }
+
+    pub(crate) fn finish_active_child(&mut self, suffix: Option<&str>) {
+        if let Some(tree) = &self.tree {
+            tree.finish_active_child(suffix);
+        }
+    }
+
+    pub(crate) fn finish_success(&mut self, label: &str) {
+        if let Some(tree) = self.tree.take() {
+            tree.finish_success(label, self.started_at.elapsed());
+        }
+    }
+
+    pub(crate) fn finish_clear(&mut self) {
+        if let Some(tree) = self.tree.take() {
+            tree.finish_clear();
+        }
+    }
+}
+
 pub(crate) fn output_with_tree_command_steps(
     config: Config,
     root: &str,
@@ -641,10 +718,15 @@ impl ProgressTree {
     }
 
     fn finish_ready(&self, duration: Duration) {
+        self.finish_success("robo ready", duration);
+    }
+
+    fn finish_success(&self, label_text: &str, duration: Duration) {
         self.finish_active_child(None);
         self.stop_ticker();
         let state = self.state.lock().expect("progress tree state poisoned");
-        let finished = render_finished_tree(self.config, &state.completed, duration);
+        let finished =
+            render_finished_tree_with_label(self.config, label_text, &state.completed, duration);
         self.bar.finish_and_clear();
         eprintln!("{finished}");
         self.show_cursor();
@@ -776,10 +858,19 @@ fn render_live_tree(config: Config, state: &ProgressTreeState, now: Instant) -> 
 }
 
 fn render_finished_tree(config: Config, completed: &[String], duration: Duration) -> String {
+    render_finished_tree_with_label(config, "robo ready", completed, duration)
+}
+
+fn render_finished_tree_with_label(
+    config: Config,
+    label_text: &str,
+    completed: &[String],
+    duration: Duration,
+) -> String {
     let mut lines = vec![format!(
         "{} {} {}",
         label(config, "✓", LabelKind::Ok),
-        pad_display(label(config, "robo ready", LabelKind::Ok), TREE_READY_WIDTH),
+        pad_display(label(config, label_text, LabelKind::Ok), TREE_READY_WIDTH),
         label(
             config,
             &format!("{:>TREE_DURATION_WIDTH$}", human_duration(duration)),

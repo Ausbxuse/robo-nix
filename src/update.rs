@@ -12,7 +12,7 @@ use crate::error::AppError;
 use crate::nix_env::{filter_nix_output_for_user, nix_command};
 use crate::profile::RuntimeProfile;
 use crate::shell_refresh::request_manual_runtime_refresh;
-use crate::ui::{output_with_spinner, row, section, Config};
+use crate::ui::{row, section, Config, ProgressTreeSession};
 
 const ROBO_NIX_INPUT: &str = "robo-nix";
 
@@ -25,10 +25,27 @@ pub(crate) fn run(args: Vec<OsString>, config: Config) -> Result<ExitCode, AppEr
 
     let workspace = update_workspace_root()?;
     validate_robo_flake(&workspace)?;
-    update_robo_nix_input(config, &workspace)?;
-    let installable = locked_robo_nix_installable(&workspace)?;
-    reinstall_robo_binary(config, &workspace, &installable)?;
-    clear_runtime_profile_state(&workspace)?;
+    let mut progress = ProgressTreeSession::new(
+        config,
+        "robo update",
+        "updating robo-nix flake input",
+        vec![],
+    );
+    update_robo_nix_input(&mut progress, &workspace)?;
+    let installable = locked_robo_nix_installable(&workspace).map_err(|err| {
+        progress.finish_clear();
+        err
+    })?;
+    progress.start_active_child("installing robo CLI binary");
+    reinstall_robo_binary(&mut progress, &workspace, &installable)?;
+    progress.start_active_child("clearing runtime cache state");
+    clear_runtime_profile_state(&workspace).map_err(|err| {
+        progress.finish_clear();
+        err
+    })?;
+    progress.finish_active_child(Some("cleared"));
+    progress.finish_success("robo updated");
+
     section(config, "update");
     row(config, "✓", "updated", "robo-nix flake input");
     row(config, "✓", "installed", "robo CLI binary");
@@ -89,23 +106,28 @@ fn validate_robo_flake(workspace: &Path) -> Result<(), AppError> {
     Ok(())
 }
 
-fn update_robo_nix_input(config: Config, workspace: &Path) -> Result<(), AppError> {
+fn update_robo_nix_input(
+    progress: &mut ProgressTreeSession,
+    workspace: &Path,
+) -> Result<(), AppError> {
     let mut command = nix_command();
     command
         .current_dir(workspace)
         .arg("flake")
         .arg("update")
         .arg(ROBO_NIX_INPUT);
-    let output = output_with_spinner(config, &mut command, "updating robo-nix flake input")
-        .map_err(|err| {
-            AppError::project(format!("failed to start nix: {err}"))
-                .with_hint("install Nix with flakes enabled, then rerun `robo update`.")
-        })?;
+    let output = progress.run_command(&mut command).map_err(|err| {
+        progress.finish_clear();
+        AppError::project(format!("failed to start nix: {err}"))
+            .with_hint("install Nix with flakes enabled, then rerun `robo update`.")
+    })?;
 
     if output.status.success() {
+        progress.finish_active_child(None);
         return Ok(());
     }
 
+    progress.finish_clear();
     crate::write_command_output(&filter_nix_output_for_user(&output))?;
     Err(AppError::project(format!(
         "nix flake update {ROBO_NIX_INPUT} exited with {}",
@@ -173,7 +195,7 @@ fn json_str<'a>(value: &'a Value, name: &str) -> Option<&'a str> {
 }
 
 fn reinstall_robo_binary(
-    config: Config,
+    progress: &mut ProgressTreeSession,
     workspace: &Path,
     installable: &str,
 ) -> Result<(), AppError> {
@@ -192,16 +214,18 @@ fn reinstall_robo_binary(
         .arg("profile")
         .arg("install")
         .arg(installable);
-    let output =
-        output_with_spinner(config, &mut install, "installing robo CLI binary").map_err(|err| {
-            AppError::project(format!("failed to start nix: {err}"))
-                .with_hint("install Nix with flakes enabled, then rerun `robo update`.")
-        })?;
+    let output = progress.run_command(&mut install).map_err(|err| {
+        progress.finish_clear();
+        AppError::project(format!("failed to start nix: {err}"))
+            .with_hint("install Nix with flakes enabled, then rerun `robo update`.")
+    })?;
 
     if output.status.success() {
+        progress.finish_active_child(None);
         return Ok(());
     }
 
+    progress.finish_clear();
     crate::write_command_output(&filter_nix_output_for_user(&output))?;
     Err(AppError::project(format!(
         "nix profile install {installable} exited with {}",
