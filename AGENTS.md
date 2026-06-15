@@ -156,11 +156,13 @@ environment manager.
   headings, cyan phase labels, green success markers, dim field/action labels,
   `indicatif` braille spinners, and a `[robo]` prompt prefix in interactive
   shells.
-- Long `robo shell` and `robo run` setup should use the original-style nested
-  progress tree: parent command line, active child status, optional dim Nix
-  detail rows, and a completed `robo ready` tree in terminals. Keep
-  non-interactive output as plain direct status lines, adding phase labels only
-  when needed to disambiguate otherwise similar work.
+- Long-running bounded robo commands should use the original-style nested
+  progress tree instead of standalone spinners: parent command line, active
+  child status, optional dim Nix detail rows, per-step timings, and a completed
+  tree in terminals. This applies to `robo shell`, `robo run`, `robo update`,
+  and any future command that performs silent setup, Nix work, installation, or
+  cache maintenance. Keep non-interactive output as plain direct status lines,
+  adding phase labels only when needed to disambiguate otherwise similar work.
 - Hide successful Nix CLI output, including dirty Git tree warnings. Capture and
   replay Nix stdout/stderr only when Nix setup fails; after setup succeeds,
   launch the user's shell or command directly with the resolved environment.
