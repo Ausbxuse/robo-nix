@@ -1,4 +1,21 @@
 if [ -f "$HOME/.bashrc" ]; then . "$HOME/.bashrc"; fi
+__robo_check_python_env() {
+  if [ -n "${ROBO_NIX_PYTHON_ENV_WARNING_SHOWN:-}" ] || [ -z "${UV_PROJECT_ENVIRONMENT:-}" ]; then return 0; fi
+  __robo_python_path="$(command -v python 2>/dev/null || true)"
+  __robo_expected_python="$UV_PROJECT_ENVIRONMENT/bin/python"
+  case "$__robo_python_path" in
+    ""|"$UV_PROJECT_ENVIRONMENT"/bin/*) ;;
+    *)
+      printf '%s\n' "robo-nix: python resolves outside the robo runtime environment." >&2
+      printf '%s\n' "robo-nix:   python:   $__robo_python_path" >&2
+      printf '%s\n' "robo-nix:   expected: $__robo_expected_python" >&2
+      printf '%s\n' "robo-nix: clean setup: deactivate any active venv, stop auto-activating .venv, then run 'robo shell' and 'uv sync'." >&2
+      ;;
+  esac
+  export ROBO_NIX_PYTHON_ENV_WARNING_SHOWN=1
+  unset __robo_python_path __robo_expected_python
+}
+__robo_check_python_env
 __robo_prompt_prefix() {
   __robo_prompt_profile="${ROBO_NIX_PROFILE_SELECTOR:-${ROBO_NIX_PROFILE:-default}}"
   __robo_prompt_color="\[\033[90m\][\[\033[37m\]robo\[\033[90m\]:\[\033[36m\]${__robo_prompt_profile}\[\033[90m\]]\[\033[0m\]"

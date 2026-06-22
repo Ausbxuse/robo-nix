@@ -1,4 +1,21 @@
 if [ -n "${ROBO_NIX_PARENT_ZDOTDIR:-}" ] && [ -f "${ROBO_NIX_PARENT_ZDOTDIR}/.zshrc" ]; then source "${ROBO_NIX_PARENT_ZDOTDIR}/.zshrc"; elif [ -f "$HOME/.zshrc" ]; then source "$HOME/.zshrc"; fi
+__robo_check_python_env() {
+  if [[ -n "${ROBO_NIX_PYTHON_ENV_WARNING_SHOWN:-}" || -z "${UV_PROJECT_ENVIRONMENT:-}" ]]; then return 0; fi
+  local python_path
+  python_path="$(command -v python 2>/dev/null || true)"
+  local expected_python="$UV_PROJECT_ENVIRONMENT/bin/python"
+  case "$python_path" in
+    ""|"$UV_PROJECT_ENVIRONMENT"/bin/*) ;;
+    *)
+      print -u2 "robo-nix: python resolves outside the robo runtime environment."
+      print -u2 "robo-nix:   python:   $python_path"
+      print -u2 "robo-nix:   expected: $expected_python"
+      print -u2 "robo-nix: clean setup: deactivate any active venv, stop auto-activating .venv, then run 'robo shell' and 'uv sync'."
+      ;;
+  esac
+  export ROBO_NIX_PYTHON_ENV_WARNING_SHOWN=1
+}
+__robo_check_python_env
 __robo_prompt_prefix() {
   local prompt_profile="${ROBO_NIX_PROFILE_SELECTOR:-${ROBO_NIX_PROFILE:-default}}"
   local color_prefix="%F{8}[%f%F{white}robo%f%F{8}:%f%F{cyan}${prompt_profile}%f%F{8}]%f"

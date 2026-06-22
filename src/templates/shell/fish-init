@@ -1,1 +1,14 @@
+function __robo_check_python_env
+  if test -n "$ROBO_NIX_PYTHON_ENV_WARNING_SHOWN"; or test -z "$UV_PROJECT_ENVIRONMENT"; return 0; end
+  set -l python_path (command -v python 2>/dev/null)
+  set -l expected_python "$UV_PROJECT_ENVIRONMENT/bin/python"
+  if test -n "$python_path"; and not string match -q "$UV_PROJECT_ENVIRONMENT/bin/*" -- "$python_path"
+    printf '%s\n' "robo-nix: python resolves outside the robo runtime environment." >&2
+    printf '%s\n' "robo-nix:   python:   $python_path" >&2
+    printf '%s\n' "robo-nix:   expected: $expected_python" >&2
+    printf '%s\n' "robo-nix: clean setup: deactivate any active venv, stop auto-activating .venv, then run 'robo shell' and 'uv sync'." >&2
+  end
+  set -gx ROBO_NIX_PYTHON_ENV_WARNING_SHOWN 1
+end
+__robo_check_python_env
 if test -n "$ROBO_NIX_PROMPT_PREFIX"; functions -q fish_prompt; and functions -c fish_prompt __robo_fish_prompt_orig; function __robo_shell_refresh; set -l __robo_refresh_output (robo __shell-refresh fish); or return $status; printf '%s\n' $__robo_refresh_output | source; end; function fish_prompt --description 'robo prompt prefix'; __robo_shell_refresh; or return $status; set -l __robo_prompt_profile "$ROBO_NIX_PROFILE_SELECTOR"; test -n "$__robo_prompt_profile"; or set __robo_prompt_profile "$ROBO_NIX_PROFILE"; test -n "$__robo_prompt_profile"; or set __robo_prompt_profile default; set_color brblack; printf '['; set_color white; printf 'robo'; set_color brblack; printf ':'; set_color cyan; printf '%s' "$__robo_prompt_profile"; set_color brblack; printf ']'; set_color normal; functions -q __robo_fish_prompt_orig; and __robo_fish_prompt_orig; end; __robo_shell_refresh; end
