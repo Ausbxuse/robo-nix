@@ -138,6 +138,10 @@
         python-uv = [python roboUv];
         native-build = [nativeBuildCmake pkgs.pkg-config pkgs.stdenv.cc];
         linux-headers = [pkgs.linuxHeaders];
+        camera-usb = [
+          pkgs.libusb1
+          pkgs.systemdLibs
+        ];
         desktop-gl = [
           pkgs.dbus
           pkgs.fontconfig
@@ -183,6 +187,7 @@
         python-uv = [python pkgs.gmp pkgs.ffmpeg_7];
         native-build = [ccRuntimeLib legacyCryptRuntimeLib zlibRuntimeLib];
         linux-headers = [];
+        camera-usb = componentPackages.camera-usb;
         desktop-gl = componentPackages.desktop-gl;
         qt6 = componentPackages.qt6;
         cuda-toolkit = [

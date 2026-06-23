@@ -17,6 +17,8 @@ gymnasium-robotics	desktop-graphics	desktop-gl	Gymnasium Robotics simulator stac
 gymnasium-robotics	native-runtime	native-build	Gymnasium Robotics simulator stacks	Gymnasium Robotics uses simulator stacks that commonly need native C++ runtime libraries.
 glfw	desktop-graphics	desktop-gl	GLFW viewer dependencies	GLFW viewers need desktop graphics and windowing runtime libraries.
 pyglet	desktop-graphics	desktop-gl	Pyglet viewer dependencies	Pyglet viewers need desktop graphics and windowing runtime libraries.
+pyrealsense2	native-runtime	native-build	Intel RealSense camera stacks	pyrealsense2 wheels load native C++ extensions.
+pyrealsense2	usb-camera-runtime	camera-usb	Intel RealSense camera stacks	pyrealsense2 wheels load libusb and libudev for USB camera access.
 pyside6	desktop-graphics	desktop-gl	Qt visualization tooling	Qt bindings commonly need desktop display and OpenGL runtime libraries.
 pyside6	qt-runtime	qt6	Qt visualization tooling	Qt bindings and helper services commonly need Qt6 runtime libraries and plugins.
 pyqt6	desktop-graphics	desktop-gl	Qt visualization tooling	Qt bindings commonly need desktop display and OpenGL runtime libraries.

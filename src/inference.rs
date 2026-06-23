@@ -10,6 +10,7 @@ pub(crate) const KNOWN_COMPONENTS: &[&str] = &[
     "python-uv",
     "native-build",
     "linux-headers",
+    "camera-usb",
     "desktop-gl",
     "qt6",
     "cuda-toolkit",
@@ -17,6 +18,7 @@ pub(crate) const KNOWN_COMPONENTS: &[&str] = &[
 const KNOWN_CAPABILITIES: &[&str] = &[
     "native-runtime",
     "linux-kernel-headers",
+    "usb-camera-runtime",
     "desktop-graphics",
     "qt-runtime",
     "cuda-build",

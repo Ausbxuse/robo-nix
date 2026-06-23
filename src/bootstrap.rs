@@ -634,6 +634,30 @@ dependencies = [
     }
 
     #[test]
+    fn first_bootstrap_infers_usb_camera_runtime_for_pyrealsense2() {
+        let root = temp_project("realsense-inference");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join(".python-version"), "3.11\n").unwrap();
+        fs::write(
+            root.join("pyproject.toml"),
+            r#"[project]
+dependencies = [
+  "pyrealsense2",
+]
+"#,
+        )
+        .unwrap();
+
+        prepare_project(&root).unwrap();
+        let robo_nix = fs::read_to_string(root.join("robo.nix")).unwrap();
+
+        assert!(robo_nix.contains("\"native-build\" # inferred from pyproject.toml: pyrealsense2"));
+        assert!(robo_nix.contains("\"camera-usb\" # inferred from pyproject.toml: pyrealsense2"));
+
+        cleanup(root);
+    }
+
+    #[test]
     fn existing_robo_nix_is_canonical() {
         let root = temp_project("existing-robo");
         fs::create_dir_all(&root).unwrap();
