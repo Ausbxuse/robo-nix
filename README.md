@@ -183,6 +183,10 @@ Common components include:
 | `qt6`           | Qt6 CMake packages, tools, plugins, and runtime libraries.       |
 | `cuda-toolkit`  | Nix-managed CUDA toolkit for native builds and CUDA packages.    |
 
+CUDA extension builds can set `cudaArchitectures = [ "8.9" ];` or
+`cudaArchitectures = "auto";` in `robo.nix` to export common architecture build
+hints such as `TORCH_CUDA_ARCH_LIST`.
+
 Host NVIDIA driver libraries remain host-owned. For projects that appear to
 need host `libcuda.so.1`, `robo shell` and `robo run` probe the host and add a
 visible driver library automatically. Set `ROBO_NIX_LIBCUDA_PATH` to override

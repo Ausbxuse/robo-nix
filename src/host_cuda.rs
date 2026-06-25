@@ -102,12 +102,10 @@ pub(crate) fn append_host_cuda_driver_bridge(
             ..HostCudaReport::default()
         };
     }
-    let driver_version = probe_nvidia_driver_version();
     if env_flag_enabled("ROBO_NIX_DISABLE_HOST_CUDA_AUTO") {
         return HostCudaReport {
             status: "disabled".to_string(),
             needed_by,
-            driver_version,
             ..HostCudaReport::default()
         };
     }
@@ -121,7 +119,6 @@ pub(crate) fn append_host_cuda_driver_bridge(
             checked: vec!["ROBO_NIX_LIBCUDA_PATH".to_string()],
             source: Some("ROBO_NIX_LIBCUDA_PATH".to_string()),
             libcuda: Some(libcuda),
-            driver_version,
             ..HostCudaReport::default()
         };
     }
@@ -132,7 +129,6 @@ pub(crate) fn append_host_cuda_driver_bridge(
             status: "needed-missing".to_string(),
             needed_by,
             checked: probe.checked,
-            driver_version,
             ..HostCudaReport::default()
         };
     };
@@ -144,10 +140,10 @@ pub(crate) fn append_host_cuda_driver_bridge(
         checked: probe.checked,
         source: Some(found.source),
         libcuda: Some(found.path),
-        driver_version,
         bridge: bridge.bridge,
         bridge_error: bridge.bridge_error,
         env_updates: bridge.env_updates,
+        ..HostCudaReport::default()
     }
 }
 
@@ -416,23 +412,6 @@ fn env_flag_enabled(name: &str) -> bool {
             "1" | "true" | "yes" | "on"
         )
     })
-}
-
-fn probe_nvidia_driver_version() -> Option<String> {
-    let output = Command::new("nvidia-smi")
-        .arg("--query-gpu=driver_version")
-        .arg("--format=csv,noheader")
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-
-    String::from_utf8_lossy(&output.stdout)
-        .lines()
-        .map(str::trim)
-        .find(|line| !line.is_empty())
-        .map(str::to_string)
 }
 
 fn extract_quoted(value: &str) -> Option<&str> {

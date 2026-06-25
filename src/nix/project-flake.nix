@@ -133,6 +133,24 @@
           cudaPackages.libnpp.lib
         ];
       };
+      cudaArchitectures = spec.cudaArchitectures or null;
+      cudaArchitecturesMode =
+        if cudaArchitectures == null
+        then "unset"
+        else if cudaArchitectures == "auto"
+        then "auto"
+        else if builtins.isList cudaArchitectures
+        then "explicit"
+        else throw "robo-nix: cudaArchitectures must be null, \"auto\", or a list such as [ \"8.9\" ]";
+      cudaArchitectureList =
+        if cudaArchitecturesMode == "explicit"
+        then cudaArchitectures
+        else [];
+      validCudaArchitecture = architecture:
+        builtins.isString architecture && builtins.match "[0-9]+\\.[0-9]+" architecture != null;
+      invalidCudaArchitectures = lib.filter (architecture: !(validCudaArchitecture architecture)) cudaArchitectureList;
+      cudaTorchArchitectureList = lib.concatStringsSep ";" cudaArchitectureList;
+      cudaCmakeArchitectureList = lib.concatStringsSep ";" (map (architecture: lib.replaceStrings ["."] [""] architecture) cudaArchitectureList);
 
       componentPackages = {
         python-uv = [python roboUv];
@@ -263,6 +281,8 @@
         then throw "robo-nix: unknown components in robo.nix: ${lib.concatStringsSep ", " unknownComponents}"
         else if !(builtins.elem hostGraphics validHostGraphics)
         then throw "robo-nix: hostGraphics in robo.nix must be null, \"auto\", \"nixgl\", or \"nixgl-nvidia\""
+        else if invalidCudaArchitectures != []
+        then throw "robo-nix: cudaArchitectures entries must look like \"8.9\"; invalid values: ${lib.concatStringsSep ", " (map builtins.toString invalidCudaArchitectures)}"
         else
           pkgs.mkShell {
             packages = runtimeTools ++ (builtins.concatLists componentPackageLists) ++ extraPackages pkgs;
@@ -463,6 +483,29 @@
                 robo_nix_prepend_path CPATH "$CUDA_PATH/include"
                 robo_nix_prepend_path LIBRARY_PATH "$CUDA_PATH/lib"
                 robo_nix_prepend_path LD_LIBRARY_PATH "$CUDA_PATH/lib"
+              ''
+              + lib.optionalString (cudaArchitecturesMode == "explicit") ''
+
+                export TORCH_CUDA_ARCH_LIST="${cudaTorchArchitectureList}"
+                export CMAKE_CUDA_ARCHITECTURES="${cudaCmakeArchitectureList}"
+                export CUDAARCHS="${cudaCmakeArchitectureList}"
+              ''
+              + lib.optionalString (cudaArchitecturesMode == "auto") ''
+
+                if command -v nvidia-smi >/dev/null 2>&1; then
+                  robo_nix_cuda_arches="$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2>/dev/null \
+                    | tr -d '[:space:]' \
+                    | sed '/^[0-9][0-9]*\.[0-9][0-9]*$/!d' \
+                    | sort -u \
+                    | paste -sd ';' -)"
+                  if [ -n "$robo_nix_cuda_arches" ]; then
+                    export TORCH_CUDA_ARCH_LIST="''${TORCH_CUDA_ARCH_LIST:-$robo_nix_cuda_arches}"
+                    robo_nix_cuda_arches_cmake="$(printf '%s\n' "$robo_nix_cuda_arches" | tr ';' '\n' | tr -d '.' | paste -sd ';' -)"
+                    export CMAKE_CUDA_ARCHITECTURES="''${CMAKE_CUDA_ARCHITECTURES:-$robo_nix_cuda_arches_cmake}"
+                    export CUDAARCHS="''${CUDAARCHS:-$robo_nix_cuda_arches_cmake}"
+                  fi
+                fi
+                unset robo_nix_cuda_arches robo_nix_cuda_arches_cmake
               ''
               + ''
 

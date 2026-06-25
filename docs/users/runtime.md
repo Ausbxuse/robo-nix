@@ -205,6 +205,45 @@ NVIDIA driver is still outside the Nix-managed toolkit:
 }
 ```
 
+If a CUDA extension build needs GPU architecture hints, set
+`cudaArchitectures`. This is for build systems that compile `.cu` kernels, not
+for ordinary CUDA wheel runtime use:
+
+```nix
+{
+  components = [
+    "python-uv"
+    "native-build"
+    "cuda-toolkit"
+  ];
+
+  cudaArchitectures = [ "8.9" ];
+}
+```
+
+Use multiple values when building for more than one target GPU:
+
+```nix
+{
+  cudaArchitectures = [ "8.6" "8.9" ];
+}
+```
+
+For local workstation builds, `auto` best-effort detects NVIDIA GPUs with
+`nvidia-smi`. If detection is unavailable, robo leaves the architecture hints
+unset instead of failing shell startup:
+
+```nix
+{
+  cudaArchitectures = "auto";
+}
+```
+
+`cudaArchitectures` exports `TORCH_CUDA_ARCH_LIST`,
+`CMAKE_CUDA_ARCHITECTURES`, and `CUDAARCHS`. It does not choose or validate
+Python package versions, solve CUDA wheel compatibility, or replace the host
+NVIDIA driver.
+
 When a project appears to need host `libcuda.so.1`, `robo shell` and
 `robo run` try to bridge a visible host driver library automatically. The probe
 checks `ROBO_NIX_LIBCUDA_PATH`, `LD_LIBRARY_PATH`, `ldconfig -p`, and known
@@ -295,6 +334,10 @@ Public environment knobs are intentionally small:
 | `ROBO_NIX_NVIDIA_VERSION` | Override the detected host NVIDIA driver version used by `hostGraphics = "nixgl-nvidia";`. |
 | `ROBO_NIX_LOCK_TIMEOUT` | Seconds to wait for robo-owned `.robo-nix/*.lock` files. |
 | `ROBO_NIX_DEFAULT_SOURCE_URL` | Override the generated flake input URL, commonly for local source testing. |
+
+When `cudaArchitectures` is set, robo exports
+`TORCH_CUDA_ARCH_LIST`, `CMAKE_CUDA_ARCHITECTURES`, and `CUDAARCHS` as build
+hints for CUDA extension toolchains.
 
 When `native-build` is selected, the shell also exports `ROBO_NIX_LIBC_DEV` as
 the active compiler libc development prefix for build scripts that need to

@@ -48,6 +48,9 @@ const ROBO_MANAGED_ENV_NAMES: &[&str] = &[
     "CUDA_TOOLKIT_ROOT_DIR",
     "CUDAToolkit_ROOT",
     "CUDAHOSTCXX",
+    "TORCH_CUDA_ARCH_LIST",
+    "CMAKE_CUDA_ARCHITECTURES",
+    "CUDAARCHS",
     "CC",
     "CXX",
     "CPATH",
@@ -226,6 +229,24 @@ pub(crate) const ENV_VARS: &[EnvVarSpec] = &[
         affects_runtime_key: true,
         description:
             "Override the detected host NVIDIA driver version used by hostGraphics = \"nixgl-nvidia\".",
+    },
+    EnvVarSpec {
+        name: "TORCH_CUDA_ARCH_LIST",
+        visibility: EnvVarVisibility::External,
+        affects_runtime_key: false,
+        description: "CUDA architecture list for PyTorch extension builds.",
+    },
+    EnvVarSpec {
+        name: "CMAKE_CUDA_ARCHITECTURES",
+        visibility: EnvVarVisibility::External,
+        affects_runtime_key: false,
+        description: "CUDA architecture list for CMake CUDA builds.",
+    },
+    EnvVarSpec {
+        name: "CUDAARCHS",
+        visibility: EnvVarVisibility::External,
+        affects_runtime_key: false,
+        description: "CUDA architecture list for build systems that honor CUDAARCHS.",
     },
     EnvVarSpec {
         name: "ROBO_NIX_HOST_GRAPHICS",
