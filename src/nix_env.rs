@@ -96,8 +96,9 @@ pub(crate) fn runtime_environment(
     workspace: &Path,
     profile: &RuntimeProfile,
     cache_key: &str,
+    cache_env_key: impl Fn(&[(String, String)]) -> String,
 ) -> Result<Vec<(String, String)>, AppError> {
-    let cache = read_runtime_env_cache(workspace, profile, cache_key);
+    let cache = read_runtime_env_cache(workspace, profile, cache_key, cache_env_key);
     match cache {
         RuntimeEnvCache::Hit(mut envs) => {
             output_cached_tree(config, "runtime cache");
@@ -552,6 +553,7 @@ fn read_runtime_env_cache(
     workspace: &Path,
     profile: &RuntimeProfile,
     cache_key: &str,
+    cache_env_key: impl Fn(&[(String, String)]) -> String,
 ) -> RuntimeEnvCache {
     let Ok(bytes) = fs::read(runtime_env_cache_path(workspace, profile)) else {
         return RuntimeEnvCache::Miss(RuntimeCacheMiss::Missing);
@@ -565,13 +567,13 @@ fn read_runtime_env_cache(
     let Some((key, env_bytes)) = split_once_byte(rest, b'\n') else {
         return RuntimeEnvCache::Miss(RuntimeCacheMiss::FormatChanged);
     };
-    if key != cache_key.as_bytes() {
-        return RuntimeEnvCache::Miss(RuntimeCacheMiss::StaleInputs);
-    }
     let Ok(mut envs) = parse_env_zero(env_bytes) else {
         return RuntimeEnvCache::Miss(RuntimeCacheMiss::InvalidEnvironment);
     };
     remove_volatile_runtime_env_values(&mut envs);
+    if key != cache_key.as_bytes() && cache_env_key(&envs) != cache_key {
+        return RuntimeEnvCache::Miss(RuntimeCacheMiss::StaleInputs);
+    }
     let missing_store_paths = missing_store_roots(&envs);
     if !missing_store_paths.is_empty() {
         return RuntimeEnvCache::Miss(RuntimeCacheMiss::MissingStorePaths(missing_store_paths));
@@ -844,12 +846,35 @@ mod tests {
         write_runtime_env_cache(&root, &profile, "cache-key", &envs).unwrap();
 
         assert_eq!(
-            read_runtime_env_cache(&root, &profile, "cache-key"),
+            read_runtime_env_cache(&root, &profile, "cache-key", |_| "env-key".to_string()),
             RuntimeEnvCache::Hit(envs)
         );
         assert_eq!(
-            read_runtime_env_cache(&root, &profile, "other-key"),
+            read_runtime_env_cache(&root, &profile, "other-key", |_| "env-key".to_string()),
             RuntimeEnvCache::Miss(RuntimeCacheMiss::StaleInputs)
+        );
+
+        cleanup(root);
+    }
+
+    #[test]
+    fn runtime_env_cache_accepts_key_from_cached_environment() {
+        let root = temp_project("runtime-env-cache-final-key");
+        let profile = RuntimeProfile::default();
+        fs::create_dir_all(profile.state_dir(&root)).unwrap();
+        let envs = vec![(
+            "ROBO_NIX_LIBCUDA_PATH".to_string(),
+            "/tmp/driver/libcuda.so.1".to_string(),
+        )];
+
+        write_runtime_env_cache(&root, &profile, "launch-key", &envs).unwrap();
+
+        assert_eq!(
+            read_runtime_env_cache(&root, &profile, "final-key", |cached_envs| {
+                assert_eq!(cached_envs, envs.as_slice());
+                "final-key".to_string()
+            }),
+            RuntimeEnvCache::Hit(envs)
         );
 
         cleanup(root);
@@ -861,7 +886,7 @@ mod tests {
         let profile = RuntimeProfile::default();
 
         assert_eq!(
-            read_runtime_env_cache(&root, &profile, "cache-key"),
+            read_runtime_env_cache(&root, &profile, "cache-key", |_| "env-key".to_string()),
             RuntimeEnvCache::Miss(RuntimeCacheMiss::Missing)
         );
 
@@ -869,7 +894,7 @@ mod tests {
         fs::write(runtime_env_cache_path(&root, &profile), "bad-cache").unwrap();
 
         assert_eq!(
-            read_runtime_env_cache(&root, &profile, "cache-key"),
+            read_runtime_env_cache(&root, &profile, "cache-key", |_| "env-key".to_string()),
             RuntimeEnvCache::Miss(RuntimeCacheMiss::FormatChanged)
         );
 

@@ -295,15 +295,25 @@ fn run_nix_develop(
     print_bootstrap_report(config, &report);
 
     let cache_state = runtime_input_state(&workspace, &profile);
-    let mut runtime_env =
-        match runtime_environment(config, phase, &workspace, &profile, cache_state.key()) {
-            Ok(runtime_env) => runtime_env,
-            Err(error) => {
-                run_report.errors.push(error_fact(&error));
-                write_last_run_report(config, &workspace, &run_report);
-                return Err(error);
-            }
-        };
+    let mut runtime_env = match runtime_environment(
+        config,
+        phase,
+        &workspace,
+        &profile,
+        cache_state.key(),
+        |envs| {
+            runtime_input_state_for_env(&workspace, envs, &profile)
+                .key()
+                .to_string()
+        },
+    ) {
+        Ok(runtime_env) => runtime_env,
+        Err(error) => {
+            run_report.errors.push(error_fact(&error));
+            write_last_run_report(config, &workspace, &run_report);
+            return Err(error);
+        }
+    };
     let post_nix_state = runtime_input_state(&workspace, &profile);
     let cuda_report = append_host_cuda_driver_bridge(&mut runtime_env, &workspace);
     run_report
