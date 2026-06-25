@@ -329,36 +329,45 @@ fn collect_uv_lock_dependencies(root: &Path, scan: &mut DependencyScan) {
             return;
         }
     };
-    let value = match lock.parse::<toml::Value>() {
-        Ok(value) => value,
-        Err(_) => {
-            scan.diagnostics.push(InferenceDiagnostic {
-                summary: "could not inspect uv.lock for resolved package metadata".to_string(),
-                detail: Some(
-                    "uv.lock is invalid TOML; static inference skipped lock metadata.".to_string(),
-                ),
-            });
-            return;
-        }
-    };
-
-    let Some(packages) = value.get("package").and_then(toml::Value::as_array) else {
-        return;
-    };
-    for package in packages {
-        let Some(name) = package
-            .as_table()
-            .and_then(|table| table.get("name"))
-            .and_then(toml::Value::as_str)
-        else {
-            continue;
-        };
+    for name in uv_lock_package_names(&lock) {
         add_dependency_evidence(
             &mut scan.dependencies,
-            &normalize_package_name(name),
+            &normalize_package_name(&name),
             "uv.lock",
         );
     }
+}
+
+fn uv_lock_package_names(text: &str) -> Vec<String> {
+    let mut names = Vec::new();
+    let mut in_package = false;
+
+    for line in text.lines().map(str::trim) {
+        if line == "[[package]]" {
+            in_package = true;
+            continue;
+        }
+        if line.starts_with('[') {
+            in_package = false;
+            continue;
+        }
+        if !in_package {
+            continue;
+        }
+        let Some(name) = line.strip_prefix("name = ").and_then(extract_quoted) else {
+            continue;
+        };
+        names.push(name.to_string());
+        in_package = false;
+    }
+
+    names
+}
+
+fn extract_quoted(value: &str) -> Option<&str> {
+    let value = value.trim();
+    let value = value.strip_prefix('"')?;
+    value.split_once('"').map(|(quoted, _)| quoted)
 }
 
 fn add_dependency_evidence(
@@ -1071,6 +1080,26 @@ version = "1.9.3"
         }));
 
         cleanup(root);
+    }
+
+    #[test]
+    fn uv_lock_package_scan_reads_package_names_only() {
+        assert_eq!(
+            uv_lock_package_names(
+                r#"version = 1
+
+[[package]]
+name = "accelerate"
+dependencies = [
+    { name = "torch" },
+]
+
+[[package]]
+name = "torch"
+"#
+            ),
+            vec!["accelerate".to_string(), "torch".to_string()]
+        );
     }
 
     fn temp_project(label: &str) -> PathBuf {
