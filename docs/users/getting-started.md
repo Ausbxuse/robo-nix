@@ -9,8 +9,8 @@ dependency groups, lockfiles, and virtualenv sync.
   normal interactive shell with a `[robo]` prompt prefix.
 - On first use, `robo shell` may create `flake.nix`, `robo.nix`, and
   `.robo-nix/`. After that, `robo.nix` is yours to edit.
-- `robo run [--profile <name>] [--] <command> [args...]` uses the same runtime
-  preparation path for one command without keeping a shell open.
+- `robo run [--profile <name>] [--sync] [--] <command> [args...]` uses the same
+  runtime preparation path for one command without keeping a shell open.
 - `robo search <library>` helps find Nix package candidates for missing shared
   libraries, such as `libassimp.so`. It only prints suggestions.
 - `robo refresh` clears robo-owned runtime state under `.robo-nix/`. In an
@@ -89,7 +89,7 @@ uv python pin 3.11
 ## 3. Enter the runtime
 
 ```bash
-robo shell
+robo shell --sync
 ```
 
 On first bootstrap, `robo shell` may create:
@@ -98,8 +98,9 @@ On first bootstrap, `robo shell` may create:
 - `robo.nix`: the project runtime manifest.
 - `.gitignore`: in Git worktrees, an entry for `.robo-nix/` when missing.
 
-It then enters your default interactive shell with a `[robo]` prompt prefix.
-Set `ROBO_NIX_SHELL` only when you need to override shell selection.
+With `--sync`, robo runs `uv sync --locked` in the prepared runtime before
+entering your default interactive shell with a `[robo]` prompt prefix. Set
+`ROBO_NIX_SHELL` only when you need to override shell selection.
 
 ## 4. Sync Python packages
 
@@ -107,11 +108,11 @@ Set `ROBO_NIX_SHELL` only when you need to override shell selection.
 uv sync
 ```
 
-Run `uv sync` inside the prepared shell so native Python extensions can see the
-runtime libraries and headers exposed by Nix. In profile-based projects, robo
-sets `UV_PROJECT_ENVIRONMENT` to a profile-specific virtualenv under
-`.robo-nix/venvs/<profile>/`, so different runtime profiles can stay installed
-side by side.
+You can also run `uv sync` manually inside the prepared shell. Native Python
+extensions can then see the runtime libraries and headers exposed by Nix. In
+profile-based projects, robo sets `UV_PROJECT_ENVIRONMENT` to a profile-specific
+virtualenv under `.robo-nix/venvs/<profile>/`, so different runtime profiles can
+stay installed side by side.
 
 ## 5. Adjust runtime components
 
@@ -176,8 +177,7 @@ the same `robo.nix`:
 Use a non-default profile with:
 
 ```bash
-robo shell --profile tianji-driver
-uv sync --locked
+robo shell --profile tianji-driver --sync
 ```
 
 If runtime inputs change while `robo shell` is open, the prompt hook refreshes
@@ -193,11 +193,12 @@ robo search libassimp.so
 Use one command inside the runtime without staying in an interactive shell:
 
 ```bash
-robo run [--profile <name>] [--] <command> [args...]
+robo run [--profile <name>] [--sync] [--] <command> [args...]
 ```
 
 Use the optional `--` when the command name starts with `-`. Any later `--`
-belongs to the command being run.
+belongs to the command being run. With `--sync`, robo runs `uv sync --locked`
+before launching the child command.
 
 Clear local robo runtime state and rebuild the active shell environment at the
 next prompt:
@@ -218,6 +219,6 @@ binary from that updated input, and clears runtime cache state. The next
 
 ## What robo does not do
 
-`robo` does not create `pyproject.toml`, run `uv sync` automatically, resolve
-Python packages, update project dependencies, or rewrite `robo.nix` after first
-creation.
+`robo` does not create `pyproject.toml`, run `uv sync` unless `--sync` is
+explicitly requested, resolve Python packages, update project dependencies, or
+rewrite `robo.nix` after first creation.

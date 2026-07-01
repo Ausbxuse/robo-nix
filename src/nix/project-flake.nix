@@ -36,8 +36,7 @@
         then
           if requestedProfile != ""
           then requestedProfile
-          else
-            rawSpec.defaultProfile
+          else rawSpec.defaultProfile
             or (throw "robo-nix: robo.nix defines profiles but no defaultProfile")
         else if requestedProfile != ""
         then throw "robo-nix: --profile was requested, but this legacy robo.nix does not define profiles"
@@ -61,7 +60,8 @@
       in
         lib.replaceStrings names (map (name: replacements.${name}) names) (builtins.readFile path);
 
-      rawPythonVersion = lib.strings.removeSuffix "\n" (builtins.readFile (projectRoot + "/.python-version"));
+      projectPythonVersion = lib.strings.removeSuffix "\n" (builtins.readFile (projectRoot + "/.python-version"));
+      rawPythonVersion = spec.pythonVersion or projectPythonVersion;
       pythonVersionParts = lib.splitString "." rawPythonVersion;
       pythonMajorMinor = lib.concatStringsSep "." (lib.take 2 pythonVersionParts);
       pythonPackages = nixpkgs-python.packages.${system};
@@ -76,11 +76,12 @@
       pythonExtras = spec.pythonExtras or [];
       pythonGroupsSet = spec ? pythonGroups;
       pythonGroups = spec.pythonGroups or [];
-      profileVenv = spec.venv or (
-        if profileMode
-        then ".robo-nix/venvs/${selectedProfileName}"
-        else ".venv"
-      );
+      profileVenv =
+        spec.venv or (
+          if profileMode
+          then ".robo-nix/venvs/${selectedProfileName}"
+          else ".venv"
+        );
       uvProjectEnvironmentDefault =
         if lib.hasPrefix "/" profileVenv
         then profileVenv
@@ -528,9 +529,12 @@
                   fi
                   unset robo_nix_cuda_driver_dir
                 fi
-                unset -f robo_nix_prepend_path
               ''
-              + (spec.shellHook or "");
+              + (spec.shellHook or "")
+              + ''
+
+                unset -f robo_nix_prepend_path
+              '';
           };
     });
   };

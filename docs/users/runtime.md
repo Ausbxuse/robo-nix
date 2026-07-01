@@ -81,6 +81,7 @@ Each profile is a complete runtime manifest inside the same `robo.nix`:
     };
 
     tianji-driver = {
+      pythonVersion = "3.10";
       components = [ "python-uv" "native-build" "linux-headers" ];
       pythonExtras = [ "tianji-driver" ];
       pythonGroups = [];
@@ -103,11 +104,19 @@ For profile-based manifests, robo sets `UV_PROJECT_ENVIRONMENT` to
 decoupled, so syncing the driver profile does not overwrite workstation
 packages.
 
+Profiles inherit the workspace `.python-version` by default. Set
+`pythonVersion = "3.10";` on a profile when a vendor tool needs a different
+CPython from nixpkgs-python without moving the whole workspace to that version.
+
 `pythonExtras` and `pythonGroups` are uv sync policy. Robo does not resolve
 Python packages or edit `uv.lock`; it exports defaults through the uv wrapper so
 plain `uv sync --locked` inside a runtime shell uses the selected profile's
 extras and groups. Passing explicit uv flags such as `--extra`, `--group`, or
 `--no-default-groups` overrides those defaults for that command.
+
+Use `robo shell --profile <name> --sync` to run `uv sync --locked` with those
+profile defaults before the interactive shell opens. `robo run --profile <name>
+--sync -- <command>` does the same sync before launching one command.
 
 The examples below show profile bodies. Put them under `profiles.<name>` in
 `robo.nix`.

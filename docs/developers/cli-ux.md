@@ -87,6 +87,10 @@ the changed inputs, re-evaluates the runtime shell, and exports the refreshed
 environment into the current shell. This refresh does not rewrite `robo.nix`
 and does not run `uv sync`.
 
+`robo shell --sync` and `robo run --sync` are explicit exceptions: they run
+`uv sync --locked` after runtime environment capture and before launching the
+interactive shell or child command.
+
 Once the Nix runtime environment has been captured for a runtime input key,
 subsequent `robo shell` and `robo run` attempts may show the evaluation step as
 `cached` and skip re-running `nix develop`. Cache reuse must validate referenced

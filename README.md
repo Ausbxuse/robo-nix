@@ -22,8 +22,7 @@ and import reliably.
 The command surface is intentionally small. The primary workflow is:
 
 ```bash
-robo shell
-uv sync
+robo shell --sync
 ```
 
 ## Quick Start
@@ -62,11 +61,9 @@ cd robot-learning-project
 # Required once if the project does not already pin Python.
 uv python pin 3.11
 
-# Create missing robo runtime files on first use, then enter the runtime shell.
-robo shell
-
-# Python dependency sync remains project-owned.
-uv sync
+# Create missing robo runtime files on first use, sync Python packages, then
+# enter the runtime shell.
+robo shell --sync
 
 # Run project commands inside the prepared runtime.
 python train.py
@@ -84,6 +81,10 @@ robo shell
 uv sync
 ```
 
+Use `robo shell --sync` to run `uv sync --locked` before the shell opens. In
+profile-based projects, this uses the selected profile's `pythonExtras`,
+`pythonGroups`, and virtualenv target.
+
 For a Python repository without robo runtime files, `robo shell` creates the
 missing runtime files on first use. If `pyproject.toml` already exists, the
 initial `robo.nix` is inferred from `src/metadata/runtime-inference.tsv`.
@@ -96,20 +97,22 @@ it.
 ## Commands
 
 ```bash
-robo shell
+robo shell [--profile <name>] [--sync]
 ```
 
 Prepares the runtime and launches your default interactive shell with a
-`[robo]` prompt prefix.
+`[robo]` prompt prefix. With `--sync`, runs `uv sync --locked` in the resolved
+runtime environment before launching the shell.
 
 ```bash
-robo run [--profile <name>] [--] <command> [args...]
+robo run [--profile <name>] [--sync] [--] <command> [args...]
 ```
 
 Runs one command inside the prepared runtime without opening an interactive
 shell. The optional `--` is accepted as a standard command separator; it is
 useful when the command name starts with `-`. Separators after `<command>` are
-passed through unchanged to the child command.
+passed through unchanged to the child command. With `--sync`, runs
+`uv sync --locked` before the child command.
 
 ```bash
 robo search <library>
@@ -209,12 +212,14 @@ captured Nix output and writes `.robo-nix/last-error.log` for issue reports.
 Every `robo shell` and `robo run` attempt also writes `.robo-nix/last-run.json`
 with redacted facts, decisions, environment variable names, and errors.
 
-Python dependency failures remain project-owned. Run `uv sync` explicitly so
-the project controls dependency groups, extras, private indexes, editable
-sources, and install policy. During first bootstrap, `robo` statically reads
-local path dependency metadata from `pyproject.toml` and package names from an
-existing `uv.lock` when it can and reports where inference stops, but it does
-not fetch remote package metadata or resolve the Python dependency graph.
+Python dependency failures remain project-owned. Run `uv sync` manually, or pass
+`--sync` to let robo run `uv sync --locked` in the resolved runtime
+environment. The project still controls dependency groups, extras, private
+indexes, editable sources, and install policy. During first bootstrap, `robo`
+statically reads local path dependency metadata from `pyproject.toml` and
+package names from an existing `uv.lock` when it can and reports where inference
+stops, but it does not fetch remote package metadata or resolve the Python
+dependency graph.
 
 ## Documentation
 

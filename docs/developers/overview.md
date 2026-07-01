@@ -6,8 +6,9 @@ or Python package resolver.
 
 ## Runtime Flow
 
-`robo shell [--profile <name>]` and
-`robo run [--profile <name>] [--] <command>` share the same preparation path:
+`robo shell [--profile <name>] [--sync]` and
+`robo run [--profile <name>] [--sync] [--] <command>` share the same
+preparation path:
 
 1. Read `.python-version`. Missing or empty files are hard errors.
 2. Create `.robo-nix/` if needed.
@@ -21,11 +22,13 @@ or Python package resolver.
 7. Hide successful Nix stdout/stderr, parse the NUL-separated environment,
    clear the inherited host environment, and apply the captured environment to
    the final process.
-8. For `robo shell`, launch the selected interactive shell directly with the
+8. If `--sync` was requested, run `uv sync --locked` inside the resolved runtime
+   environment.
+9. For `robo shell`, launch the selected interactive shell directly with the
    resolved environment.
-9. For `robo run`, strip one optional leading `--` after `run`, then launch the
+10. For `robo run`, strip one optional leading `--` after `run`, then launch the
    requested command directly with the resolved environment.
-10. Propagate the final shell or command exit status. A nonzero user command is
+11. Propagate the final shell or command exit status. A nonzero user command is
    not treated as a robo setup failure.
 
 The preparation code lives in `src/bootstrap.rs`. Nix environment capture lives

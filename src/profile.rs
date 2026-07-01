@@ -12,6 +12,12 @@ pub(crate) struct RuntimeProfile {
     requested: Option<String>,
 }
 
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub(crate) struct RuntimeOptions {
+    pub(crate) profile: RuntimeProfile,
+    pub(crate) sync: bool,
+}
+
 impl RuntimeProfile {
     pub(crate) fn default() -> Self {
         Self { requested: None }
@@ -60,7 +66,15 @@ impl RuntimeProfile {
 pub(crate) fn parse_profile_option(
     args: Vec<OsString>,
 ) -> Result<(RuntimeProfile, Vec<OsString>), AppError> {
+    let (options, remaining) = parse_runtime_options(args)?;
+    Ok((options.profile, remaining))
+}
+
+pub(crate) fn parse_runtime_options(
+    args: Vec<OsString>,
+) -> Result<(RuntimeOptions, Vec<OsString>), AppError> {
     let mut profile = RuntimeProfile::default();
+    let mut sync = false;
     let mut remaining = Vec::new();
     let mut iter = args.into_iter();
     while let Some(arg) = iter.next() {
@@ -77,13 +91,15 @@ pub(crate) fn parse_profile_option(
             .and_then(|text| text.strip_prefix("--profile="))
         {
             profile = RuntimeProfile::named(value.to_string())?;
+        } else if arg == "--sync" {
+            sync = true;
         } else {
             remaining.push(arg);
             remaining.extend(iter);
             break;
         }
     }
-    Ok((profile, remaining))
+    Ok((RuntimeOptions { profile, sync }, remaining))
 }
 
 fn validate_profile_name(name: &str) -> Result<(), AppError> {
@@ -121,6 +137,31 @@ mod tests {
 
         assert_eq!(profile.requested(), Some("driver"));
         assert_eq!(args, vec![OsString::from("--"), OsString::from("python")]);
+    }
+
+    #[test]
+    fn parses_sync_runtime_option() {
+        let (options, args) = parse_runtime_options(vec![
+            OsString::from("--sync"),
+            OsString::from("--profile"),
+            OsString::from("training"),
+            OsString::from("--"),
+            OsString::from("python"),
+        ])
+        .unwrap();
+
+        assert!(options.sync);
+        assert_eq!(options.profile.requested(), Some("training"));
+        assert_eq!(args, vec![OsString::from("--"), OsString::from("python")]);
+    }
+
+    #[test]
+    fn separator_keeps_child_sync_argument() {
+        let (options, args) =
+            parse_runtime_options(vec![OsString::from("--"), OsString::from("--sync")]).unwrap();
+
+        assert!(!options.sync);
+        assert_eq!(args, vec![OsString::from("--"), OsString::from("--sync")]);
     }
 
     #[test]

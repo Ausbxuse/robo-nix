@@ -28,7 +28,7 @@ use inference::dependency_evidence_from_pyproject;
 use nix_env::{
     apply_env, cache_runtime_environment, prefetch_runtime_input_outputs, runtime_environment,
 };
-use profile::{parse_profile_option, RuntimeProfile};
+use profile::{parse_runtime_options, RuntimeProfile};
 use shell_launch::interactive_shell_launch;
 use shell_refresh::{
     request_active_profile_switch, runtime_input_state, runtime_input_state_for_env,
@@ -120,12 +120,12 @@ fn print_usage(config: Config) {
     section(config, "usage");
     help_row(
         config,
-        "robo shell [--profile <name>]",
+        "robo shell [--profile <name>] [--sync]",
         "open an interactive runtime shell",
     );
     help_row(
         config,
-        "robo run [--profile <name>] [--] <command>",
+        "robo run [--profile <name>] [--sync] [--] <command>",
         "run a command inside the prepared runtime",
     );
     help_row(
@@ -168,19 +168,23 @@ fn print_usage(config: Config) {
 }
 
 fn shell_command(args: Vec<OsString>, config: Config) -> Result<ExitCode, AppError> {
-    let (profile, args) = parse_profile_option(args)?;
+    let (options, args) = parse_runtime_options(args)?;
     if !args.is_empty() {
         return Err(AppError::user(
             "shell does not accept arguments; use `robo run` for commands",
         ));
     }
     if env::var_os("ROBO_NIX_ACTIVE").is_some() {
-        if profile.requested().is_some() {
-            return request_active_shell_profile_switch(&profile, config);
+        if options.sync {
+            return Err(AppError::user("cannot start `robo shell --sync` inside an active robo shell")
+                .with_hint("run `robo run --sync -- true` to sync the active profile environment, or exit this shell before starting a new synced shell."));
+        }
+        if options.profile.requested().is_some() {
+            return request_active_shell_profile_switch(&options.profile, config);
         }
         return Err(nested_shell_error());
     }
-    run_nix_develop(Vec::new(), profile, config)
+    run_nix_develop(Vec::new(), options.profile, options.sync, config)
 }
 
 fn request_active_shell_profile_switch(
@@ -226,8 +230,13 @@ fn nested_shell_error() -> AppError {
 }
 
 fn run_command(args: Vec<OsString>, config: Config) -> Result<ExitCode, AppError> {
-    let (profile, args) = parse_profile_option(args)?;
-    run_nix_develop(normalize_run_args(args)?, profile, config)
+    let (options, args) = parse_runtime_options(args)?;
+    run_nix_develop(
+        normalize_run_args(args)?,
+        options.profile,
+        options.sync,
+        config,
+    )
 }
 
 fn normalize_run_args(mut args: Vec<OsString>) -> Result<Vec<OsString>, AppError> {
@@ -248,6 +257,7 @@ fn normalize_run_args(mut args: Vec<OsString>) -> Result<Vec<OsString>, AppError
 fn run_nix_develop(
     command_args: Vec<OsString>,
     profile: RuntimeProfile,
+    sync: bool,
     config: Config,
 ) -> Result<ExitCode, AppError> {
     let phase = if command_args.is_empty() {
@@ -257,6 +267,11 @@ fn run_nix_develop(
     };
     let workspace = workspace_root()?;
     let mut run_report = LastRunReport::new(phase, &workspace, &command_args, &profile);
+    if sync {
+        run_report
+            .decisions
+            .push("python_sync=requested".to_string());
+    }
 
     let report = match prepare_project(&workspace) {
         Ok(report) => report,
@@ -353,6 +368,18 @@ fn run_nix_develop(
         .host_probes
         .push(host_graphics_probe_report(&runtime_env));
     run_report.env_names = env_names(&runtime_env);
+    if sync {
+        match sync_python_environment(config, &workspace, &runtime_env) {
+            Ok(()) => run_report
+                .decisions
+                .push("python_sync=complete".to_string()),
+            Err(error) => {
+                run_report.errors.push(error_fact(&error));
+                write_last_run_report(config, &workspace, &run_report);
+                return Err(error);
+            }
+        }
+    }
     write_last_run_report(config, &workspace, &run_report);
 
     let mut command = if command_args.is_empty() {
@@ -379,6 +406,45 @@ fn run_nix_develop(
     write_last_run_report(config, &workspace, &run_report);
 
     Ok(exit_code_from_status(status))
+}
+
+fn sync_python_environment(
+    config: Config,
+    workspace: &Path,
+    runtime_env: &[(String, String)],
+) -> Result<(), AppError> {
+    let groups = runtime_env_value(runtime_env, "ROBO_NIX_PYTHON_GROUPS").unwrap_or("");
+    let extras = runtime_env_value(runtime_env, "ROBO_NIX_PYTHON_EXTRAS").unwrap_or("");
+    let target = runtime_env_value(runtime_env, "UV_PROJECT_ENVIRONMENT").unwrap_or(".venv");
+    let mut detail_parts = vec![format!("target={target}")];
+    if runtime_env_value(runtime_env, "ROBO_NIX_PYTHON_GROUPS_SET").is_some() {
+        detail_parts.push(format!(
+            "groups={}",
+            if groups.is_empty() { "<none>" } else { groups }
+        ));
+    }
+    if !extras.is_empty() {
+        detail_parts.push(format!("extras={extras}"));
+    }
+    status(
+        config,
+        &format!("syncing Python env {}", detail_parts.join(" ")),
+    );
+
+    let mut command = Command::new("uv");
+    command.current_dir(workspace).arg("sync").arg("--locked");
+    apply_env(&mut command, runtime_env);
+    let status = command.status().map_err(|err| {
+        AppError::project(format!("failed to launch `uv sync --locked`: {err}")).with_hint(
+            "make sure the runtime profile includes the `python-uv` component before using `--sync`.",
+        )
+    })?;
+    if !status.success() {
+        return Err(AppError::project(format!("`uv sync --locked` failed with {status}")).with_hint(
+            "fix the uv lockfile or dependency issue, then rerun `robo shell --sync` or `robo run --sync ...`.",
+        ));
+    }
+    Ok(())
 }
 
 fn shell_launch_command(
