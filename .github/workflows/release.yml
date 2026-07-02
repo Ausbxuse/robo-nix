@@ -1,0 +1,63 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: Release tag to publish, for example v0.1.1
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  linux-x86_64:
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag_name || github.ref_name }}
+      TARGET: x86_64-unknown-linux-gnu
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag_name || github.ref }}
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Validate Release Tag
+        run: |
+          version="$(
+            cargo metadata --locked --no-deps --format-version 1 |
+              python3 -c 'import json, sys; metadata = json.load(sys.stdin); print(next(pkg["version"] for pkg in metadata["packages"] if pkg["name"] == "robo"))'
+          )"
+          expected_tag="v${version}"
+          if [ "$RELEASE_TAG" != "$expected_tag" ]; then
+            printf '%s\n' "release tag $RELEASE_TAG does not match Cargo package version $expected_tag" >&2
+            exit 1
+          fi
+          printf 'ROBO_VERSION=%s\n' "$version" >> "$GITHUB_ENV"
+
+      - name: Build Binary
+        run: cargo build --locked --release
+
+      - name: Package Binary
+        run: |
+          package="robo-v${ROBO_VERSION}-${TARGET}"
+          install -Dm755 target/release/robo "dist/${package}/robo"
+          install -Dm644 LICENSE "dist/${package}/LICENSE"
+          tar -C dist -czf "dist/${package}.tar.gz" "${package}"
+          sha256sum "dist/${package}.tar.gz" > "dist/${package}.tar.gz.sha256"
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" --title "$RELEASE_TAG" --notes "Release $RELEASE_TAG"
+          fi
+          gh release upload "$RELEASE_TAG" dist/*.tar.gz dist/*.sha256 --clobber
