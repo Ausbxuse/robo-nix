@@ -121,6 +121,27 @@ profile defaults before the interactive shell opens. `robo run --profile <name>
 The examples below show profile bodies. Put them under `profiles.<name>` in
 `robo.nix`.
 
+Project hooks may be plain strings when they only use the prepared runtime
+environment:
+
+```nix
+shellHook = ''
+  export ROBOT_CONFIG="$PWD/config/robot.yaml"
+'';
+```
+
+Use `pkgs: string` when a hook needs a stable path from robo's pinned nixpkgs
+set:
+
+```nix
+shellHook = pkgs: ''
+  export ZLIB_ROOT="${pkgs.zlib}"
+'';
+```
+
+Both forms run after robo prepares the selected profile's runtime libraries and
+host graphics environment.
+
 ## Example: simulator or desktop window
 
 ```nix
