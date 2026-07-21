@@ -194,6 +194,10 @@ the shell process, or rewrite `robo.nix`.
 `nix develop` after verifying referenced `/nix/store` paths still exist. Active
 shell fingerprints are computed from the final launched environment so prompt
 refresh does not immediately re-run after host CUDA or library path preparation.
+Parseable TOML and JSON runtime inputs are canonicalized before hashing, and
+ordinary Nix comments are ignored conservatively. Normalization falls back to
+exact bytes for invalid TOML/JSON and Nix source that cannot be classified
+safely.
 Profile-based manifests also default `UV_PROJECT_ENVIRONMENT` to
 `.robo-nix/venvs/<profile>/`, keeping uv-owned virtualenv contents separate
 between runtime profiles.

@@ -386,6 +386,12 @@ After a successful setup, `robo` caches the captured runtime shell environment b
 that same key. Later `robo shell` and `robo run` attempts can reuse it instantly
 as long as the referenced Nix store paths still exist.
 
+The key uses semantic content for parseable `pyproject.toml`, `uv.lock`, and
+`flake.lock`, so formatting, comments, and mapping order alone do not rerun Nix.
+Comment-only changes in ordinary Nix runtime files are also ignored. Invalid or
+unrecognized TOML/JSON and Nix source that cannot be scanned safely remain
+byte-sensitive so cache reuse cannot hide a project error.
+
 During runtime setup, `robo` passes its public binary cache settings to Nix
 directly. That lets `robo shell` and `robo run` use the robo-nix caches even when
 the host system substituter list does not include them. The host Nix daemon's

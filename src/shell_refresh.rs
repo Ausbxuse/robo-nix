@@ -236,7 +236,7 @@ where
         runtime_files
             .into_iter()
             .map(|path| {
-                let fingerprint = fingerprint_file(&root.join(&path));
+                let fingerprint = fingerprint_runtime_input(&root.join(&path));
                 (path, fingerprint)
             })
             .collect::<Vec<_>>(),
@@ -598,10 +598,113 @@ fn is_path_literal_char(byte: u8) -> bool {
     byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'/' | b'_' | b'+' | b'-')
 }
 
-fn fingerprint_file(path: &Path) -> String {
-    fs::read(path)
-        .map(|bytes| fingerprint_bytes(&bytes))
-        .unwrap_or_else(|_| "missing".to_string())
+fn fingerprint_runtime_input(path: &Path) -> String {
+    let Ok(bytes) = fs::read(path) else {
+        return "missing".to_string();
+    };
+    let normalized = normalized_runtime_input(path, &bytes);
+    fingerprint_bytes(normalized.as_deref().unwrap_or(&bytes))
+}
+
+fn normalized_runtime_input(path: &Path, bytes: &[u8]) -> Option<Vec<u8>> {
+    match path.file_name().and_then(|name| name.to_str()) {
+        Some("pyproject.toml" | "uv.lock") => normalize_toml(bytes),
+        Some("flake.lock") => normalize_json(bytes),
+        _ if path.extension().is_some_and(|extension| extension == "nix") => {
+            normalize_nix_source(bytes)
+        }
+        _ => None,
+    }
+}
+
+fn normalize_toml(bytes: &[u8]) -> Option<Vec<u8>> {
+    let text = std::str::from_utf8(bytes).ok()?;
+    let value = text.parse::<toml::Value>().ok()?;
+    toml::to_string(&value).ok().map(String::into_bytes)
+}
+
+fn normalize_json(bytes: &[u8]) -> Option<Vec<u8>> {
+    let value = serde_json::from_slice::<serde_json::Value>(bytes).ok()?;
+    serde_json::to_vec(&value).ok()
+}
+
+fn normalize_nix_source(bytes: &[u8]) -> Option<Vec<u8>> {
+    let text = std::str::from_utf8(bytes).ok()?;
+    let bytes = text.as_bytes();
+    let mut normalized = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    let mut pending_space = false;
+
+    while index < bytes.len() {
+        if bytes[index].is_ascii_whitespace() {
+            pending_space = true;
+            index += 1;
+            continue;
+        }
+        if bytes[index] == b'#' {
+            pending_space = true;
+            index += 1;
+            while index < bytes.len() && bytes[index] != b'\n' {
+                index += 1;
+            }
+            continue;
+        }
+        if bytes[index..].starts_with(b"/*") {
+            pending_space = true;
+            index = skip_nix_block_comment(bytes, index)?;
+            continue;
+        }
+        // Indented strings have their own escape rules. Exact byte hashing is
+        // safer than partially normalizing a file that contains one.
+        if bytes[index..].starts_with(b"''") {
+            return None;
+        }
+        if pending_space && !normalized.is_empty() {
+            normalized.push(b' ');
+        }
+        pending_space = false;
+        if bytes[index] == b'"' {
+            let end = skip_nix_double_quoted_string(bytes, index)?;
+            normalized.extend_from_slice(&bytes[index..end]);
+            index = end;
+        } else {
+            normalized.push(bytes[index]);
+            index += 1;
+        }
+    }
+
+    Some(normalized)
+}
+
+fn skip_nix_block_comment(bytes: &[u8], mut index: usize) -> Option<usize> {
+    let mut depth = 0;
+    while index < bytes.len() {
+        if bytes[index..].starts_with(b"/*") {
+            depth += 1;
+            index += 2;
+        } else if bytes[index..].starts_with(b"*/") {
+            depth -= 1;
+            index += 2;
+            if depth == 0 {
+                return Some(index);
+            }
+        } else {
+            index += 1;
+        }
+    }
+    None
+}
+
+fn skip_nix_double_quoted_string(bytes: &[u8], mut index: usize) -> Option<usize> {
+    index += 1;
+    while index < bytes.len() {
+        match bytes[index] {
+            b'\\' => index += 2,
+            b'"' => return Some(index + 1),
+            _ => index += 1,
+        }
+    }
+    None
 }
 
 fn fingerprint_bytes(bytes: &[u8]) -> String {
@@ -974,6 +1077,121 @@ mod tests {
         );
 
         cleanup(root);
+    }
+
+    #[test]
+    fn runtime_input_key_ignores_toml_formatting_and_comments() {
+        let root = temp_project("runtime-key-toml-formatting");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join(".python-version"), "3.11\n").unwrap();
+        fs::write(root.join("robo.nix"), "{ components = [ ]; }\n").unwrap();
+        fs::write(
+            root.join("pyproject.toml"),
+            "[project]\nname = \"robot\"\ndependencies = [\"mujoco\"]\n",
+        )
+        .unwrap();
+
+        let profile = RuntimeProfile::default();
+        let before = runtime_input_state(&root, &profile);
+        fs::write(
+            root.join("pyproject.toml"),
+            "# project metadata\n[project]\ndependencies = [ \"mujoco\", ]\nname=\"robot\"\n",
+        )
+        .unwrap();
+        let formatted = runtime_input_state(&root, &profile);
+        fs::write(
+            root.join("pyproject.toml"),
+            "[project]\nname = \"robot\"\ndependencies = [\"mujoco\", \"numpy\"]\n",
+        )
+        .unwrap();
+        let changed = runtime_input_state(&root, &profile);
+
+        assert_eq!(before.key, formatted.key);
+        assert_ne!(formatted.key, changed.key);
+
+        cleanup(root);
+    }
+
+    #[test]
+    fn runtime_input_key_ignores_json_formatting_and_mapping_order() {
+        let root = temp_project("runtime-key-json-formatting");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join(".python-version"), "3.11\n").unwrap();
+        fs::write(root.join("robo.nix"), "{ components = [ ]; }\n").unwrap();
+        fs::write(root.join("flake.lock"), "{\"version\":7,\"nodes\":{}}\n").unwrap();
+
+        let profile = RuntimeProfile::default();
+        let before = runtime_input_state(&root, &profile);
+        fs::write(
+            root.join("flake.lock"),
+            "{\n  \"nodes\": {},\n  \"version\": 7\n}\n",
+        )
+        .unwrap();
+        let formatted = runtime_input_state(&root, &profile);
+        fs::write(root.join("flake.lock"), "{\"version\":8,\"nodes\":{}}\n").unwrap();
+        let changed = runtime_input_state(&root, &profile);
+
+        assert_eq!(before.key, formatted.key);
+        assert_ne!(formatted.key, changed.key);
+
+        cleanup(root);
+    }
+
+    #[test]
+    fn runtime_input_key_ignores_nix_comment_changes() {
+        let root = temp_project("runtime-key-nix-comments");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join(".python-version"), "3.11\n").unwrap();
+        fs::write(
+            root.join("robo.nix"),
+            "{ components = [ \"python-uv\" ]; /* old note */ note = \"# retained\"; }\n",
+        )
+        .unwrap();
+
+        let profile = RuntimeProfile::default();
+        let before = runtime_input_state(&root, &profile);
+        fs::write(
+            root.join("robo.nix"),
+            "{ components = [ \"python-uv\" ]; /* new note */ # runtime components\n  note = \"# retained\"; }\n",
+        )
+        .unwrap();
+        let formatted = runtime_input_state(&root, &profile);
+        fs::write(
+            root.join("robo.nix"),
+            "{ components = [ \"python-uv\" \"desktop-gl\" ]; note = \"# retained\"; }\n",
+        )
+        .unwrap();
+        let changed = runtime_input_state(&root, &profile);
+
+        assert_eq!(before.key, formatted.key);
+        assert_ne!(formatted.key, changed.key);
+
+        cleanup(root);
+    }
+
+    #[test]
+    fn invalid_runtime_inputs_keep_exact_byte_fingerprints() {
+        let root = temp_project("runtime-key-invalid-input");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join(".python-version"), "3.11\n").unwrap();
+        fs::write(root.join("robo.nix"), "{ components = [ ]; }\n").unwrap();
+        fs::write(root.join("pyproject.toml"), "[project\n").unwrap();
+
+        let profile = RuntimeProfile::default();
+        let before = runtime_input_state(&root, &profile);
+        fs::write(root.join("pyproject.toml"), "[project  \n").unwrap();
+        let after = runtime_input_state(&root, &profile);
+
+        assert_ne!(before.key, after.key);
+
+        cleanup(root);
+    }
+
+    #[test]
+    fn nix_indented_strings_keep_exact_byte_fingerprints() {
+        let source = b"{ script = ''echo # literal''; }\n";
+
+        assert_eq!(normalize_nix_source(source), None);
     }
 
     #[test]
