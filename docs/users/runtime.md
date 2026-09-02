@@ -399,6 +399,13 @@ This fallback requires at least one prior successful setup. `robo refresh` and
 and `--sync` can still fail offline when uv needs package artifacts that are not
 already cached.
 
+An automatic project-lock update caused by a newer official `robo` binary is
+different from an explicit `robo update`: it preserves all existing runtime
+caches. Robo records one best-effort attempt per CLI/lock pair. If that attempt
+cannot reach the network, it warns, keeps the existing lock, and continues
+runtime preparation; later commands do not repeat the same failed network
+attempt. Use `robo update` when online to retry explicitly.
+
 The key uses semantic content for parseable `pyproject.toml`, `uv.lock`, and
 `flake.lock`, so formatting, comments, and mapping order alone do not rerun Nix.
 Comment-only changes in ordinary Nix runtime files are also ignored. Invalid or

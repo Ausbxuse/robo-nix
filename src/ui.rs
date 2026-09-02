@@ -740,18 +740,8 @@ impl ProgressTree {
 
     fn finish_active_child(&self, suffix: Option<&str>) {
         let mut state = self.state.lock().expect("progress tree state poisoned");
-        let evaluated_packages = state.evaluated_packages.len();
-        let active_message = state.active_message.clone();
         let elapsed = state.active_started_at.elapsed();
-        state.completed.push(completed_tree_line(
-            self.config,
-            &active_message,
-            suffix,
-            evaluated_packages,
-            elapsed,
-        ));
-        state.evaluated_packages.clear();
-        state.details.clear();
+        complete_active_tree_child(self.config, &mut state, suffix, elapsed);
     }
 
     fn start_active_child(&self, message: &str) {
@@ -789,6 +779,27 @@ impl ProgressTree {
             .expect("progress tree cursor lock poisoned")
             .show();
     }
+}
+
+fn complete_active_tree_child(
+    config: Config,
+    state: &mut ProgressTreeState,
+    suffix: Option<&str>,
+    elapsed: Duration,
+) {
+    if state.active_message.is_empty() {
+        return;
+    }
+    state.completed.push(completed_tree_line(
+        config,
+        &state.active_message,
+        suffix,
+        state.evaluated_packages.len(),
+        elapsed,
+    ));
+    state.active_message.clear();
+    state.evaluated_packages.clear();
+    state.details.clear();
 }
 
 impl Drop for ProgressTree {
@@ -1265,6 +1276,29 @@ mod tests {
             render_finished_tree(config, &completed, Duration::from_millis(14)),
             "✓ robo ready                                            14ms\n  └ ✓ evaluating runtime shell           cached         13ms"
         );
+    }
+
+    #[test]
+    fn completing_active_child_twice_records_it_once() {
+        let config = Config {
+            color: false,
+            debug: false,
+        };
+        let mut state = ProgressTreeState {
+            root: "robo update".to_string(),
+            completed: Vec::new(),
+            active_message: "installing robo CLI binary from local checkout".to_string(),
+            active_started_at: Instant::now(),
+            evaluated_packages: HashSet::new(),
+            details: VecDeque::new(),
+        };
+
+        complete_active_tree_child(config, &mut state, None, Duration::from_millis(10));
+        complete_active_tree_child(config, &mut state, None, Duration::from_millis(11));
+
+        assert_eq!(state.completed.len(), 1);
+        assert!(state.active_message.is_empty());
+        assert!(state.completed[0].contains("installing robo CLI binary from local checkout"));
     }
 
     #[test]

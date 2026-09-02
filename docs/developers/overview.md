@@ -209,14 +209,24 @@ successful environment refresh.
 
 ## Update
 
-`robo update` updates the workspace `robo-nix` flake input by running
-`nix flake update robo-nix` in the project root, then reinstalls the `robo` CLI
-binary from the updated locked input. It refuses non-robo flakes, does not
-rewrite `robo.nix`, and does not update Python dependencies or other Nix
-inputs. After a successful lock update and CLI reinstall, it clears
-`.robo-nix/profiles/` so the next `robo shell` or `robo run` rebuilds runtime
-cache state from the updated lock. Inside an active runtime shell, it also
-requests prompt-time refresh for the active profile.
+In a downstream project, `robo update` runs `nix flake update robo-nix` in the
+project root, reinstalls the `robo` CLI binary from the resulting locked input,
+and clears `.robo-nix/profiles/`. Inside an active runtime shell, it also
+requests prompt-time refresh for the active profile. In the `robo-nix` source
+checkout, the command instead reinstalls `.#robo`; it does not require a child
+`robo-nix` lock node and does not update the checkout's root inputs or Git
+state. Both paths refuse unrelated flakes and leave Python dependencies and
+`robo.nix` alone.
+
+Nix packages and release binaries embed the source revision and commit time.
+After project bootstrap and before runtime cache selection, `robo shell` and
+`robo run` compare that provenance with an existing official GitHub
+`robo-nix` lock node. A later running-CLI source commit timestamp triggers
+`nix flake update robo-nix`, following the input source/ref already declared by
+the project. Robo records the attempt under `.robo-nix/` once per build/lock
+pair. Failure is a warning and runtime preparation continues with the existing
+lock; automatic reconciliation never clears prior runtime caches, so normal
+last-working fallback remains available offline.
 
 ## Changelog
 

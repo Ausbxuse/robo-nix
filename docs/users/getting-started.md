@@ -15,9 +15,11 @@ dependency groups, lockfiles, and virtualenv sync.
   libraries, such as `libassimp.so`. It only prints suggestions.
 - `robo refresh` clears robo-owned runtime state under `.robo-nix/`. In an
   active runtime shell, the shell updates at the next prompt.
-- `robo update` updates the project `robo-nix` flake input, reinstalls the
-  `robo` CLI binary from that updated input, and clears runtime cache state. It
-  does not update Python dependencies or `robo.nix`.
+- In a project, `robo update` updates the `robo-nix` flake input, reinstalls
+  the `robo` CLI binary from that input, and clears runtime cache state. In the
+  `robo-nix` source checkout, it reinstalls the binary from `.#robo` without
+  updating unrelated flake inputs. It does not update Python dependencies or
+  `robo.nix`.
 - `robo --help`, `robo --version`, and `robo -V` are available as standard CLI
   utilities.
 - Active `robo shell` sessions refresh at the next prompt when runtime inputs
@@ -207,15 +209,26 @@ next prompt:
 robo refresh
 ```
 
-Update the version of robo-nix pinned by the project:
+Update robo-nix tooling and the installed CLI:
 
 ```bash
 robo update
 ```
 
-This updates the `robo-nix` input in `flake.lock`, reinstalls the `robo` CLI
-binary from that updated input, and clears runtime cache state. The next
-`robo shell` or `robo run` uses the updated lock.
+In a robo project, this updates the `robo-nix` input in `flake.lock`,
+reinstalls the `robo` CLI binary from that updated input, and clears runtime
+cache state. The next `robo shell` or `robo run` uses the updated lock. In a
+local `robo-nix` source checkout, the same command reinstalls `.#robo`; the
+checkout has no child `robo-nix` lock input, and robo does not try to update
+its other inputs or Git state.
+
+When an official installed CLI is newer than a project's locked official
+`robo-nix` revision, the first `robo shell` or `robo run` for that CLI/lock
+pair automatically makes one best-effort update of the declared input. A
+network failure is reported as a warning and runtime startup continues with
+the existing lock. Robo preserves existing runtime caches during this
+automatic step, so last-working offline fallback remains available. Run
+`robo update` later to retry explicitly.
 
 ## What robo does not do
 

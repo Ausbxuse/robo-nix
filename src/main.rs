@@ -310,6 +310,14 @@ fn run_nix_develop(
     run_report.dependencies = dependency_facts(&workspace);
     print_bootstrap_report(config, &report);
 
+    let lock_update = update::reconcile_project_lock_for_running_cli(&workspace, phase, config);
+    if let Some(decision) = lock_update.decision {
+        run_report.decisions.push(decision);
+    }
+    if let Some(warning) = lock_update.warning {
+        run_report.warnings.push(warning);
+    }
+
     let cache_state = runtime_input_state(&workspace, &profile);
     let prepared_runtime =
         match runtime_environment(config, phase, &workspace, &profile, cache_state.key()) {

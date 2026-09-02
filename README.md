@@ -134,9 +134,18 @@ cache.
 robo update
 ```
 
-Updates the project `robo-nix` flake input and clears runtime cache state.
-It also reinstalls the `robo` CLI binary from that updated input. It does not
-update Python dependencies, other Nix inputs, or `robo.nix`.
+In a robo project, this updates the `robo-nix` flake input, reinstalls the
+`robo` CLI binary from that updated input, and clears runtime cache state. In a
+`robo-nix` source checkout, it reinstalls the binary directly from `.#robo`
+without expecting the checkout's `flake.lock` to contain a child `robo-nix`
+input. It does not update Python dependencies, unrelated Nix inputs,
+`robo.nix`, or the source checkout itself.
+
+Official `robo` builds also carry their source revision. When the first
+`robo shell` or `robo run` sees that the running CLI is newer than the official
+`robo-nix` revision locked by the project, it makes one best-effort update of
+that input. If the update cannot reach the network, robo warns and continues
+with the existing lock instead of blocking startup.
 
 Global utility flags:
 
@@ -180,6 +189,11 @@ claiming the changes are active. A cold first setup still needs all required
 inputs locally or reachable, and `robo refresh`/`robo update` intentionally
 clear this fallback state. An explicit `--sync` may also need uv artifacts that
 are not already cached.
+
+The automatic newer-CLI lock reconciliation does not clear runtime caches. It
+is attempted only once for a given CLI/lock pair, so an offline failure does
+not add a network wait to every later command; use `robo update` to retry it
+explicitly when connectivity returns.
 
 ## Runtime Components
 

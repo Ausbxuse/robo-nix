@@ -23,6 +23,13 @@
     lib = nixpkgs.lib;
     systems = ["x86_64-linux" "aarch64-linux"];
     forAllSystems = lib.genAttrs systems;
+    roboSourceRevision =
+      if self ? rev
+      then self.rev
+      else if self ? dirtyRev
+      then lib.removeSuffix "-dirty" self.dirtyRev
+      else "";
+    roboSourceLastModified = self.lastModified or 0;
     sourceRoot = toString ./.;
     sourceRelativePath = path:
       lib.removePrefix "${sourceRoot}/" (toString path);
@@ -58,6 +65,8 @@
         pname = "robo";
         version = "0.1.1";
         src = roboSource;
+        ROBO_NIX_BUILD_REVISION = roboSourceRevision;
+        ROBO_NIX_BUILD_LAST_MODIFIED = toString roboSourceLastModified;
         cargoLock.lockFile = ./Cargo.lock;
         nativeCheckInputs = [
           pkgs.git

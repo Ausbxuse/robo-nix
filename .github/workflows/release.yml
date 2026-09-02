@@ -42,6 +42,11 @@ jobs:
           fi
           printf 'ROBO_VERSION=%s\n' "$version" >> "$GITHUB_ENV"
 
+      - name: Capture Build Provenance
+        run: |
+          printf 'ROBO_NIX_BUILD_REVISION=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          printf 'ROBO_NIX_BUILD_LAST_MODIFIED=%s\n' "$(git show -s --format=%ct HEAD)" >> "$GITHUB_ENV"
+
       - name: Build Binary
         run: cargo build --locked --release
 

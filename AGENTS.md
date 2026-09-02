@@ -17,10 +17,12 @@ environment manager.
   active `robo shell`, it requests prompt-time environment refresh through the
   existing shell hook; outside a shell, it makes the next `robo shell` or
   `robo run` rebuild runtime cache state.
-- `robo update` updates the workspace `robo-nix` flake input, reinstalls the
-  `robo` CLI binary from that updated input, and clears robo-owned runtime
-  cache state so the next runtime command uses the updated lock. It is not a
-  general dependency updater.
+- In a downstream project, `robo update` updates the workspace `robo-nix`
+  flake input, reinstalls the `robo` CLI binary from that updated input, and
+  clears robo-owned runtime cache state so the next runtime command uses the
+  updated lock. In the `robo-nix` source checkout, it reinstalls the binary
+  from `.#robo` without expecting a child `robo-nix` lock node or updating the
+  checkout's other flake inputs. It is not a general dependency updater.
 - There is no `robo init`, `robo check`, or `robo diagnose` in the current
   product surface.
 - `robo shell` may create missing runtime files during first bootstrap, then
@@ -51,6 +53,12 @@ environment manager.
   store paths through profile-owned GC roots. If changed runtime inputs cannot
   be evaluated, `robo shell` and `robo run` should visibly fall back to the
   validated last working environment without re-keying it as current.
+- Official CLI builds should carry source revision metadata. On the first
+  `robo shell` or `robo run` for a newer CLI/older official project-lock pair,
+  robo may best-effort update only the declared `robo-nix` input. Record the
+  attempt so offline failure does not delay every command, never make that
+  failure block runtime startup, and preserve prior runtime caches for normal
+  last-working fallback.
 - Use product language such as runtime environment, runtime shell, and runtime
   cache for robo-owned surfaces. Avoid naming robo concepts after generic dev
   environment tooling unless referring directly to Nix's dev shell primitive.
