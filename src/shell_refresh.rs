@@ -12,7 +12,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::env_vars::{is_robo_managed_env, runtime_key_env_names};
 use crate::host_cuda::append_host_cuda_driver_bridge;
 use crate::nix_env::{
-    add_env_capture_args, apply_profile_env, filter_nix_output_for_user,
+    add_env_capture_args, apply_profile_env, cache_runtime_environment, filter_nix_output_for_user,
     inherit_terminal_environment, missing_store_roots, nix_command, parse_env_zero,
     remove_volatile_runtime_env_values, workspace_flake_ref,
 };
@@ -139,7 +139,23 @@ fn try_run(args: Vec<OsString>, config: Config) -> Result<(), RefreshError> {
     let _ = append_host_cuda_driver_bridge(&mut envs, &workspace);
     let _ = clear_manual_runtime_refresh_request(&workspace, &profile);
     let _ = clear_active_profile_switch_request(&workspace);
-    append_refreshed_active_shell_env(&mut envs, &workspace, &profile);
+    let refreshed_state = runtime_input_state_for_env(&workspace, &envs, &profile);
+    if let Err(error) = cache_runtime_environment(
+        &workspace,
+        &profile,
+        refreshed_state.key(),
+        refreshed_state.key(),
+        &envs,
+    ) {
+        row_err(
+            config,
+            "!",
+            "cache",
+            "refreshed runtime could not be made offline-safe",
+        );
+        hint(config, &error);
+    }
+    append_active_shell_env(&mut envs, &workspace, &profile, &refreshed_state);
     print_shell_delta(shell, &envs);
     Ok(())
 }
@@ -829,6 +845,7 @@ fn append_active_shell_env(
     );
 }
 
+#[cfg(test)]
 fn append_refreshed_active_shell_env(
     envs: &mut Vec<(String, String)>,
     workspace: &Path,

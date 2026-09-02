@@ -94,7 +94,10 @@ interactive shell or child command.
 Once the Nix runtime environment has been captured for a runtime input key,
 subsequent `robo shell` and `robo run` attempts may show the evaluation step as
 `cached` and skip re-running `nix develop`. Cache reuse must validate referenced
-Nix store paths first.
+Nix store paths first. Cached paths are retained with profile-owned indirect GC
+roots. If a stale cache is still locally valid and evaluating changed inputs
+fails, replay the setup failure and visibly use the last working environment;
+never save that fallback under the changed input key.
 
 ## Wording
 

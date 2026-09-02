@@ -382,9 +382,22 @@ truthful. When Nix reports evaluated local Nix files during a successful setup,
 `robo` records those safe relative paths under `.robo-nix/` and folds them into
 later refresh/cache keys.
 
-After a successful setup, `robo` caches the captured runtime shell environment by
-that same key. Later `robo shell` and `robo run` attempts can reuse it instantly
-as long as the referenced Nix store paths still exist.
+After a successful setup, `robo` caches the captured runtime shell environment
+by that same key. It registers the referenced Nix store paths as profile-owned
+indirect GC roots under `.robo-nix/`, so later `robo shell` and `robo run`
+attempts can reuse the local runtime without a network connection.
+
+When runtime inputs change, robo still tries to evaluate the requested runtime
+first. If that setup fails—for example, because a required remote input is
+unreachable—it replays the Nix failure, clearly reports that it is using the
+last working runtime environment, and launches it as long as every referenced
+store path is present. The old environment is not re-keyed as current, so the
+new input changes are never presented as applied.
+
+This fallback requires at least one prior successful setup. `robo refresh` and
+`robo update` intentionally clear runtime cache state and release its GC roots,
+and `--sync` can still fail offline when uv needs package artifacts that are not
+already cached.
 
 The key uses semantic content for parseable `pyproject.toml`, `uv.lock`, and
 `flake.lock`, so formatting, comments, and mapping order alone do not rerun Nix.

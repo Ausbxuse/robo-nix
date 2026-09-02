@@ -26,7 +26,8 @@ use error::{print_error, write_debug_log, AppError};
 use host_cuda::{append_host_cuda_driver_bridge, HostCudaReport};
 use inference::dependency_evidence_from_pyproject;
 use nix_env::{
-    apply_env, cache_runtime_environment, prefetch_runtime_input_outputs, runtime_environment,
+    apply_env, cache_runtime_environment, prefetch_runtime_input_outputs,
+    retain_runtime_environment, runtime_environment,
 };
 use profile::{parse_runtime_options, RuntimeProfile};
 use shell_launch::interactive_shell_launch;
@@ -310,25 +311,25 @@ fn run_nix_develop(
     print_bootstrap_report(config, &report);
 
     let cache_state = runtime_input_state(&workspace, &profile);
-    let mut runtime_env = match runtime_environment(
-        config,
-        phase,
-        &workspace,
-        &profile,
-        cache_state.key(),
-        |envs| {
-            runtime_input_state_for_env(&workspace, envs, &profile)
-                .key()
-                .to_string()
-        },
-    ) {
-        Ok(runtime_env) => runtime_env,
-        Err(error) => {
-            run_report.errors.push(error_fact(&error));
-            write_last_run_report(config, &workspace, &run_report);
-            return Err(error);
-        }
-    };
+    let prepared_runtime =
+        match runtime_environment(config, phase, &workspace, &profile, cache_state.key()) {
+            Ok(runtime_env) => runtime_env,
+            Err(error) => {
+                run_report.errors.push(error_fact(&error));
+                write_last_run_report(config, &workspace, &run_report);
+                return Err(error);
+            }
+        };
+    let fallback_error = prepared_runtime.fallback_error().map(str::to_string);
+    if let Some(error) = &fallback_error {
+        run_report
+            .decisions
+            .push("runtime_environment=last-working-fallback".to_string());
+        run_report.warnings.push(format!(
+            "new runtime setup failed; used last working environment: {error}"
+        ));
+    }
+    let mut runtime_env = prepared_runtime.into_env();
     let post_nix_state = runtime_input_state(&workspace, &profile);
     let cuda_report = append_host_cuda_driver_bridge(&mut runtime_env, &workspace);
     run_report
@@ -350,7 +351,24 @@ fn run_nix_develop(
             debug(config, &line);
         }
     }
-    cache_runtime_environment(&workspace, &profile, post_nix_state.key(), &runtime_env);
+    let cache_result = if fallback_error.is_some() {
+        retain_runtime_environment(&workspace, &profile, &runtime_env)
+    } else {
+        let final_cache_state = runtime_input_state_for_env(&workspace, &runtime_env, &profile);
+        cache_runtime_environment(
+            &workspace,
+            &profile,
+            post_nix_state.key(),
+            final_cache_state.key(),
+            &runtime_env,
+        )
+    };
+    if let Err(error) = cache_result {
+        section(config, "attention");
+        attention(config, "runtime cache could not be made offline-safe");
+        detail(config, &error);
+        run_report.warnings.push(error);
+    }
     if let Some(components) = runtime_env_value(&runtime_env, "ROBO_NIX_COMPONENTS") {
         run_report.components = components
             .split(':')

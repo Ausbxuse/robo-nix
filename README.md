@@ -173,6 +173,14 @@ system substituter list does not include them. It also prefetches cacheable
 runtime input outputs before `nix develop` so missing optional outputs do not
 cause cached interpreters to compile locally.
 
+After one successful setup, `robo` retains the cached runtime's Nix store paths
+and can launch that last working environment offline. If changed inputs cannot
+be evaluated, robo shows a warning and uses the retained environment without
+claiming the changes are active. A cold first setup still needs all required
+inputs locally or reachable, and `robo refresh`/`robo update` intentionally
+clear this fallback state. An explicit `--sync` may also need uv artifacts that
+are not already cached.
+
 ## Runtime Components
 
 Common components include:

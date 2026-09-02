@@ -1,23 +1,29 @@
+use std::collections::hash_map::DefaultHasher;
 use std::collections::BTreeSet;
 use std::env;
 use std::fs;
+use std::hash::{Hash, Hasher};
 use std::io;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Output};
 
 use serde_json::Value;
 
 use crate::error::AppError;
 use crate::profile::RuntimeProfile;
+use crate::project_lock::with_project_lock;
 use crate::ui::{
-    output_cached_tree, output_with_tree_command_steps, output_with_tree_steps,
-    CommandProgressStep, Config, ProgressStep,
+    attention, detail, output_cached_tree, output_with_tree_command_steps, output_with_tree_steps,
+    section, CommandProgressStep, Config, ProgressStep,
 };
 
 const ENV_START_MARKER: &[u8] = b"robo-nix-env-start";
 const ENV_CAPTURE_SCRIPT: &str = "printf '\\000robo-nix-env-start\\000'; env -0";
-const RUNTIME_ENV_CACHE_MAGIC: &str = "robo-nix-runtime-env-cache-v1";
-const RUNTIME_ENV_CACHE_FILE: &str = "runtime-env-cache-v1.env0";
+const RUNTIME_ENV_CACHE_MAGIC: &str = "robo-nix-runtime-env-cache-v2";
+const RUNTIME_ENV_CACHE_FILE: &str = "runtime-env-cache-v2.env0";
+const LEGACY_RUNTIME_ENV_CACHE_MAGIC: &str = "robo-nix-runtime-env-cache-v1";
+const LEGACY_RUNTIME_ENV_CACHE_FILE: &str = "runtime-env-cache-v1.env0";
+const RUNTIME_GC_ROOTS_DIR: &str = "runtime-gc-roots-v1";
 const GIT_TRACKED_RUNTIME_INPUTS: &[&str] = &[".python-version", "flake.nix", "robo.nix"];
 const ROBO_NIX_EXTRA_SUBSTITUTERS: &str = concat!(
     "https://cache.nixos.org ",
@@ -90,108 +96,170 @@ fn append_robo_nix_cache_options(command: &mut Command) -> &mut Command {
     command
 }
 
+pub(crate) struct RuntimeEnvironment {
+    envs: Vec<(String, String)>,
+    fallback_error: Option<String>,
+}
+
+impl RuntimeEnvironment {
+    fn current(envs: Vec<(String, String)>) -> Self {
+        Self {
+            envs,
+            fallback_error: None,
+        }
+    }
+
+    fn last_working(envs: Vec<(String, String)>, error: &AppError) -> Self {
+        Self {
+            envs,
+            fallback_error: Some(error.message().to_string()),
+        }
+    }
+
+    pub(crate) fn fallback_error(&self) -> Option<&str> {
+        self.fallback_error.as_deref()
+    }
+
+    pub(crate) fn into_env(self) -> Vec<(String, String)> {
+        self.envs
+    }
+}
+
 pub(crate) fn runtime_environment(
     config: Config,
     phase: &str,
     workspace: &Path,
     profile: &RuntimeProfile,
     cache_key: &str,
-    cache_env_key: impl Fn(&[(String, String)]) -> String,
-) -> Result<Vec<(String, String)>, AppError> {
-    let cache = read_runtime_env_cache(workspace, profile, cache_key, cache_env_key);
-    match cache {
+) -> Result<RuntimeEnvironment, AppError> {
+    let cache = read_runtime_env_cache(workspace, profile, cache_key);
+    let (reason, fallback_envs) = match cache {
         RuntimeEnvCache::Hit(mut envs) => {
             output_cached_tree(config, "runtime cache");
             inherit_terminal_environment(&mut envs);
-            return Ok(envs);
+            return Ok(RuntimeEnvironment::current(envs));
         }
-        RuntimeEnvCache::Miss(reason) => {
-            if config.debug {
-                crate::ui::debug(config, &format!("runtime cache {}", reason.detail()));
-            }
-            if config.debug {
-                if let Some(estimate) = estimate_runtime_disk_size(workspace, profile) {
-                    crate::ui::status(config, &estimate.status_line(phase));
-                }
-            }
+        RuntimeEnvCache::Stale { envs, reason } => (reason, Some(envs)),
+        RuntimeEnvCache::Miss(reason) => (reason, None),
+    };
 
-            let flake_ref = workspace_flake_ref(workspace);
-            let mut prefetch_command = runtime_prefetch_command(workspace, profile);
-            let mut command = nix_command();
-            apply_profile_env(&mut command, profile);
-            command
-                .current_dir(workspace)
-                .arg("--log-format")
-                .arg("raw")
-                .arg("develop")
-                .arg(&flake_ref)
-                .arg("--impure")
-                .arg("--accept-flake-config")
-                .arg("--command")
-                .arg("sh")
-                .arg("-c")
-                .arg(ENV_CAPTURE_SCRIPT);
-            let completed_steps = vec![ProgressStep::instant("runtime cache", reason.label())];
-            let output = if let Some(prefetch_command) = prefetch_command.as_mut() {
-                let mut steps = [
-                    CommandProgressStep {
-                        message: "prefetching runtime paths",
-                        command: prefetch_command,
-                        success_suffix: None,
-                        required: false,
-                    },
-                    CommandProgressStep {
-                        message: "evaluating runtime shell",
-                        command: &mut command,
-                        success_suffix: None,
-                        required: true,
-                    },
-                ];
-                let mut outputs = output_with_tree_command_steps(
-                    config,
-                    &format!("robo {phase}"),
-                    completed_steps,
-                    &mut steps,
-                )
-                .map_err(|err| {
-                    AppError::project(format!("failed to start nix: {err}"))
-                        .with_hint("install Nix with flakes enabled, then rerun `robo shell`.")
-                })?;
-                outputs.pop().ok_or_else(|| {
-                    AppError::project("nix develop did not produce command output")
-                        .with_hint("install Nix with flakes enabled, then rerun `robo shell`.")
-                })?
-            } else {
-                output_with_tree_steps(
-                    config,
-                    &mut command,
-                    &format!("robo {phase}"),
-                    "evaluating runtime shell",
-                    completed_steps,
-                )
-                .map_err(|err| {
-                    AppError::project(format!("failed to start nix: {err}"))
-                        .with_hint("install Nix with flakes enabled, then rerun `robo shell`.")
-                })?
-            };
-
-            if output.status.success() {
-                let _ =
-                    crate::shell_refresh::record_observed_runtime_inputs(workspace, &output.stderr);
-                let mut envs = parse_env_zero(&output.stdout).map_err(AppError::project)?;
-                remove_volatile_runtime_env_values(&mut envs);
-                inherit_terminal_environment(&mut envs);
-                return Ok(envs);
-            }
-
-            crate::write_command_output(&filter_nix_output_for_user(&output))?;
-            Err(AppError::project(format!(
-                "nix develop exited with {}",
-                output.status
-            ))
-            .with_hint("review the Nix output above and attach .robo-nix/last-error.log to an issue if this looks like a robo-nix bug."))
+    if config.debug {
+        crate::ui::debug(config, &format!("runtime cache {}", reason.detail()));
+    }
+    if config.debug {
+        if let Some(estimate) = estimate_runtime_disk_size(workspace, profile) {
+            crate::ui::status(config, &estimate.status_line(phase));
         }
     }
+
+    let flake_ref = workspace_flake_ref(workspace);
+    let mut prefetch_command = runtime_prefetch_command(workspace, profile);
+    let mut command = nix_command();
+    apply_profile_env(&mut command, profile);
+    command
+        .current_dir(workspace)
+        .arg("--log-format")
+        .arg("raw")
+        .arg("develop")
+        .arg(&flake_ref)
+        .arg("--impure")
+        .arg("--accept-flake-config")
+        .arg("--command")
+        .arg("sh")
+        .arg("-c")
+        .arg(ENV_CAPTURE_SCRIPT);
+    let completed_steps = vec![ProgressStep::instant("runtime cache", reason.label())];
+    let output = if let Some(prefetch_command) = prefetch_command.as_mut() {
+        let mut steps = [
+            CommandProgressStep {
+                message: "prefetching runtime paths",
+                command: prefetch_command,
+                success_suffix: None,
+                required: false,
+            },
+            CommandProgressStep {
+                message: "evaluating runtime shell",
+                command: &mut command,
+                success_suffix: None,
+                required: true,
+            },
+        ];
+        output_with_tree_command_steps(
+            config,
+            &format!("robo {phase}"),
+            completed_steps,
+            &mut steps,
+        )
+        .map_err(|err| {
+            AppError::project(format!("failed to start nix: {err}"))
+                .with_hint("install Nix with flakes enabled, then rerun `robo shell`.")
+        })
+        .and_then(|mut outputs| {
+            outputs.pop().ok_or_else(|| {
+                AppError::project("nix develop did not produce command output")
+                    .with_hint("install Nix with flakes enabled, then rerun `robo shell`.")
+            })
+        })
+    } else {
+        output_with_tree_steps(
+            config,
+            &mut command,
+            &format!("robo {phase}"),
+            "evaluating runtime shell",
+            completed_steps,
+        )
+        .map_err(|err| {
+            AppError::project(format!("failed to start nix: {err}"))
+                .with_hint("install Nix with flakes enabled, then rerun `robo shell`.")
+        })
+    };
+
+    let output = match output {
+        Ok(output) => output,
+        Err(error) => return last_working_or_error(config, fallback_envs, error),
+    };
+
+    if output.status.success() {
+        let _ = crate::shell_refresh::record_observed_runtime_inputs(workspace, &output.stderr);
+        let mut envs = match parse_env_zero(&output.stdout) {
+            Ok(envs) => envs,
+            Err(message) => {
+                let error = AppError::project(message).with_hint(
+                    "the evaluated runtime environment was invalid; review the shell hook output.",
+                );
+                return last_working_or_error(config, fallback_envs, error);
+            }
+        };
+        remove_volatile_runtime_env_values(&mut envs);
+        inherit_terminal_environment(&mut envs);
+        return Ok(RuntimeEnvironment::current(envs));
+    }
+
+    let error = AppError::project(format!("nix develop exited with {}", output.status))
+        .with_hint("review the Nix output above and attach .robo-nix/last-error.log to an issue if this looks like a robo-nix bug.");
+    if let Err(replay_error) = crate::write_command_output(&filter_nix_output_for_user(&output)) {
+        return last_working_or_error(config, fallback_envs, replay_error);
+    }
+    last_working_or_error(config, fallback_envs, error)
+}
+
+fn last_working_or_error(
+    config: Config,
+    fallback_envs: Option<Vec<(String, String)>>,
+    error: AppError,
+) -> Result<RuntimeEnvironment, AppError> {
+    let Some(mut envs) = fallback_envs else {
+        return Err(error);
+    };
+    inherit_terminal_environment(&mut envs);
+    section(config, "attention");
+    attention(config, "using the last working runtime environment");
+    detail(
+        config,
+        &format!("new runtime setup failed: {}", error.message()),
+    );
+    detail(config, "current runtime input changes are not active");
+    Ok(RuntimeEnvironment::last_working(envs, &error))
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -477,10 +545,223 @@ pub(crate) fn cache_runtime_environment(
     workspace: &Path,
     profile: &RuntimeProfile,
     cache_key: &str,
+    cache_env_key: &str,
     envs: &[(String, String)],
-) {
+) -> Result<(), String> {
+    with_project_lock(workspace, "runtime-cache", || {
+        cache_runtime_environment_locked(workspace, profile, cache_key, cache_env_key, envs)
+            .map_err(AppError::project)
+    })
+    .map_err(|error| error.message().to_string())
+}
+
+fn cache_runtime_environment_locked(
+    workspace: &Path,
+    profile: &RuntimeProfile,
+    cache_key: &str,
+    cache_env_key: &str,
+    envs: &[(String, String)],
+) -> Result<(), String> {
     let cache_envs = cacheable_runtime_env(envs);
-    let _ = write_runtime_env_cache(workspace, profile, cache_key, &cache_envs);
+    let retained_generation = ensure_runtime_gc_roots(workspace, profile, &cache_envs);
+    let cache_result =
+        write_runtime_env_cache(workspace, profile, cache_key, cache_env_key, &cache_envs)
+            .map_err(|err| format!("failed to save the runtime environment cache: {err}"));
+
+    match (cache_result, retained_generation) {
+        (Ok(()), Ok(generation)) => {
+            prune_runtime_gc_roots(workspace, profile, generation.as_deref()).map_err(|err| {
+                format!("saved the runtime cache but could not release old runtime roots: {err}")
+            })?;
+            Ok(())
+        }
+        (Ok(()), Err(retention_error)) => Err(format!(
+            "saved the runtime cache but could not protect it from Nix garbage collection: {retention_error}"
+        )),
+        (Err(cache_error), Ok(_)) => Err(cache_error),
+        (Err(cache_error), Err(retention_error)) => Err(format!(
+            "{cache_error}; runtime retention also failed: {retention_error}"
+        )),
+    }
+}
+
+pub(crate) fn retain_runtime_environment(
+    workspace: &Path,
+    profile: &RuntimeProfile,
+    envs: &[(String, String)],
+) -> Result<(), String> {
+    with_project_lock(workspace, "runtime-cache", || {
+        let cache_envs = cacheable_runtime_env(envs);
+        let generation =
+            ensure_runtime_gc_roots(workspace, profile, &cache_envs).map_err(AppError::project)?;
+        prune_runtime_gc_roots(workspace, profile, generation.as_deref())
+            .map_err(|err| AppError::project(format!("could not release old runtime roots: {err}")))
+    })
+    .map_err(|error| error.message().to_string())
+}
+
+fn ensure_runtime_gc_roots(
+    workspace: &Path,
+    profile: &RuntimeProfile,
+    envs: &[(String, String)],
+) -> Result<Option<PathBuf>, String> {
+    let store_paths = referenced_nix_store_paths(envs);
+    if store_paths.is_empty() {
+        return Ok(None);
+    }
+
+    let roots_dir = runtime_gc_roots_path(workspace, profile);
+    fs::create_dir_all(&roots_dir)
+        .map_err(|err| format!("failed to create {}: {err}", roots_dir.display()))?;
+    let absolute_roots_dir = fs::canonicalize(&roots_dir)
+        .map_err(|err| format!("failed to resolve {}: {err}", roots_dir.display()))?;
+    let generation = roots_dir.join(runtime_gc_root_generation(
+        &absolute_roots_dir,
+        &store_paths,
+    ));
+    if runtime_gc_roots_match(&generation, &store_paths) {
+        return Ok(Some(generation));
+    }
+
+    remove_robo_owned_path(&generation)
+        .map_err(|err| format!("failed to replace {}: {err}", generation.display()))?;
+    fs::create_dir_all(&generation)
+        .map_err(|err| format!("failed to create {}: {err}", generation.display()))?;
+    // NOTE: Nix registers an indirect root against this exact symlink path, so
+    // completed generations must stay in place until they are pruned.
+    let absolute_generation = fs::canonicalize(&generation)
+        .map_err(|err| format!("failed to resolve {}: {err}", generation.display()))?;
+    let root_link = absolute_generation.join("root");
+    let mut command = runtime_gc_root_command(&store_paths, &root_link);
+    let output = match command.output() {
+        Ok(output) => output,
+        Err(err) => {
+            let _ = remove_robo_owned_path(&generation);
+            return Err(format!("failed to start nix-store: {err}"));
+        }
+    };
+    if !output.status.success() {
+        let _ = remove_robo_owned_path(&generation);
+        return Err(command_failure_detail("nix-store", &output));
+    }
+    if !runtime_gc_roots_match(&generation, &store_paths) {
+        let _ = remove_robo_owned_path(&generation);
+        return Err("nix-store did not create the expected indirect roots".to_string());
+    }
+    Ok(Some(generation))
+}
+
+fn runtime_gc_root_command(store_paths: &[PathBuf], root_link: &Path) -> Command {
+    let mut command = nix_store_command();
+    remove_runtime_library_env(&mut command);
+    command.arg("--realise").args(store_paths);
+    command.arg("--add-root").arg(root_link).arg("--indirect");
+    command
+}
+
+fn command_failure_detail(program: &str, output: &Output) -> String {
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let detail = stderr
+        .lines()
+        .rev()
+        .find(|line| !line.trim().is_empty())
+        .map(str::trim);
+    match detail {
+        Some(detail) => format!("{program} exited with {}: {detail}", output.status),
+        None => format!("{program} exited with {}", output.status),
+    }
+}
+
+fn runtime_gc_roots_match(generation: &Path, store_paths: &[PathBuf]) -> bool {
+    let Ok(entries) = fs::read_dir(generation) else {
+        return false;
+    };
+    let Ok(entries) = entries.collect::<io::Result<Vec<_>>>() else {
+        return false;
+    };
+    if entries.len() != store_paths.len() {
+        return false;
+    }
+    store_paths.iter().enumerate().all(|(index, store_path)| {
+        fs::read_link(runtime_gc_root_link(generation, index))
+            .ok()
+            .as_ref()
+            == Some(store_path)
+    })
+}
+
+fn runtime_gc_root_link(generation: &Path, index: usize) -> PathBuf {
+    if index == 0 {
+        generation.join("root")
+    } else {
+        generation.join(format!("root-{}", index + 1))
+    }
+}
+
+fn runtime_gc_root_generation(roots_dir: &Path, store_paths: &[PathBuf]) -> String {
+    let mut hasher = DefaultHasher::new();
+    RUNTIME_GC_ROOTS_DIR.hash(&mut hasher);
+    roots_dir.hash(&mut hasher);
+    store_paths.hash(&mut hasher);
+    format!("{:016x}", hasher.finish())
+}
+
+fn runtime_gc_roots_path(workspace: &Path, profile: &RuntimeProfile) -> PathBuf {
+    profile.state_dir(workspace).join(RUNTIME_GC_ROOTS_DIR)
+}
+
+fn prune_runtime_gc_roots(
+    workspace: &Path,
+    profile: &RuntimeProfile,
+    keep: Option<&Path>,
+) -> io::Result<()> {
+    let roots_dir = runtime_gc_roots_path(workspace, profile);
+    let entries = match fs::read_dir(&roots_dir) {
+        Ok(entries) => entries,
+        Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(()),
+        Err(err) => return Err(err),
+    };
+    for entry in entries {
+        let path = entry?.path();
+        if keep.is_some_and(|keep| keep == path) {
+            continue;
+        }
+        remove_robo_owned_path(&path)?;
+    }
+    Ok(())
+}
+
+fn remove_robo_owned_path(path: &Path) -> io::Result<()> {
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(()),
+        Err(err) => return Err(err),
+    };
+    if metadata.file_type().is_dir() {
+        fs::remove_dir_all(path)
+    } else {
+        fs::remove_file(path)
+    }
+}
+
+fn referenced_nix_store_paths(envs: &[(String, String)]) -> Vec<PathBuf> {
+    let mut paths = envs
+        .iter()
+        .flat_map(|(_, value)| store_roots_in_value(value))
+        .filter_map(|path| nix_store_path_root(&path))
+        .collect::<Vec<_>>();
+    paths.sort();
+    paths.dedup();
+    paths
+}
+
+fn nix_store_path_root(path: &Path) -> Option<PathBuf> {
+    let text = path.to_str()?;
+    let name = text.strip_prefix("/nix/store/")?.split('/').next()?;
+    if name.is_empty() {
+        return None;
+    }
+    Some(Path::new("/nix/store").join(name))
 }
 
 pub(crate) fn parse_env_zero(bytes: &[u8]) -> Result<Vec<(String, String)>, String> {
@@ -513,6 +794,10 @@ pub(crate) fn parse_env_zero(bytes: &[u8]) -> Result<Vec<(String, String)>, Stri
 #[derive(Debug, Eq, PartialEq)]
 enum RuntimeEnvCache {
     Hit(Vec<(String, String)>),
+    Stale {
+        envs: Vec<(String, String)>,
+        reason: RuntimeCacheMiss,
+    },
     Miss(RuntimeCacheMiss),
 }
 
@@ -553,30 +838,65 @@ fn read_runtime_env_cache(
     workspace: &Path,
     profile: &RuntimeProfile,
     cache_key: &str,
-    cache_env_key: impl Fn(&[(String, String)]) -> String,
 ) -> RuntimeEnvCache {
-    let Ok(bytes) = fs::read(runtime_env_cache_path(workspace, profile)) else {
-        return RuntimeEnvCache::Miss(RuntimeCacheMiss::Missing);
-    };
-    let Some((magic, rest)) = split_once_byte(&bytes, b'\n') else {
+    match fs::read(runtime_env_cache_path(workspace, profile)) {
+        Ok(bytes) => read_runtime_env_cache_v2(&bytes, cache_key),
+        Err(err) if err.kind() == io::ErrorKind::NotFound => {
+            match fs::read(legacy_runtime_env_cache_path(workspace, profile)) {
+                Ok(bytes) => read_legacy_runtime_env_cache(&bytes, cache_key),
+                Err(_) => RuntimeEnvCache::Miss(RuntimeCacheMiss::Missing),
+            }
+        }
+        Err(_) => RuntimeEnvCache::Miss(RuntimeCacheMiss::Missing),
+    }
+}
+
+fn read_runtime_env_cache_v2(bytes: &[u8], cache_key: &str) -> RuntimeEnvCache {
+    let Some((magic, rest)) = split_once_byte(bytes, b'\n') else {
         return RuntimeEnvCache::Miss(RuntimeCacheMiss::FormatChanged);
     };
     if magic != RUNTIME_ENV_CACHE_MAGIC.as_bytes() {
         return RuntimeEnvCache::Miss(RuntimeCacheMiss::FormatChanged);
     }
+    let Some((launch_key, rest)) = split_once_byte(rest, b'\n') else {
+        return RuntimeEnvCache::Miss(RuntimeCacheMiss::FormatChanged);
+    };
+    let Some((environment_key, env_bytes)) = split_once_byte(rest, b'\n') else {
+        return RuntimeEnvCache::Miss(RuntimeCacheMiss::FormatChanged);
+    };
+    classify_runtime_env_cache(
+        env_bytes,
+        launch_key == cache_key.as_bytes() || environment_key == cache_key.as_bytes(),
+    )
+}
+
+fn read_legacy_runtime_env_cache(bytes: &[u8], cache_key: &str) -> RuntimeEnvCache {
+    let Some((magic, rest)) = split_once_byte(bytes, b'\n') else {
+        return RuntimeEnvCache::Miss(RuntimeCacheMiss::FormatChanged);
+    };
+    if magic != LEGACY_RUNTIME_ENV_CACHE_MAGIC.as_bytes() {
+        return RuntimeEnvCache::Miss(RuntimeCacheMiss::FormatChanged);
+    }
     let Some((key, env_bytes)) = split_once_byte(rest, b'\n') else {
         return RuntimeEnvCache::Miss(RuntimeCacheMiss::FormatChanged);
     };
+    classify_runtime_env_cache(env_bytes, key == cache_key.as_bytes())
+}
+
+fn classify_runtime_env_cache(env_bytes: &[u8], key_matches: bool) -> RuntimeEnvCache {
     let Ok(mut envs) = parse_env_zero(env_bytes) else {
         return RuntimeEnvCache::Miss(RuntimeCacheMiss::InvalidEnvironment);
     };
     remove_volatile_runtime_env_values(&mut envs);
-    if key != cache_key.as_bytes() && cache_env_key(&envs) != cache_key {
-        return RuntimeEnvCache::Miss(RuntimeCacheMiss::StaleInputs);
-    }
     let missing_store_paths = missing_store_roots(&envs);
     if !missing_store_paths.is_empty() {
         return RuntimeEnvCache::Miss(RuntimeCacheMiss::MissingStorePaths(missing_store_paths));
+    }
+    if !key_matches {
+        return RuntimeEnvCache::Stale {
+            envs,
+            reason: RuntimeCacheMiss::StaleInputs,
+        };
     }
     RuntimeEnvCache::Hit(envs)
 }
@@ -585,6 +905,7 @@ fn write_runtime_env_cache(
     workspace: &Path,
     profile: &RuntimeProfile,
     cache_key: &str,
+    cache_env_key: &str,
     envs: &[(String, String)],
 ) -> io::Result<()> {
     let state_dir = profile.state_dir(workspace);
@@ -597,7 +918,11 @@ fn write_runtime_env_cache(
     let mut bytes = Vec::new();
     bytes.extend_from_slice(RUNTIME_ENV_CACHE_MAGIC.as_bytes());
     bytes.push(b'\n');
+    // NOTE: both keys must be captured now; recomputing an environment key on
+    // read could fold newly changed project files into an old environment.
     bytes.extend_from_slice(cache_key.as_bytes());
+    bytes.push(b'\n');
+    bytes.extend_from_slice(cache_env_key.as_bytes());
     bytes.push(b'\n');
     for (name, value) in envs {
         if name.as_bytes().contains(&b'=')
@@ -612,11 +937,19 @@ fn write_runtime_env_cache(
         bytes.push(0);
     }
     fs::write(&tmp_path, bytes)?;
-    fs::rename(tmp_path, cache_path)
+    fs::rename(tmp_path, cache_path)?;
+    let _ = fs::remove_file(legacy_runtime_env_cache_path(workspace, profile));
+    Ok(())
 }
 
 fn runtime_env_cache_path(workspace: &Path, profile: &RuntimeProfile) -> PathBuf {
     profile.state_dir(workspace).join(RUNTIME_ENV_CACHE_FILE)
+}
+
+fn legacy_runtime_env_cache_path(workspace: &Path, profile: &RuntimeProfile) -> PathBuf {
+    profile
+        .state_dir(workspace)
+        .join(LEGACY_RUNTIME_ENV_CACHE_FILE)
 }
 
 fn split_once_byte(bytes: &[u8], needle: u8) -> Option<(&[u8], &[u8])> {
@@ -843,15 +1176,88 @@ mod tests {
             ),
         ];
 
-        write_runtime_env_cache(&root, &profile, "cache-key", &envs).unwrap();
+        write_runtime_env_cache(&root, &profile, "cache-key", "env-key", &envs).unwrap();
 
         assert_eq!(
-            read_runtime_env_cache(&root, &profile, "cache-key", |_| "env-key".to_string()),
-            RuntimeEnvCache::Hit(envs)
+            read_runtime_env_cache(&root, &profile, "cache-key"),
+            RuntimeEnvCache::Hit(envs.clone())
         );
         assert_eq!(
-            read_runtime_env_cache(&root, &profile, "other-key", |_| "env-key".to_string()),
-            RuntimeEnvCache::Miss(RuntimeCacheMiss::StaleInputs)
+            read_runtime_env_cache(&root, &profile, "env-key"),
+            RuntimeEnvCache::Hit(envs.clone())
+        );
+        assert_eq!(
+            read_runtime_env_cache(&root, &profile, "other-key"),
+            RuntimeEnvCache::Stale {
+                envs,
+                reason: RuntimeCacheMiss::StaleInputs,
+            }
+        );
+
+        cleanup(root);
+    }
+
+    #[test]
+    fn legacy_runtime_cache_remains_usable_and_migrates_after_a_current_hit() {
+        let root = temp_project("legacy-runtime-env-cache");
+        let profile = RuntimeProfile::default();
+        fs::create_dir_all(profile.state_dir(&root)).unwrap();
+        let envs = vec![("PATH".to_string(), "/bin".to_string())];
+        let mut legacy = format!("{LEGACY_RUNTIME_ENV_CACHE_MAGIC}\nlegacy-key\n").into_bytes();
+        legacy.extend_from_slice(b"PATH=/bin\0");
+        fs::write(legacy_runtime_env_cache_path(&root, &profile), legacy).unwrap();
+
+        assert_eq!(
+            read_runtime_env_cache(&root, &profile, "legacy-key"),
+            RuntimeEnvCache::Hit(envs.clone())
+        );
+        assert_eq!(
+            read_runtime_env_cache(&root, &profile, "changed-key"),
+            RuntimeEnvCache::Stale {
+                envs: envs.clone(),
+                reason: RuntimeCacheMiss::StaleInputs,
+            }
+        );
+
+        write_runtime_env_cache(&root, &profile, "legacy-key", "final-key", &envs).unwrap();
+        assert!(runtime_env_cache_path(&root, &profile).exists());
+        assert!(!legacy_runtime_env_cache_path(&root, &profile).exists());
+
+        cleanup(root);
+    }
+
+    #[test]
+    fn stale_runtime_cache_is_available_as_a_last_working_fallback() {
+        let error = AppError::project("offline evaluation failed");
+        let runtime = last_working_or_error(
+            test_config(),
+            Some(vec![("PATH".to_string(), "/bin".to_string())]),
+            error,
+        )
+        .unwrap();
+
+        assert_eq!(runtime.fallback_error(), Some("offline evaluation failed"));
+        assert!(runtime
+            .into_env()
+            .iter()
+            .any(|(name, value)| name == "PATH" && value == "/bin"));
+    }
+
+    #[test]
+    fn stale_runtime_cache_with_missing_store_paths_is_not_a_fallback() {
+        let root = temp_project("runtime-env-cache-missing-store-path");
+        let profile = RuntimeProfile::default();
+        fs::create_dir_all(profile.state_dir(&root)).unwrap();
+        let missing = PathBuf::from(format!(
+            "/nix/store/00000000000000000000000000000000-robo-missing-{}/lib",
+            std::process::id()
+        ));
+        let envs = vec![("LD_LIBRARY_PATH".to_string(), missing.display().to_string())];
+        write_runtime_env_cache(&root, &profile, "old-key", "old-env-key", &envs).unwrap();
+
+        assert_eq!(
+            read_runtime_env_cache(&root, &profile, "new-key"),
+            RuntimeEnvCache::Miss(RuntimeCacheMiss::MissingStorePaths(vec![missing]))
         );
 
         cleanup(root);
@@ -867,13 +1273,10 @@ mod tests {
             "/tmp/driver/libcuda.so.1".to_string(),
         )];
 
-        write_runtime_env_cache(&root, &profile, "launch-key", &envs).unwrap();
+        write_runtime_env_cache(&root, &profile, "launch-key", "final-key", &envs).unwrap();
 
         assert_eq!(
-            read_runtime_env_cache(&root, &profile, "final-key", |cached_envs| {
-                assert_eq!(cached_envs, envs.as_slice());
-                "final-key".to_string()
-            }),
+            read_runtime_env_cache(&root, &profile, "final-key"),
             RuntimeEnvCache::Hit(envs)
         );
 
@@ -886,7 +1289,7 @@ mod tests {
         let profile = RuntimeProfile::default();
 
         assert_eq!(
-            read_runtime_env_cache(&root, &profile, "cache-key", |_| "env-key".to_string()),
+            read_runtime_env_cache(&root, &profile, "cache-key"),
             RuntimeEnvCache::Miss(RuntimeCacheMiss::Missing)
         );
 
@@ -894,7 +1297,7 @@ mod tests {
         fs::write(runtime_env_cache_path(&root, &profile), "bad-cache").unwrap();
 
         assert_eq!(
-            read_runtime_env_cache(&root, &profile, "cache-key", |_| "env-key".to_string()),
+            read_runtime_env_cache(&root, &profile, "cache-key"),
             RuntimeEnvCache::Miss(RuntimeCacheMiss::FormatChanged)
         );
 
@@ -994,6 +1397,83 @@ mod tests {
         assert_eq!(
             store_roots_in_value("/nix/store/abc-package/lib:/other"),
             vec![PathBuf::from("/nix/store/abc-package/lib")]
+        );
+    }
+
+    #[test]
+    fn gc_retention_uses_top_level_nix_store_paths() {
+        let envs = vec![
+            (
+                "PATH".to_string(),
+                "/nix/store/bbb-package/bin:/nix/store/aaa-package/bin".to_string(),
+            ),
+            (
+                "LD_LIBRARY_PATH".to_string(),
+                "/nix/store/aaa-package/lib:/usr/lib".to_string(),
+            ),
+        ];
+
+        assert_eq!(
+            referenced_nix_store_paths(&envs),
+            vec![
+                PathBuf::from("/nix/store/aaa-package"),
+                PathBuf::from("/nix/store/bbb-package"),
+            ]
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn gc_root_generation_must_match_every_retained_store_path() {
+        use std::os::unix::fs::symlink;
+
+        let root = temp_project("runtime-gc-root-match");
+        let generation = root.join("generation");
+        fs::create_dir_all(&generation).unwrap();
+        let store_paths = vec![
+            PathBuf::from("/nix/store/aaa-package"),
+            PathBuf::from("/nix/store/bbb-package"),
+        ];
+        symlink(&store_paths[0], runtime_gc_root_link(&generation, 0)).unwrap();
+        symlink(&store_paths[1], runtime_gc_root_link(&generation, 1)).unwrap();
+
+        assert!(runtime_gc_roots_match(&generation, &store_paths));
+
+        fs::write(generation.join("unexpected"), "not a root").unwrap();
+        assert!(!runtime_gc_roots_match(&generation, &store_paths));
+
+        cleanup(root);
+    }
+
+    #[test]
+    fn gc_root_command_registers_all_paths_indirectly() {
+        let store_paths = vec![
+            PathBuf::from("/nix/store/aaa-package"),
+            PathBuf::from("/nix/store/bbb-package"),
+        ];
+        let command = runtime_gc_root_command(&store_paths, Path::new("/tmp/robo-root"));
+        let args = command
+            .get_args()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+
+        assert!(args.ends_with(&[
+            "--realise".to_string(),
+            "/nix/store/aaa-package".to_string(),
+            "/nix/store/bbb-package".to_string(),
+            "--add-root".to_string(),
+            "/tmp/robo-root".to_string(),
+            "--indirect".to_string(),
+        ]));
+    }
+
+    #[test]
+    fn gc_root_generation_changes_when_the_project_moves() {
+        let store_paths = vec![PathBuf::from("/nix/store/aaa-package")];
+
+        assert_ne!(
+            runtime_gc_root_generation(Path::new("/workspace/one"), &store_paths),
+            runtime_gc_root_generation(Path::new("/workspace/two"), &store_paths)
         );
     }
 
@@ -1108,5 +1588,12 @@ mod tests {
 
     fn cleanup(root: PathBuf) {
         let _ = fs::remove_dir_all(root);
+    }
+
+    fn test_config() -> Config {
+        Config {
+            color: false,
+            debug: false,
+        }
     }
 }

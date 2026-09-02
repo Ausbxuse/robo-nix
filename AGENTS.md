@@ -47,6 +47,10 @@ environment manager.
   refresh, and cache reuse must validate referenced Nix store paths. Active
   shell fingerprints should describe the final launched environment, not the
   parent process before runtime preparation.
+- A successfully cached runtime environment must retain its referenced Nix
+  store paths through profile-owned GC roots. If changed runtime inputs cannot
+  be evaluated, `robo shell` and `robo run` should visibly fall back to the
+  validated last working environment without re-keying it as current.
 - Use product language such as runtime environment, runtime shell, and runtime
   cache for robo-owned surfaces. Avoid naming robo concepts after generic dev
   environment tooling unless referring directly to Nix's dev shell primitive.

@@ -278,9 +278,14 @@ mod tests {
         let root = temp_project("clear-profiles");
         let profile_cache = root.join(".robo-nix").join("profiles").join("default");
         let venv = root.join(".robo-nix").join("venvs").join("default");
-        fs::create_dir_all(&profile_cache).unwrap();
+        fs::create_dir_all(profile_cache.join("runtime-gc-roots-v1/generation")).unwrap();
         fs::create_dir_all(&venv).unwrap();
-        fs::write(profile_cache.join("runtime-env-cache-v1.env0"), "cache").unwrap();
+        fs::write(profile_cache.join("runtime-env-cache-v2.env0"), "cache").unwrap();
+        fs::write(
+            profile_cache.join("runtime-gc-roots-v1/generation/root"),
+            "root",
+        )
+        .unwrap();
         fs::write(venv.join("pyvenv.cfg"), "venv").unwrap();
 
         clear_runtime_profile_state(&root).unwrap();
